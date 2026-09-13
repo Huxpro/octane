@@ -2209,7 +2209,7 @@ export function createLynxClientDriver(
 						throw new TypeError(
 							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
 								? `Octane Lynx ${JSON.stringify(context.name)} requires a compiler-transformed main-thread function.`
-								: 'Octane Lynx OL094',
+								: 'Octane Lynx OL502',
 						);
 					}
 					return {

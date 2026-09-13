@@ -4,6 +4,7 @@ import type { UniversalHostBatch, UniversalHostProgramAddress } from 'octane/uni
 import {
 	encodeLynxDeltaMessage,
 	isLynxDeltaValue,
+	prepareLynxDeltaValue,
 	type LynxDeltaAnchor,
 	type LynxDeltaOperation,
 	type LynxDeltaTemplate,
@@ -45,7 +46,7 @@ export interface LynxBlockDeltaProducer {
 	set(instance: number, slot: number, value: unknown): boolean;
 	move(instance: number, parent: LynxSlotAddress, before: LynxDeltaAnchor): void;
 	remove(firstInstance: number, count: number): void;
-	clear(parent: LynxSlotAddress): void;
+	clear(parent: LynxSlotAddress, retiredInstances?: readonly number[]): void;
 	visibility(instance: number, visible: boolean): void;
 	flush(version: number): UniversalHostBatch | null;
 }
@@ -54,6 +55,7 @@ export interface LynxPreparedBlockDeltaBatch {
 	readonly source: 'block';
 	readonly templates: readonly LynxDeltaTemplate[];
 	readonly operations: readonly LynxDeltaOperation[];
+	readonly retiredInstances: readonly number[];
 	readonly encoded: LynxEncodedDeltaMessage;
 }
 
@@ -103,10 +105,8 @@ function nonNegativeInteger(input: number, where: string): number {
 }
 
 function value(input: unknown, where: string): LynxDeltaValue {
-	if (!isLynxDeltaValue(input)) {
-		fail(`${where} must be a finite scalar, not ${typeof input}`);
-	}
-	return input;
+	if (isLynxDeltaValue(input)) return input;
+	return prepareLynxDeltaValue(input, where);
 }
 
 function frozenSite(site: LynxSlotAddress, where: string): LynxSlotAddress {
@@ -168,6 +168,7 @@ export function createLynxBlockDeltaProducer(): LynxBlockDeltaProducer {
 	let operations: LynxDeltaOperation[] = [];
 	let definitions: LynxDeltaTemplate[] = [];
 	let dirtySlots = new Map<number, Map<number, number>>();
+	let retiredInstances: number[] = [];
 	let dirtyVisibility = new Map<number, number>();
 	let attempt: {
 		readonly nextTemplate: number;
@@ -217,6 +218,7 @@ export function createLynxBlockDeltaProducer(): LynxBlockDeltaProducer {
 			if (attempt === null) return false;
 			operations = [];
 			definitions = [];
+			retiredInstances = [];
 			dirtySlots = new Map();
 			dirtyVisibility = new Map();
 			for (const key of attempt.templates) templates.delete(key);
@@ -286,8 +288,14 @@ export function createLynxBlockDeltaProducer(): LynxBlockDeltaProducer {
 			positiveInteger(count, 'REMOVE count');
 			append({ op: 'remove', firstInstance, count });
 		},
-		clear(parent) {
+		clear(parent, retired) {
 			append({ op: 'clear', parent: frozenSite(parent, 'CLEAR parent') });
+			if (retired !== undefined) {
+				for (const instance of retired) {
+					positiveInteger(instance, 'CLEAR retired instance');
+					retiredInstances.push(instance);
+				}
+			}
 		},
 		visibility(instance, visible) {
 			positiveInteger(instance, 'VIS instance');
@@ -306,6 +314,7 @@ export function createLynxBlockDeltaProducer(): LynxBlockDeltaProducer {
 				source: 'block',
 				templates: Object.freeze(definitions.map((definition) => Object.freeze(definition))),
 				operations: Object.freeze(operations.map(frozenOperation)),
+				retiredInstances: Object.freeze([...retiredInstances]),
 				encoded: encodeLynxDeltaMessage(operations, definitions),
 			});
 			const batch: UniversalHostBatch = Object.freeze({
@@ -316,6 +325,7 @@ export function createLynxBlockDeltaProducer(): LynxBlockDeltaProducer {
 			prepared.set(batch, { owner: producer, frame });
 			operations = [];
 			definitions = [];
+			retiredInstances = [];
 			dirtySlots = new Map();
 			dirtyVisibility = new Map();
 			return batch;

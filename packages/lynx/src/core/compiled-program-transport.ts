@@ -12,8 +12,14 @@ import {
 	LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT,
 } from './compiled-program-wire.js';
 import type { LynxDataLifecycleMessage } from './lifecycle-types.js';
-import type { LynxHostAttachmentChange } from './protocol.js';
-import type { LynxContextProxy, LynxContextProxyEvent } from './protocol.js';
+import type {
+	LynxBackgroundFunctionWireDescriptor,
+	LynxContextProxy,
+	LynxContextProxyEvent,
+	LynxHostAttachmentChange,
+	LynxMainThreadWorkletWireDescriptor,
+} from './protocol.js';
+import type { LynxWorkletValue } from './worklets.js';
 import { LYNX_TRANSPORT_PROTOCOL_VERSION, LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import {
 	acceptLynxTransportFrame,
@@ -40,6 +46,16 @@ interface PendingCommit {
 	readonly acknowledge: (message: UniversalTransportAcknowledgement) => void;
 	readonly deferred: Deferred<void>;
 	state: 'waiting-ready' | 'sent' | 'acknowledged';
+}
+
+interface PendingMainCall {
+	readonly identity: UniversalTransportIdentity;
+	readonly deferred: Deferred<unknown>;
+}
+
+interface RunningBackgroundCall {
+	readonly identity: UniversalTransportIdentity;
+	cancelled: boolean;
 }
 
 function createDeferred<T>(): Deferred<T> {
@@ -79,6 +95,10 @@ function remoteError(input: { readonly name: string; readonly message: string })
 }
 
 export interface LynxCompiledProgramTransportOptions {
+	readonly executeBackgroundFunction?: (
+		fn: LynxBackgroundFunctionWireDescriptor,
+		args: readonly unknown[],
+	) => unknown;
 	readonly onDiagnostic?: (error: Error) => void;
 	/** Product-owned page/global lifecycle data carried on this same compact wire. */
 	readonly onLifecycle?: (message: LynxDataLifecycleMessage) => void;
@@ -96,6 +116,10 @@ export interface LynxCompiledProgramCommitAttempt {
 
 export interface LynxCompiledProgramTransport {
 	readonly ready: Promise<void>;
+	callMain<Result>(
+		worklet: LynxMainThreadWorkletWireDescriptor,
+		args: readonly LynxWorkletValue[],
+	): { readonly promise: Promise<Result>; cancel(reason?: unknown): void };
 	/** Settles once main broadcasts that the native page lifetime ended. */
 	readonly pageDestroyed: Promise<void>;
 	commit(
@@ -141,6 +165,8 @@ export function createLynxCompiledProgramTransport(
 	}
 	const reported: Error[] = [];
 	const pending = new Map<number, PendingCommit>();
+	const pendingMainCalls = new Map<number, PendingMainCall>();
+	const runningBackgroundCalls = new Map<number, RunningBackgroundCall>();
 	const ready = createDeferred<void>();
 	void ready.promise.catch(() => {});
 	const pageDestroyed = createDeferred<void>();
@@ -155,6 +181,8 @@ export function createLynxCompiledProgramTransport(
 	let disposeTerminal = false;
 	let disposeAttempts = 0;
 	let pageDestroyReceived = false;
+	let nextCall = 1;
+	let acknowledged: UniversalTransportIdentity | null = null;
 
 	const report = (value: unknown, fallback = TRANSPORT_ERROR): Error => {
 		const error = normalizedError(value, fallback);
@@ -178,9 +206,26 @@ export function createLynxCompiledProgramTransport(
 		}
 	};
 
+	const cancelCalls = (error: Error, notifyMain: boolean): void => {
+		for (const [call, entry] of pendingMainCalls) {
+			if (notifyMain) {
+				try {
+					dispatch({ ...entry.identity, type: 'cancel-main', call });
+				} catch (dispatchError) {
+					report(dispatchError);
+				}
+			}
+			entry.deferred.reject(error);
+		}
+		pendingMainCalls.clear();
+		for (const entry of runningBackgroundCalls.values()) entry.cancelled = true;
+		runningBackgroundCalls.clear();
+	};
+
 	const failPending = (error: Error): void => {
 		for (const entry of pending.values()) entry.deferred.reject(error);
 		pending.clear();
+		cancelCalls(error, false);
 	};
 
 	const fault = (value: unknown): Error => {
@@ -259,6 +304,128 @@ export function createLynxCompiledProgramTransport(
 			handlePageDestroy();
 			return;
 		}
+		if (message.type === 'call-main-result' || message.type === 'call-main-error') {
+			const entry = pendingMainCalls.get(message.call);
+			if (
+				entry === undefined ||
+				message.root !== entry.identity.root ||
+				message.version !== entry.identity.version
+			) {
+				report(
+					new Error(
+						TRANSPORT_DEVELOPMENT
+							? 'Octane Lynx compact transport received a foreign main-call result.'
+							: TRANSPORT_ERROR,
+					),
+				);
+				return;
+			}
+			pendingMainCalls.delete(message.call);
+			if (message.type === 'call-main-result') entry.deferred.resolve(message.value);
+			else entry.deferred.reject(remoteError(message.error));
+			return;
+		}
+		if (message.type === 'cancel-background') {
+			const entry = runningBackgroundCalls.get(message.call);
+			if (
+				entry !== undefined &&
+				message.root === entry.identity.root &&
+				message.version === entry.identity.version
+			) {
+				entry.cancelled = true;
+				runningBackgroundCalls.delete(message.call);
+			}
+			return;
+		}
+		if (message.type === 'call-background') {
+			const callIdentity = acknowledged ?? accepted;
+			if (
+				callIdentity === null ||
+				message.root !== callIdentity.root ||
+				message.version !== callIdentity.version ||
+				runningBackgroundCalls.has(message.call)
+			) {
+				report(
+					new Error(
+						TRANSPORT_DEVELOPMENT
+							? 'Octane Lynx compact transport received a foreign or duplicate background call.'
+							: TRANSPORT_ERROR,
+					),
+				);
+				return;
+			}
+			const running: RunningBackgroundCall = {
+				identity: Object.freeze({ ...callIdentity }),
+				cancelled: false,
+			};
+			runningBackgroundCalls.set(message.call, running);
+			let result: unknown;
+			try {
+				if (options.executeBackgroundFunction === undefined)
+					throw new Error(
+						TRANSPORT_DEVELOPMENT
+							? 'Compact background call support is unavailable.'
+							: TRANSPORT_ERROR,
+					);
+				result = options.executeBackgroundFunction(message.fn, message.args);
+			} catch (error) {
+				runningBackgroundCalls.delete(message.call);
+				const failure = normalizedError(error, TRANSPORT_ERROR);
+				try {
+					dispatch({
+						...running.identity,
+						type: 'call-background-error',
+						call: message.call,
+						error: { name: failure.name, message: failure.message },
+					});
+				} catch (dispatchError) {
+					fault(dispatchError);
+				}
+				return;
+			}
+			void Promise.resolve(result).then(
+				(value) => {
+					if (
+						runningBackgroundCalls.get(message.call) !== running ||
+						running.cancelled ||
+						closed !== null
+					)
+						return;
+					runningBackgroundCalls.delete(message.call);
+					try {
+						dispatch({
+							...running.identity,
+							type: 'call-background-result',
+							call: message.call,
+							value: value as never,
+						});
+					} catch (error) {
+						fault(error);
+					}
+				},
+				(error) => {
+					if (
+						runningBackgroundCalls.get(message.call) !== running ||
+						running.cancelled ||
+						closed !== null
+					)
+						return;
+					runningBackgroundCalls.delete(message.call);
+					const failure = normalizedError(error, TRANSPORT_ERROR);
+					try {
+						dispatch({
+							...running.identity,
+							type: 'call-background-error',
+							call: message.call,
+							error: { name: failure.name, message: failure.message },
+						});
+					} catch (dispatchError) {
+						fault(dispatchError);
+					}
+				},
+			);
+			return;
+		}
 		if (message.type === 'page-data' || message.type === 'global-props') {
 			try {
 				options.onLifecycle?.(message);
@@ -309,6 +476,8 @@ export function createLynxCompiledProgramTransport(
 				return;
 			}
 			if (message.type === 'dispose-ack') {
+				accepted = null;
+				acknowledged = null;
 				disposeDeferred.resolve(undefined);
 				return;
 			}
@@ -348,9 +517,10 @@ export function createLynxCompiledProgramTransport(
 				);
 				return;
 			}
+			entry.state = 'acknowledged';
+			acknowledged = entry.identity;
 			try {
 				entry.acknowledge(message);
-				entry.state = 'acknowledged';
 			} catch (error) {
 				entry.deferred.reject(fault(error));
 			}
@@ -399,6 +569,66 @@ export function createLynxCompiledProgramTransport(
 	const transport: LynxCompiledProgramTransport = {
 		ready: ready.promise,
 		pageDestroyed: pageDestroyed.promise,
+		callMain<Result>(
+			worklet: LynxMainThreadWorkletWireDescriptor,
+			args: readonly LynxWorkletValue[],
+		) {
+			const deferred = createDeferred<unknown>();
+			void deferred.promise.catch(() => {});
+			const identity = acknowledged ?? accepted;
+			if (
+				closed !== null ||
+				faulted !== null ||
+				identity === null ||
+				(disposeDeferred !== null && !disposeDeferred.settled)
+			) {
+				deferred.reject(
+					closed ??
+						faulted ??
+						new Error(
+							TRANSPORT_DEVELOPMENT
+								? 'Compact main call requires an accepted root.'
+								: TRANSPORT_ERROR,
+						),
+				);
+				return { promise: deferred.promise as Promise<Result>, cancel() {} };
+			}
+			const call = nextCall++;
+			if (!Number.isSafeInteger(call)) {
+				deferred.reject(
+					new Error(
+						TRANSPORT_DEVELOPMENT ? 'Compact main call ids are exhausted.' : TRANSPORT_ERROR,
+					),
+				);
+				return { promise: deferred.promise as Promise<Result>, cancel() {} };
+			}
+			const entry: PendingMainCall = { identity: Object.freeze({ ...identity }), deferred };
+			pendingMainCalls.set(call, entry);
+			try {
+				dispatch({ ...entry.identity, type: 'call-main', call, worklet, args: args as never });
+			} catch (error) {
+				pendingMainCalls.delete(call);
+				deferred.reject(fault(error));
+			}
+			return {
+				promise: deferred.promise as Promise<Result>,
+				cancel(reason?: unknown) {
+					if (pendingMainCalls.get(call) !== entry) return;
+					pendingMainCalls.delete(call);
+					try {
+						dispatch({ ...entry.identity, type: 'cancel-main', call });
+					} catch (error) {
+						fault(error);
+					}
+					const cancellation = normalizedError(
+						reason,
+						TRANSPORT_DEVELOPMENT ? 'Compact main call was cancelled.' : TRANSPORT_ERROR,
+					);
+					if (reason === undefined) cancellation.name = 'AbortError';
+					deferred.reject(cancellation);
+				},
+			};
+		},
 		commit(
 			identity: UniversalTransportIdentity,
 			frame: readonly unknown[],
@@ -486,6 +716,10 @@ export function createLynxCompiledProgramTransport(
 		},
 		dispose(identity: UniversalTransportIdentity, terminal = false) {
 			if (disposeDeferred !== null && !disposeDeferred.settled) return disposeDeferred.promise;
+			cancelCalls(
+				new Error(TRANSPORT_DEVELOPMENT ? 'Compact root was disposed.' : TRANSPORT_ERROR),
+				true,
+			);
 			disposeDeferred = createDeferred<void>();
 			void disposeDeferred.promise.catch(() => {});
 			disposeIdentity = Object.freeze({ ...identity });

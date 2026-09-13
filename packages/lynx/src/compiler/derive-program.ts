@@ -75,6 +75,7 @@ import type {
 	UniversalPlanNode,
 	UniversalHostTemplateProgram,
 	UniversalHostTemplateCapability,
+	UniversalHostPropCodecContext,
 	UniversalTemplateHostPlacement,
 } from 'octane/universal/native';
 import {
@@ -86,7 +87,7 @@ import {
 } from 'octane/universal/template-program';
 import type { UniversalHostCapabilities } from 'octane/universal/native';
 
-import { createLynxClientDriver } from '../core/client-driver.js';
+import { createLynxClientDriver, type LynxClientContainer } from '../core/client-driver.js';
 import { LYNX_TRANSPORT_RENDERER } from '../core/protocol.js';
 import {
 	emitLynxMainThreadProgram,
@@ -104,16 +105,25 @@ import { LYNX_PROGRAM_IR_VERSION, type LynxProgramIR } from './ir.js';
  * program is being derived *for* a host that mounts template programs, which is
  * the only kind of host a main-thread emission is built for.
  *
- * Nothing else is forced. Every other answer — what a prop encodes to, which
- * names are events and at what priority, which props refuse the program — comes
- * from the renderer's own driver, so a build-time derivation and a run-time one
- * classify identically or the driver is wrong for both.
+ * Compiler-authored `main-thread:` props are the one encoding exception: keep
+ * their transport descriptors in resident slots so the compact product can
+ * validate and activate them after crossing threads. Ordinary props and event
+ * priorities still come from the renderer's own driver.
  */
 function buildTimeLoweringDriver(): ReturnType<typeof createLynxClientDriver> {
 	const driver = createLynxClientDriver();
+	const props = driver.props!;
 	return {
 		...driver,
 		templates: COMPILED_TEMPLATE_HOSTS,
+		props: Object.freeze({
+			encode(context: UniversalHostPropCodecContext<LynxClientContainer>) {
+				if (context.name.startsWith('main-thread:')) {
+					return { kind: 'value' as const, value: context.value as never };
+				}
+				return props.encode(context);
+			},
+		}),
 		// Object.create rather than a spread, matching `loweringDriver`: the
 		// negotiated members are live getters and snapshotting them would answer a
 		// later question with a build-time value. Here they would all snapshot to
@@ -176,14 +186,8 @@ const COMPILED_TEMPLATE_HOSTS: UniversalHostTemplateCapability = Object.freeze({
 	placement(type: string): UniversalTemplateHostPlacement {
 		return type === 'list-item' ? 'root' : 'any';
 	},
-	defer(parentType: string, program: UniversalHostTemplateProgram): boolean {
-		if (parentType !== 'list') return false;
-		for (const node of program.nodes) {
-			for (const binding of node.bindings ?? []) {
-				if (binding.name.startsWith('main-thread:')) return false;
-			}
-		}
-		return true;
+	defer(parentType: string, _program: UniversalHostTemplateProgram): boolean {
+		return parentType === 'list';
 	},
 });
 

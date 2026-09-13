@@ -4,6 +4,9 @@ import type { UniversalProgramCreate, UniversalProgramPlan } from 'octane/univer
 
 import { encodePrevalidatedLynxNativeEventToken } from './native-events.js';
 import type { LynxHostAttachmentChange } from './protocol.js';
+import { requireLynxMainThreadWorkletFeature } from './main-thread-worklet-feature.js';
+import type { LynxCompiledProgramWorkletStore } from './compiled-program-worklets.js';
+import type { LynxMainThreadWorkletRegistry } from './worklets.js';
 import {
 	createLynxListItemDescriptor,
 	lynxListReuseKey,
@@ -289,11 +292,16 @@ function isScalar(value: unknown): boolean {
 	return value === null || type === 'string' || type === 'number' || type === 'boolean';
 }
 
-function isSlotValue(plan: UniversalProgramPlan, slot: number, value: unknown): boolean {
+function isSlotValue<Node extends LynxElementRef>(
+	plan: UniversalProgramPlan,
+	slot: number,
+	value: unknown,
+	worklets: LynxCompiledProgramWorkletStore<Node> | null,
+): boolean {
 	const kind = plan.slots[plan.values[slot]!];
-	return kind === 'c'
-		? typeof value === 'string'
-		: kind?.startsWith('p:') === true && isScalar(value);
+	if (kind === 'c') return typeof value === 'string';
+	if (kind?.startsWith('p:') !== true) return false;
+	return isScalar(value) || worklets?.validValue(plan, slot, value) === true;
 }
 
 function cleanupRoot<Node extends LynxElementRef>(
@@ -326,6 +334,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	seed?: LynxCompiledProgramAdoptionSeedResolver<Node>,
 	onCallbackFault?: (error: unknown) => void,
 	onAttachments?: (changes: readonly LynxHostAttachmentChange[]) => void,
+	workletRegistry?: LynxMainThreadWorkletRegistry,
 ): LynxCompiledProgramStore<Node> {
 	const instances = new Map<number, CompiledProgramInstance<Node>>();
 	const creates = new WeakMap<UniversalProgramPlan, CompiledProgramCreate>();
@@ -351,6 +360,41 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	let nextListener = firstListener;
 	let faulted = false;
 	let closing = false;
+	let workletStore: LynxCompiledProgramWorkletStore<Node> | null = null;
+	const noWorkletPlans = new WeakSet<UniversalProgramPlan>();
+	const workletsFor = (
+		plan: UniversalProgramPlan,
+	): LynxCompiledProgramWorkletStore<Node> | null => {
+		if (noWorkletPlans.has(plan)) return null;
+		if (workletStore !== null) {
+			if (workletStore.hasSites(plan)) return workletStore;
+			noWorkletPlans.add(plan);
+			return null;
+		}
+		const wire = plan.wire;
+		let found = false;
+		for (const node of wire?.nodes ?? []) {
+			if (node.bindings?.some((binding) => binding.name.startsWith('main-thread:'))) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			noWorkletPlans.add(plan);
+			return null;
+		}
+		if (workletRegistry === undefined) {
+			fail(
+				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+					'main-thread props require the compact worklet feature',
+			);
+		}
+		workletStore = requireLynxMainThreadWorkletFeature().createCompiledProgramStore(
+			papi,
+			workletRegistry,
+		);
+		return workletStore;
+	};
 
 	const requireHealthy = (): void => {
 		if (faulted) fail(StoreFailure.Faulted);
@@ -478,6 +522,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	const clearCellOwner = (cell: CompiledProgramListCell<Node>): void => {
 		const owner = cell.owner;
 		if (owner === null) return;
+		deactivateInstanceWorklets(owner);
 		updateCellRefs(cell, owner, false);
 		writeCellEvents(cell, cell.item, false);
 		const run = owner.run;
@@ -561,6 +606,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const reused = cell !== undefined;
 		const reuseNotification = reused && cell!.item.handle !== item.handle;
 		if (cell === undefined) {
+			const directWorklets = workletsFor(run.plan);
+			const preparedWorklets = directWorklets?.prepareMount(run.plan, 1, values) ?? null;
+			const physicalValues = preparedWorklets?.values ?? values;
 			const nodes = new Array<Node | undefined>(run.stride);
 			const tokens = new Array<string>(run.plan.events.length);
 			for (let site = 0; site < run.plan.events.length; site++) {
@@ -573,25 +621,32 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					event.priority,
 				);
 			}
-			run.create.run(pageId, 1, values, tokens, [], nodes);
-			const rootNode = nodes[0];
-			if (rootNode === undefined)
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'list row did not publish its root');
-			papi.insertBefore(list.node, rootNode, null);
-			const sign = papi.getUniqueId(rootNode);
-			if (!Number.isSafeInteger(sign) || sign <= 0 || list.cellsBySign.has(sign)) {
-				fail(
-					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received an invalid native-list cell sign',
-				);
+			try {
+				run.create.run(pageId, 1, physicalValues, tokens, [], nodes);
+				preparedWorklets?.publish(nodes, run.stride);
+				const rootNode = nodes[0];
+				if (rootNode === undefined)
+					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'list row did not publish its root');
+				papi.insertBefore(list.node, rootNode, null);
+				const sign = papi.getUniqueId(rootNode);
+				if (!Number.isSafeInteger(sign) || sign <= 0 || list.cellsBySign.has(sign)) {
+					fail(
+						LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received an invalid native-list cell sign',
+					);
+				}
+				cell = { sign, nodes, item, owner: null, awaitingEnqueue: false };
+				list.cellsBySign.set(sign, cell);
+			} catch (error) {
+				preparedWorklets?.abort();
+				cleanupRoot(papi, nodes[0]);
+				throw error;
 			}
-			cell = { sign, nodes, item, owner: null, awaitingEnqueue: false };
-			list.cellsBySign.set(sign, cell);
 		} else {
 			attachCellOwner(cell, item);
 			const set = run.create.set;
 			if (run.plan.values.length !== 0 && set === undefined) fail(StoreFailure.SlotSetter);
 			for (let slot = 0; slot < values.length; slot++) {
-				if (!set!(cell.nodes, slot, values[slot], 0)) fail(StoreFailure.SlotSetter);
+				if (!writePhysicalSlot(item.instance, slot, values[slot])) fail(StoreFailure.SlotSetter);
 			}
 			writeCellEvents(cell, item, item.instance.visible);
 		}
@@ -869,6 +924,35 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			);
 		return node;
 	};
+	const writePhysicalSlot = (
+		instance: CompiledProgramInstance<Node>,
+		slot: number,
+		value: unknown,
+	): boolean => {
+		const run = instance.run;
+		const offset = instance.index * run.stride;
+		const worklets = workletsFor(run.plan);
+		if (worklets?.set(run.plan, run.nodes, offset, slot, value) === true) return true;
+		return run.create.set!(run.nodes, slot, value, offset);
+	};
+	const deactivateInstanceWorklets = (instance: CompiledProgramInstance<Node>): void => {
+		const run = instance.run;
+		const offset = instance.index * run.stride;
+		if (run.nodes[offset] === undefined) return;
+		workletsFor(run.plan)?.deactivateInstance(run.plan, run.nodes, offset);
+	};
+	const activateInstanceWorklets = (instance: CompiledProgramInstance<Node>): void => {
+		const run = instance.run;
+		const offset = instance.index * run.stride;
+		if (run.nodes[offset] === undefined) return;
+		workletsFor(run.plan)?.activateInstance(
+			run.plan,
+			run.nodes,
+			offset,
+			run.values,
+			instance.index * run.plan.values.length,
+		);
+	};
 	const rollbackFrame = (): void => {
 		if (journal === null) fail(StoreFailure.Rollback);
 		const active = journal;
@@ -885,6 +969,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					for (let index = count - 1; index >= 0; index--) {
 						const handle = firstHandle + index;
 						const instance = instances.get(handle)!;
+						deactivateInstanceWorklets(instance);
 						if (opcode === JournalOpcode.Mount && !instance.run.deferred) {
 							for (const list of listsInInstance(instance)) disposeList(list);
 							cleanupRoot(papi, rootOf(instance));
@@ -899,9 +984,8 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					const instance = instances.get(handle)!;
 					const run = instance.run;
 					const valueIndex = instance.index * run.plan.values.length + slot;
-					const set = run.create.set!;
 					if (run.nodes[instance.index * run.stride] !== undefined) {
-						if (!set(run.nodes, slot, previous, instance.index * run.stride)) {
+						if (!writePhysicalSlot(instance, slot, previous)) {
 							fail(
 								LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `setter refused rollback slot ${slot}`,
 							);
@@ -924,6 +1008,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 						// Restore ownership before the host call so a mutate-then-throw
 						// insertion remains reachable by terminal disposal after faulting.
 						papi.insertBefore(parent, rootNode, before);
+						activateInstanceWorklets(instance);
 					}
 				} else if (opcode === JournalOpcode.Move) {
 					const before = active.pop() as number | null;
@@ -1042,6 +1127,8 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `setter refused event site ${site}`);
 			}
 		}
+		if (visible) activateInstanceWorklets(instance);
+		else deactivateInstanceWorklets(instance);
 		if (!visible) papi.setAttribute(node, 'hidden', true);
 	};
 	const writeVisibility = (
@@ -1094,6 +1181,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		if (range === undefined) fail(StoreFailure.RangeOrder);
 		const nextInstance = instance.next === null ? undefined : instances.get(instance.next)!;
 		const before = nextInstance === undefined ? range.before : rootOf(nextInstance);
+		deactivateInstanceWorklets(instance);
 		try {
 			papi.remove(parent, root);
 		} catch (error) {
@@ -1118,6 +1206,16 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					);
 				}
 			}
+			try {
+				activateInstanceWorklets(instance);
+			} catch (rollbackError) {
+				faulted = true;
+				failAggregate(
+					[error, rollbackError],
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+						'Compiled program worklet remove rollback failed.',
+				);
+			}
 			throw error;
 		}
 		unlink(instance, range);
@@ -1132,7 +1230,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const run = instance.run;
 		if (slot >= run.plan.values.length)
 			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `does not hold value slot ${slot}`);
-		if (!isSlotValue(run.plan, slot, value)) {
+		if (!isSlotValue(run.plan, slot, value, workletsFor(run.plan))) {
 			fail(
 				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
 					`received a value outside slot ${slot}'s scalar kind`,
@@ -1147,11 +1245,11 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const nodeOffset = instance.index * run.stride;
 		if (run.nodes[nodeOffset] !== undefined) {
 			try {
-				if (!set(run.nodes, slot, value, nodeOffset))
+				if (!writePhysicalSlot(instance, slot, value))
 					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `setter refused value slot ${slot}`);
 			} catch (error) {
 				try {
-					if (!set(run.nodes, slot, previous, nodeOffset)) {
+					if (!writePhysicalSlot(instance, slot, previous)) {
 						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `setter refused rollback slot ${slot}`);
 					}
 				} catch (rollbackError) {
@@ -1191,6 +1289,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			);
 		}
 		const plan = input.plan;
+		const directWorklets = workletsFor(plan);
 		if (typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__) {
 			if (plan.nodes <= 0) fail(StoreFailure.StructuralProgram);
 			const slots = new Set<number>();
@@ -1246,7 +1345,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		for (let index = valueOffset; index < valueEnd; index++) {
 			const slot = (index - valueOffset) % plan.values.length;
-			if (!isSlotValue(plan, slot, input.values[index])) {
+			if (!isSlotValue(plan, slot, input.values[index], directWorklets)) {
 				fail(
 					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
 						`received a value outside slot ${slot}'s scalar kind`,
@@ -1261,7 +1360,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		if (values.length !== valueCount) fail(StoreFailure.ValueArity);
 		for (let index = 0; index < values.length; index++) {
 			const slot = index % plan.values.length;
-			if (!isSlotValue(plan, slot, values[index])) {
+			if (!isSlotValue(plan, slot, values[index], directWorklets)) {
 				fail(
 					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
 						`received a painted value outside slot ${slot}'s scalar kind`,
@@ -1361,6 +1460,8 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				fail(StoreFailure.AdoptedArity);
 			}
 		} else {
+			const preparedWorklets = directWorklets?.prepareMount(plan, input.count, values) ?? null;
+			const physicalValues = preparedWorklets?.values ?? values;
 			const tokens = new Array<string>(eventCount * input.count);
 			for (let row = 0; row < input.count; row++) {
 				for (let site = 0; site < eventCount; site++) {
@@ -1379,7 +1480,8 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 			const created = new Array<Node | undefined>(nodeStride * input.count);
 			try {
-				create.run(pageId, input.count, values, tokens, [], created);
+				create.run(pageId, input.count, physicalValues, tokens, [], created);
+				preparedWorklets?.publish(created, nodeStride);
 				const before = next === null ? range.before : rootOf(instances.get(next)!);
 				for (let index = 0; index < input.count; index++) {
 					const node = created[index * nodeStride];
@@ -1388,6 +1490,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					papi.insertBefore(input.parent, node, before);
 				}
 			} catch (error) {
+				preparedWorklets?.abort();
 				const cleanupErrors: unknown[] = [];
 				for (let index = input.count - 1; index >= 0; index--) {
 					try {
@@ -1437,15 +1540,20 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			relink(handle, instance, range);
 			runPrevious = handle;
 		}
-		lastHandle = finalHandle;
-		nextListener = finalListener;
-		if (deferred) markListDirty(input.parent);
 		undo.push(
 			input.firstHandle,
 			input.count,
 			range,
 			adoption ? JournalOpcode.Adopt : JournalOpcode.Mount,
 		);
+		if (adoption && directWorklets !== null) {
+			for (let index = 0; index < input.count; index++) {
+				activateInstanceWorklets(instances.get(input.firstHandle + index)!);
+			}
+		}
+		lastHandle = finalHandle;
+		nextListener = finalListener;
+		if (deferred) markListDirty(input.parent);
 		if (adoption && adopted.paintedValues !== undefined) {
 			for (let index = 0; index < targetValues.length; index++) {
 				if (Object.is(values[index], targetValues[index])) continue;
@@ -1654,12 +1762,26 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				}
 			}
 			for (const [handle, instance] of [...instances].reverse()) {
-				try {
-					if (!instance.run.deferred) cleanupRoot(papi, rootOf(instance));
-					instances.delete(handle);
-				} catch (error) {
-					errors.push(error);
+				let rootReleased = instance.run.deferred;
+				if (!instance.run.deferred) {
+					try {
+						deactivateInstanceWorklets(instance);
+					} catch (error) {
+						errors.push(error);
+					}
+					try {
+						cleanupRoot(papi, rootOf(instance));
+						rootReleased = true;
+					} catch (error) {
+						errors.push(error);
+					}
 				}
+				if (rootReleased) instances.delete(handle);
+			}
+			try {
+				workletStore?.close();
+			} catch (error) {
+				errors.push(error);
 			}
 			ranges.clear();
 			templates.length = 1;

@@ -32,7 +32,7 @@ export function provideLynxCompactHostRefFeature(feature: LynxCompactHostRefFeat
 		throw new Error(
 			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
 				? 'Octane Lynx compact host-ref feature was provided twice.'
-				: 'Octane Lynx OL499',
+				: 'Octane Lynx OL503',
 		);
 	}
 	providedFeature = feature;
@@ -43,6 +43,6 @@ export function requireLynxCompactHostRefFeature(): LynxCompactHostRefFeature {
 	throw new Error(
 		typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
 			? 'Octane Lynx used a compact host ref, but this bundle compiled no host-ref feature.'
-			: 'Octane Lynx OL499',
+			: 'Octane Lynx OL504',
 	);
 }

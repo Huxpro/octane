@@ -587,6 +587,8 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				'core/application-selection.ts',
 				'core/client-driver.ts',
 				'core/compact-host-refs.ts',
+				'core/compiled-program-worklets.ts',
+				'main-worklets.ts',
 				'main-renderer.ts',
 				'core/main-thread-application-selection.ts',
 			]) {

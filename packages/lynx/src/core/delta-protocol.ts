@@ -1,4 +1,8 @@
-import type { UniversalHostProgramAddress } from 'octane/universal/native';
+import type {
+	UniversalHostProgramAddress,
+	UniversalSerializableValue,
+} from 'octane/universal/native';
+import { decodeLynxTransportValue, encodeLynxTransportValue } from './transport-codec.js';
 
 /**
  * Versioned header for the Lynx slot-delta wire format.
@@ -20,9 +24,10 @@ import type { UniversalHostProgramAddress } from 'octane/universal/native';
  *   uses it; later frames carry only the number without trusting evaluation or
  *   discovery order in two isolated module graphs.
  *
- * Values are scalars. That restriction is what makes header-only validation
- * sound: a structured value would have to be walked to be checked, which is the
- * recursive cost this format exists to delete.
+ * Ordinary values remain scalars and byte-identical. Direct worklet and ref
+ * descriptors opt into one escaped transport-codec field; only that explicitly
+ * marked field is walked and validated, so scalar-only frames keep header-only
+ * validation and the original allocation profile.
  */
 export const LYNX_DELTA_PROTOCOL_VERSION = 2 as const;
 
@@ -56,8 +61,9 @@ export interface LynxSlotAddress {
 /** `null` appends into the range site's parent node rather than before a node. */
 export type LynxDeltaAnchor = LynxSlotAddress | null;
 
-/** Slot values are scalars so a frame can be validated by its header alone. */
-export type LynxDeltaValue = string | number | boolean | null;
+/** Scalar values stay inline; direct worklet/ref descriptors use one escaped field. */
+export type LynxDeltaScalar = string | number | boolean | null;
+export type LynxDeltaValue = UniversalSerializableValue;
 
 export interface LynxRunDelta {
 	readonly op: 'run';
@@ -170,16 +176,65 @@ function requireAddress(value: LynxSlotAddress | undefined, name: string): LynxS
  * that must decline rather than encode a structured value (the delta shadow).
  * One `typeof`, never a walk — a hostile getter is never reached.
  */
-export function isLynxDeltaValue(value: unknown): value is LynxDeltaValue {
+export function isLynxDeltaValue(value: unknown): value is LynxDeltaScalar {
 	if (value === null) return true;
 	const type = typeof value;
 	return type === 'string' || type === 'boolean' || (type === 'number' && Number.isFinite(value));
 }
 
-/** The whole of the value check: `isLynxDeltaValue`, spelled as a demand. */
-function requireValue(value: unknown, name: string): LynxDeltaValue {
-	if (!isLynxDeltaValue(value)) fail(`${name} must be a string, number, boolean, or null`);
-	return value;
+function descriptorKind(value: unknown): 'worklet' | 'ref' | null {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+	const keys = Object.keys(value);
+	if (keys.includes('_wkltId')) {
+		if (!keys.every((key) => key === '_wkltId' || key === '_c')) return null;
+		return typeof (value as { _wkltId?: unknown })._wkltId === 'string' ? 'worklet' : null;
+	}
+	if (keys.includes('_wvid')) {
+		if (!keys.every((key) => key === '_wvid' || key === '_initValue')) return null;
+		return typeof (value as { _wvid?: unknown })._wvid === 'string' ? 'ref' : null;
+	}
+	return null;
+}
+
+export function prepareLynxDeltaValue(value: unknown, name = 'value'): LynxDeltaValue {
+	if (isLynxDeltaValue(value)) return value;
+	if (value !== undefined && descriptorKind(value) === null) {
+		fail(name + ' must be a finite scalar, direct worklet, ref, or undefined');
+	}
+	try {
+		const isolated = decodeLynxTransportValue(
+			encodeLynxTransportValue(value as UniversalSerializableValue),
+		);
+		if (isolated !== undefined && descriptorKind(isolated) === null)
+			fail(name + ' descriptor is invalid');
+		return isolated as UniversalSerializableValue;
+	} catch (error) {
+		if (
+			error instanceof TypeError &&
+			error.message.startsWith('Invalid Lynx delta protocol message:')
+		)
+			throw error;
+		fail(name + ' is not clone-safe');
+	}
+}
+
+function encodeValue(value: LynxDeltaValue, name: string): unknown {
+	const prepared = prepareLynxDeltaValue(value, name);
+	return isLynxDeltaValue(prepared) ? prepared : [encodeLynxTransportValue(prepared)];
+}
+
+export function decodeLynxDeltaValue(value: unknown, name = 'value'): LynxDeltaValue {
+	if (isLynxDeltaValue(value)) return value;
+	if (!Array.isArray(value) || value.length !== 1 || typeof value[0] !== 'string') {
+		fail(name + ' must be a scalar or escaped direct value');
+	}
+	let decoded: unknown;
+	try {
+		decoded = decodeLynxTransportValue(value[0]);
+	} catch {
+		fail(name + ' carries an invalid escaped value');
+	}
+	return prepareLynxDeltaValue(decoded, name);
 }
 
 function encodeAnchor(anchor: LynxDeltaAnchor, name: string): readonly [number, number] {
@@ -230,7 +285,7 @@ export function encodeLynxDeltaMessage(
 					before[1],
 					requireInstance(operation.firstInstance, 'RUN first instance'),
 					requirePositiveCount(operation.count, 'RUN count'),
-					...operation.values.map((value, index) => requireValue(value, `RUN value ${index}`)),
+					...operation.values.map((value, index) => encodeValue(value, `RUN value ${index}`)),
 				]);
 				break;
 			}
@@ -238,7 +293,7 @@ export function encodeLynxDeltaMessage(
 				pushFrame(encoded, LynxDeltaOpcode.Set, [
 					requireInstance(operation.instance, 'SET instance'),
 					requireIndex(operation.slot, 'SET slot'),
-					requireValue(operation.value, 'SET value'),
+					encodeValue(operation.value, 'SET value'),
 				]);
 				break;
 			case 'remove':
@@ -327,7 +382,7 @@ export function decodeLynxDeltaMessage(input: unknown): LynxDeltaMessage {
 					count: requirePositiveCount(input[cursor + 6], 'RUN count'),
 					values: input
 						.slice(cursor + RUN_HEADER_FIELDS, end)
-						.map((value, index) => requireValue(value, `RUN value ${index}`)),
+						.map((value, index) => decodeLynxDeltaValue(value, `RUN value ${index}`)),
 				});
 				break;
 			}
@@ -337,7 +392,7 @@ export function decodeLynxDeltaMessage(input: unknown): LynxDeltaMessage {
 					op: 'set',
 					instance: requireInstance(input[cursor], 'SET instance'),
 					slot: requireIndex(input[cursor + 1], 'SET slot'),
-					value: requireValue(input[cursor + 2], 'SET value'),
+					value: decodeLynxDeltaValue(input[cursor + 2], 'SET value'),
 				});
 				break;
 			case LynxDeltaOpcode.Remove:

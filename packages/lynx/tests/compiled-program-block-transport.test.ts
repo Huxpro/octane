@@ -3,27 +3,34 @@ import {
 	universalFor,
 	universalPlan,
 	type UniversalHostTemplateProgram,
+	type UniversalPreparedAttempt,
 	type UniversalProgramPlan,
+	type UniversalTransaction,
 } from 'octane/universal/native';
 import { describe, expect, it } from 'vitest';
 
 import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
 import { deriveLynxProgramIR } from '../src/compiler/derive-program.js';
 import { compileLynxBlockTemplate, createLynxBlockCore } from '../src/core/block-core.js';
-import { createLynxBlockBackgroundCore } from '../src/core/block-background.js';
+import {
+	createLynxBlockBackgroundCore,
+	type LynxBackgroundCore,
+} from '../src/core/block-background.js';
 import { createLynxBlockRoot } from '../src/core/block-root.js';
 import {
 	createLynxBlockDeltaProducer,
 	preparedLynxBlockDeltaBatch,
 } from '../src/core/block-delta-producer.js';
 import { createLynxClientContainer } from '../src/core/client-driver.js';
-import { createLynxCompiledProgramBlockTransport } from '../src/core/compiled-program-block-transport.js';
+import {
+	createLynxCompiledProgramBlockTransport,
+	type LynxCompiledProgramBlockTransport,
+} from '../src/core/compiled-program-block-transport.js';
 import { installLynxCompiledProgramReceiver } from '../src/core/compiled-program-receiver.js';
 import { LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT } from '../src/core/compiled-program-wire.js';
 import { lynxProgram, lynxProgramValue } from '../src/core/compiler-program.js';
 import type { LynxElementPAPI } from '../src/core/papi.js';
 import type { LynxContextProxy, LynxContextProxyEvent } from '../src/core/protocol.js';
-import type { LynxComponent } from '../src/intrinsics.js';
 import { createFakePAPI, type FakeNode, shape } from './_fixtures/fake-element-papi.js';
 
 const MODULE = 'tests/CompactBlockRow.lynx.tsrx';
@@ -181,7 +188,7 @@ function emittedRangeParentPlan(): UniversalProgramPlan {
 		nodes: RANGE_PARENT_IR.wire.nodes.length,
 		values: [],
 		events: [],
-		ranges: RANGE_PARENT_IR.ranges,
+		ranges: [{ ...RANGE_PARENT_IR.ranges[0]!, id: 1 }],
 		wire: RANGE_PARENT_IR.wire,
 		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
 	};
@@ -204,6 +211,27 @@ function emittedRangeRowPlan(): UniversalProgramPlan {
 		wire: RANGE_ROW_IR.wire,
 		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
 	};
+}
+
+function transaction(attempt: UniversalPreparedAttempt): UniversalTransaction {
+	if (!('batch' in attempt)) throw new Error('Compact transport test unexpectedly suspended.');
+	return attempt;
+}
+
+function bindTransportRoot(
+	transport: LynxCompiledProgramBlockTransport,
+	background: LynxBackgroundCore,
+): void {
+	const acceptsNativeEvent = background.acceptsNativeEvent;
+	const dispatchHostAttachments = background.dispatchHostAttachments;
+	if (acceptsNativeEvent === undefined || dispatchHostAttachments === undefined) {
+		throw new Error('Compact Block core did not publish its native transport capabilities.');
+	}
+	transport.bindRoot({
+		acceptsNativeEvent,
+		dispatchHostAttachments,
+		dispatchTransportEvent: background.dispatchTransportEvent,
+	});
 }
 
 function emittedHost(): LynxElementPAPI<FakeNode> {
@@ -292,24 +320,26 @@ describe('Lynx compact compiled-program Block transport', () => {
 				module === APPLICATION_MODULE && index === 0 ? emittedApplicationPlan() : undefined,
 		});
 		const container = createLynxClientContainer();
-		const transport = createLynxCompiledProgramBlockTransport(context, container);
+		let registryCreations = 0;
+		const transport = createLynxCompiledProgramBlockTransport(context, container, {
+			createBackgroundFunctionRegistry() {
+				registryCreations++;
+				throw new Error('ordinary compact frames must not initialize background worklets');
+			},
+		});
 		const background = createLynxBlockBackgroundCore({
 			container,
 			transport,
 			scheduleMicrotask: (callback) => void Promise.resolve().then(callback),
 			transportRoot: 92,
 		});
-		transport.bindRoot(background);
+		bindTransportRoot(transport, background);
 		receiver.markProgramsReady();
 		receiver.markPageReady();
 		await transport.ready;
 
-		const first = await background.renderAsync(
-			CompilerApplication as LynxComponent<{
-				readonly className: string;
-				readonly label: string;
-			}>,
-			{ className: 'row', label: 'before' },
+		const first = transaction(
+			await background.renderAsync(CompilerApplication, { className: 'row', label: 'before' }),
 		);
 		expect(first.batch.commands).toEqual([]);
 		expect(preparedLynxBlockDeltaBatch(first.batch)?.operations).toEqual([
@@ -332,14 +362,11 @@ describe('Lynx compact compiled-program Block transport', () => {
 			],
 		});
 
-		const second = await background.renderAsync(
-			CompilerApplication as LynxComponent<{
-				readonly className: string;
-				readonly label: string;
-			}>,
-			{ className: 'row', label: 'after' },
+		const second = transaction(
+			await background.renderAsync(CompilerApplication, { className: 'row', label: 'after' }),
 		);
 		expect(second.batch.commands).toEqual([]);
+		expect(registryCreations).toBe(0);
 		expect(preparedLynxBlockDeltaBatch(second.batch)?.operations).toEqual([
 			{ op: 'set', instance: 2, slot: 1, value: 'after' },
 		]);
@@ -375,16 +402,13 @@ describe('Lynx compact compiled-program Block transport', () => {
 			scheduleMicrotask: (callback) => void Promise.resolve().then(callback),
 			transportRoot: 93,
 		});
-		transport.bindRoot(background);
+		bindTransportRoot(transport, background);
 		receiver.markProgramsReady();
 		receiver.markPageReady();
 		await transport.ready;
 
-		const render = (rows: readonly RangeRow[]) =>
-			background.renderAsync(
-				RangeApplication as LynxComponent<{ readonly rows: readonly RangeRow[] }>,
-				{ rows },
-			);
+		const render = async (rows: readonly RangeRow[]) =>
+			transaction(await background.renderAsync(RangeApplication, { rows }));
 		const mounted = await render([
 			{ id: 1, label: 'one' },
 			{ id: 2, label: 'two' },

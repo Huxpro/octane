@@ -494,7 +494,7 @@ describe('Lynx compiled-program application eligibility', () => {
 		expect(Object.isFrozen(report.reasons)).toBe(true);
 	});
 
-	it('retains exact thread-function and main-thread-prop sites that require the general application', () => {
+	it('accepts paired thread-function and main-thread-prop sites in the compact application', () => {
 		const { proofs, featureRequirements: compactRequirements } = compactFeatureRequirements();
 		const featureModule = compactRequirements.modules[0]!;
 		const requirements = {
@@ -540,45 +540,7 @@ describe('Lynx compiled-program application eligibility', () => {
 				blockSelection,
 				featureRequirements: requirements,
 			}),
-		).toMatchObject({
-			eligible: false,
-			reasons: [
-				{
-					code: 'thread-function-requires-general-application',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					kind: 'background',
-					id: 'tf_background_read',
-					line: 11,
-					column: 3,
-				},
-				{
-					code: 'main-thread-prop-requires-general-application',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					name: 'main-thread:background-ref',
-					line: 12,
-					column: 4,
-				},
-				{
-					code: 'thread-function-requires-general-application',
-					module: '/src/App.tsrx',
-					thread: 'main-thread',
-					kind: 'main-thread',
-					id: 'tf_main_tap',
-					line: 21,
-					column: 5,
-				},
-				{
-					code: 'main-thread-prop-requires-general-application',
-					module: '/src/App.tsrx',
-					thread: 'main-thread',
-					name: 'main-thread:main-ref',
-					line: 22,
-					column: 6,
-				},
-			],
-		});
+		).toEqual({ version: 1, eligible: true, reasons: [] });
 	});
 
 	it('fails closed for selection or feature proof skew and unpaired facts', () => {

@@ -800,11 +800,15 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 					LYNX_BLOCK_CORE_DEVELOPMENT && 'a direct CLEAR requires its owning compiler range site',
 				);
 			}
-			for (const block of slot.items.values()) departed?.(block);
-			deltaProducer.clear({
-				instance: site[1],
-				slot: site[0],
-			});
+			const retiredInstances: number[] = [];
+			for (const block of slot.items.values()) {
+				departed?.(block);
+				if (block.instance === null) {
+					fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a direct CLEAR requires child instances');
+				}
+				retiredInstances.push(block.instance);
+			}
+			deltaProducer.clear({ instance: site[1], slot: site[0] }, retiredInstances);
 			commandCount++;
 			return;
 		}

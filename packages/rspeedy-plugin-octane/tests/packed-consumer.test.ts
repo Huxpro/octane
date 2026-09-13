@@ -358,7 +358,7 @@ try {
 			expect(blockDevelopmentBackground).toContain(
 				'Attach a block program with withLynxBlockProgram()',
 			);
-			expect(blockDevelopmentBackground).toContain(
+			expect(blockDevelopmentBackground).not.toContain(
 				'its setup reads a context, which needs the owner chain',
 			);
 			expect(blockDevelopmentBackground).toContain('a template needs at least one host node');

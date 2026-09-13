@@ -8,7 +8,6 @@ import type {
 	UniversalHostPropCodecContext,
 	UniversalHostTemplateCapability,
 	UniversalHostTemplateProgram,
-	UniversalHostTemplateProgramBinding,
 	UniversalSerializableValue,
 	UniversalTemplateHostPlacement,
 } from 'octane/universal/native';
@@ -380,20 +379,15 @@ const DISCRETE_EVENTS = new Set([
 	'touchstart',
 ]);
 const CONTINUOUS_EVENTS = new Set(['layoutchange', 'scroll', 'touchmove', 'wheel']);
-const EMPTY_TEMPLATE_BINDINGS: readonly UniversalHostTemplateProgramBinding[] = Object.freeze([]);
 const TEMPLATE_HOSTS: UniversalHostTemplateCapability = Object.freeze({
 	placement(type: string): UniversalTemplateHostPlacement {
 		if (type === 'list') return 'any';
 		return type === 'list-item' ? 'root' : 'any';
 	},
-	defer(parentType: string, program: UniversalHostTemplateProgram): boolean {
-		if (parentType !== 'list') return false;
-		for (const node of program.nodes) {
-			for (const binding of node.bindings ?? EMPTY_TEMPLATE_BINDINGS) {
-				if (binding.name.startsWith('main-thread:')) return false;
-			}
-		}
-		return true;
+	defer(parentType: string, _program: UniversalHostTemplateProgram): boolean {
+		// Compact list cells bind worklets/refs lazily when Native materializes a row;
+		// those resident slots are therefore compatible with declaration and recycle.
+		return parentType === 'list';
 	},
 });
 

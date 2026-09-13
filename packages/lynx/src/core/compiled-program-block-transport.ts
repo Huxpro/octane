@@ -27,7 +27,17 @@ import {
 import type { LynxBackgroundNativeEventDelivery } from './native-event-receiver.js';
 import type { LynxDataLifecycleMessage } from './lifecycle-types.js';
 import { LYNX_TRANSPORT_PROTOCOL_VERSION, LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
-import type { LynxContextProxy } from './protocol.js';
+import type { LynxContextProxy, LynxMainThreadWorkletWireDescriptor } from './protocol.js';
+import {
+	createLynxCompiledProgramBackgroundWorklets,
+	lynxCompiledProgramFrameRequiresBackgroundWorklets,
+	type LynxCompiledProgramBackgroundWorklets,
+} from './compiled-program-background-worklets.js';
+import type {
+	LynxBackgroundFunctionDescriptor,
+	LynxBackgroundFunctionRegistry,
+	LynxWorkletValue,
+} from './worklets.js';
 
 const BLOCK_TRANSPORT_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
@@ -43,6 +53,10 @@ export interface LynxCompiledProgramBlockTransport extends UniversalAsyncCommitT
 	readonly mode: 'async';
 	readonly blockDeltaProducer: LynxBlockDeltaProducer;
 	readonly ready: Promise<void>;
+	callMain<Result>(
+		worklet: LynxMainThreadWorkletWireDescriptor,
+		args: readonly LynxWorkletValue[],
+	): { readonly promise: Promise<Result>; cancel(reason?: unknown): void };
 	bindRoot(
 		root: Pick<
 			LynxBlockRoot,
@@ -64,6 +78,7 @@ export interface LynxCompiledProgramBlockTransport extends UniversalAsyncCommitT
 }
 
 export interface LynxCompiledProgramBlockTransportOptions {
+	readonly createBackgroundFunctionRegistry?: () => LynxBackgroundFunctionRegistry;
 	readonly onDiagnostic?: (error: Error) => void;
 	readonly isPageDestroyed?: () => boolean;
 	readonly onLifecycle?: (message: LynxDataLifecycleMessage) => void;
@@ -130,7 +145,30 @@ export function createLynxCompiledProgramBlockTransport(
 	setLynxClientProgramManifests(container, false);
 	const reported: Error[] = [];
 	const blockDeltaProducer = createLynxBlockDeltaProducer();
+	let backgroundWorklets: LynxCompiledProgramBackgroundWorklets | null = null;
+	const requireBackgroundWorklets = (): LynxCompiledProgramBackgroundWorklets => {
+		if (backgroundWorklets !== null) return backgroundWorklets;
+		const registry = options.createBackgroundFunctionRegistry?.();
+		if (registry === undefined) {
+			throw new Error(
+				BLOCK_TRANSPORT_DEVELOPMENT
+					? 'Octane Lynx compact background worklet support is unavailable.'
+					: BLOCK_TRANSPORT_ERROR,
+			);
+		}
+		return (backgroundWorklets = createLynxCompiledProgramBackgroundWorklets(registry));
+	};
 	const wire = createLynxCompiledProgramTransport(context, {
+		executeBackgroundFunction(fn, args) {
+			if (backgroundWorklets === null) {
+				throw new Error(
+					BLOCK_TRANSPORT_DEVELOPMENT
+						? 'Octane Lynx compact background execution is stale or foreign.'
+						: BLOCK_TRANSPORT_ERROR,
+				);
+			}
+			return backgroundWorklets.run(fn as LynxBackgroundFunctionDescriptor, args);
+		},
 		isPageDestroyed: options.isPageDestroyed,
 		onLifecycle: options.onLifecycle,
 		onPageDestroy: options.onPageDestroy,
@@ -245,6 +283,8 @@ export function createLynxCompiledProgramBlockTransport(
 				? 'Octane Lynx native page lifetime was destroyed.'
 				: BLOCK_TRANSPORT_ERROR,
 		);
+		backgroundWorklets?.close();
+		backgroundWorklets = null;
 		commitPending = false;
 		dropDeferredNativeEvents();
 		queuePageDestroyHandler();
@@ -254,6 +294,9 @@ export function createLynxCompiledProgramBlockTransport(
 		mode: 'async',
 		blockDeltaProducer,
 		ready: wire.ready,
+		callMain(worklet, args) {
+			return wire.callMain(worklet, args);
+		},
 		prepareBatch(target, batch, identity): UniversalAsyncPreparedHostBatch {
 			if (target !== container) {
 				throw new Error(
@@ -327,6 +370,10 @@ export function createLynxCompiledProgramBlockTransport(
 						: BLOCK_TRANSPORT_ERROR,
 				);
 			}
+			const preparedWorklets =
+				backgroundWorklets === null && !lynxCompiledProgramFrameRequiresBackgroundWorklets(draft)
+					? null
+					: requireBackgroundWorklets().prepare(draft);
 			let state: 'prepared' | 'applying' | 'accepted' | 'aborted' = 'prepared';
 			let attempt: ReturnType<typeof wire.commit> | null = null;
 			directPreparations++;
@@ -353,7 +400,8 @@ export function createLynxCompiledProgramBlockTransport(
 						);
 					}
 					commitPending = true;
-					attempt = wire.commit(identity, draft.encoded, (message) => {
+					attempt = wire.commit(identity, preparedWorklets?.encoded ?? draft.encoded, (message) => {
+						preparedWorklets?.accept();
 						accepted = frozenIdentity(identity);
 						state = 'accepted';
 						commitPending = false;
@@ -361,14 +409,17 @@ export function createLynxCompiledProgramBlockTransport(
 						flushDeferredNativeEvents();
 					});
 					return attempt.promise.catch((error) => {
+						preparedWorklets?.reject();
 						commitPending = false;
 						dropDeferredNativeEvents();
 						throw error;
 					});
 				},
 				abort() {
-					if (state === 'prepared') state = 'aborted';
-					else if (state === 'applying') attempt?.abort();
+					if (state === 'prepared') {
+						state = 'aborted';
+						preparedWorklets?.reject();
+					} else if (state === 'applying') attempt?.abort();
 				},
 			});
 		},
@@ -475,6 +526,8 @@ export function createLynxCompiledProgramBlockTransport(
 			// Terminal disposal is also valid for a healthy active root and remains
 			// available after an accepted ACK callback faults the background side.
 			await wire.dispose(accepted, true);
+			backgroundWorklets?.close();
+			backgroundWorklets = null;
 			accepted = null;
 			ownedRoot = null;
 			dropDeferredNativeEvents();
@@ -483,6 +536,8 @@ export function createLynxCompiledProgramBlockTransport(
 		close(value?: unknown) {
 			if (closed !== null) return;
 			closed = normalizedError(value);
+			backgroundWorklets?.close();
+			backgroundWorklets = null;
 			dropDeferredNativeEvents();
 			wire.close(closed);
 		},

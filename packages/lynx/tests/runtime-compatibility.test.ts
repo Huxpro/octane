@@ -118,6 +118,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/block-program.ts',
 				'src/core/block-root.ts',
 				'src/core/client-driver.ts',
+				'src/core/compiled-program-background-worklets.ts',
 				'src/core/compiled-program-block-transport.ts',
 				'src/core/compiled-program-transport.ts',
 				'src/core/compiled-program-wire.ts',

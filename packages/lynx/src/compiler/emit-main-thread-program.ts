@@ -95,7 +95,7 @@ import type {
 	UniversalHostTemplateProgramNode,
 } from 'octane/universal/native';
 
-import { parseLynxNativeEventProp } from '../core/native-events.js';
+import { parseLynxMainThreadEventProp, parseLynxNativeEventProp } from '../core/native-events.js';
 
 /** Host types this backend can construct, and the factory route for each. */
 const INTRINSIC_FACTORY: Readonly<Record<string, 'view' | 'text' | 'rawText' | 'element'>> =
@@ -403,6 +403,14 @@ function refuse(what: string): never {
  * the same reason it is not there — only `#text` is — so every `raw-text` is
  * refused, carrying anything or nothing, rather than half-written.
  */
+function emittedHostProp(type: string, name: string): boolean {
+	return (
+		scalarHostProps(type).includes(name) ||
+		name === 'main-thread:ref' ||
+		parseLynxMainThreadEventProp(name) !== null
+	);
+}
+
 function dynamicRoute(node: UniversalHostTemplateProgramNode): 0 | 1 | 2 {
 	const bindings = node.bindings ?? [];
 	const names = Object.keys(node.props);
@@ -419,8 +427,8 @@ function dynamicRoute(node: UniversalHostTemplateProgramNode): 0 | 1 | 2 {
 			node.type === 'image' ||
 			node.type === 'list' ||
 			node.type === 'list-item') &&
-		names.every((name) => scalarHostProps(node.type).includes(name)) &&
-		bindings.every((binding) => scalarHostProps(node.type).includes(binding.name))
+		names.every((name) => emittedHostProp(node.type, name)) &&
+		bindings.every((binding) => emittedHostProp(node.type, binding.name))
 	) {
 		return 2;
 	}
@@ -561,6 +569,32 @@ function emitScalarProps(
 	}
 }
 
+/** Emit direct main-thread bindings after scalar host props are initialized. */
+function emitMainThreadProps(
+	node: UniversalHostTemplateProgramNode,
+	index: number,
+	lines: string[],
+): void {
+	for (const binding of node.bindings ?? []) {
+		if (binding.name === 'main-thread:ref') continue;
+		const event = parseLynxMainThreadEventProp(binding.name);
+		if (event === null) continue;
+		lines.push(
+			'\t\tif (v' +
+				binding.valueIndex +
+				' != null) papi.setEvent(n' +
+				index +
+				', ' +
+				JSON.stringify(event.type) +
+				', ' +
+				JSON.stringify(event.name) +
+				', v' +
+				binding.valueIndex +
+				');',
+		);
+	}
+}
+
 /**
  * The text a raw-text node is created with.
  *
@@ -633,6 +667,20 @@ function emitSlotUpdate(
 ): void {
 	const node = program.nodes[site.node]!;
 	const target = site.node === 0 ? 'nodes[offset]' : `nodes[offset + ${site.node}]`;
+	if (site.name === 'main-thread:ref') return;
+	const mainThreadEvent = parseLynxMainThreadEventProp(site.name);
+	if (mainThreadEvent !== null) {
+		lines.push(
+			'\t\t\tpapi.setEvent(' +
+				target +
+				', ' +
+				JSON.stringify(mainThreadEvent.type) +
+				', ' +
+				JSON.stringify(mainThreadEvent.name) +
+				', value == null ? undefined : value);',
+		);
+		return;
+	}
 	if (site.name === 'id') {
 		lines.push(`\t\t\tpapi.setId(${target}, value == null ? null : String(value));`);
 		return;
@@ -813,7 +861,7 @@ export function emitLynxMainThreadProgram(
 				...Object.keys(node.props),
 				...(node.bindings ?? []).map((binding) => binding.name),
 			].find((name) =>
-				node.type === '#text' ? name !== 'value' : !scalarHostProps(node.type).includes(name),
+				node.type === '#text' ? name !== 'value' : !emittedHostProp(node.type, name),
 			);
 			// A node carrying nothing at all still reaches this: `raw-text` is the
 			// one type with an intrinsic factory that takes neither route, because
@@ -852,9 +900,11 @@ export function emitLynxMainThreadProgram(
 				`\t\tvar n${index} = papi.createElement(${JSON.stringify(node.type)}, pageId, '');`,
 			);
 			emitScalarProps(node, index, body);
+			emitMainThreadProps(node, index, body);
 		} else {
 			body.push(`\t\tvar n${index} = ${factory}(pageId);`);
 			emitScalarProps(node, index, body);
+			emitMainThreadProps(node, index, body);
 		}
 	}
 
@@ -879,6 +929,15 @@ export function emitLynxMainThreadProgram(
 		// wrongly, and it is the parser that decides what a malformed name is.
 		if (binding === null)
 			refuse(`event site ${JSON.stringify(event.type)} is not a Lynx event prop`);
+		const collision = program.nodes[event.node]!.bindings?.find((candidate) => {
+			const direct = parseLynxMainThreadEventProp(candidate.name);
+			return direct !== null && direct.type === binding.type && direct.name === binding.name;
+		});
+		if (collision !== undefined) {
+			refuse(
+				`main-thread event ${JSON.stringify(collision.name)} conflicts with background event ${JSON.stringify(event.type)} on node ${event.node}`,
+			);
+		}
 		const seen = installed.get(event.node);
 		if (seen === undefined) installed.set(event.node, new Set([event.type]));
 		else if (seen.has(event.type)) {

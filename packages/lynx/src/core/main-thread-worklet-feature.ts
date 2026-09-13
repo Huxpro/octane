@@ -1,5 +1,8 @@
 declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
+import type { LynxElementPAPI, LynxElementRef } from './papi.js';
+import type { LynxCompiledProgramWorkletStore } from './compiled-program-worklets.js';
+
 import type {
 	CreateLynxMainThreadWorkletRegistryOptions,
 	LynxActivatedMainThreadWorklet,
@@ -20,6 +23,10 @@ import type {
  * an application that emits none keeps only this small capability seam.
  */
 export interface LynxMainThreadWorkletFeature {
+	createCompiledProgramStore<Node extends LynxElementRef>(
+		papi: LynxElementPAPI<Node>,
+		registry: LynxMainThreadWorkletRegistry,
+	): LynxCompiledProgramWorkletStore<Node>;
 	createRegistry(
 		options: CreateLynxMainThreadWorkletRegistryOptions,
 	): LynxMainThreadWorkletRegistry;
@@ -58,6 +65,11 @@ export function subscribeLynxMainThreadWorkletFeature(subscriber: FeatureSubscri
 		throw error;
 	}
 	return () => subscribers.delete(subscriber);
+}
+
+export function requireLynxMainThreadWorkletFeature(): LynxMainThreadWorkletFeature {
+	if (providedFeature !== null) return providedFeature;
+	return unavailable();
 }
 
 function unavailable(): never {

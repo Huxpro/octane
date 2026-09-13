@@ -2,7 +2,11 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import type { UniversalProgramPlan } from 'octane/universal/native';
 
-import { LYNX_DELTA_PROTOCOL_VERSION } from './delta-protocol.js';
+import {
+	decodeLynxDeltaValue,
+	isLynxDeltaValue,
+	LYNX_DELTA_PROTOCOL_VERSION,
+} from './delta-protocol.js';
 import type { LynxCompiledProgramStore } from './compiled-program-store.js';
 import type { LynxElementRef } from './papi.js';
 
@@ -168,6 +172,17 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 					if (!Number.isSafeInteger(valueCount) || arity !== RUN_HEADER_FIELDS + valueCount) {
 						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'received the wrong RUN value arity');
 					}
+					const firstValue = cursor + RUN_HEADER_FIELDS;
+					let values: readonly unknown[] = input;
+					let valueOffset = firstValue;
+					for (let at = firstValue; at < end; at++) {
+						if (isLynxDeltaValue(input[at])) continue;
+						values = input
+							.slice(firstValue, end)
+							.map((value, index) => decodeLynxDeltaValue(value, 'RUN value ' + index));
+						valueOffset = 0;
+						break;
+					}
 					store.mount({
 						before: before.before,
 						anchor: before.anchor,
@@ -175,15 +190,19 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 						firstHandle,
 						parent,
 						plan,
-						valueOffset: cursor + RUN_HEADER_FIELDS,
-						values: input,
+						valueOffset,
+						values,
 					});
 					break;
 				}
 				case Opcode.Set: {
 					if (arity !== 3)
 						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'SET requires three fields');
-					store.set(input[cursor] as number, input[cursor + 1] as number, input[cursor + 2]);
+					store.set(
+						input[cursor] as number,
+						input[cursor + 1] as number,
+						decodeLynxDeltaValue(input[cursor + 2], 'SET value'),
+					);
 					break;
 				}
 				case Opcode.Remove: {

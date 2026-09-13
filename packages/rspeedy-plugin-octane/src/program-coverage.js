@@ -1058,9 +1058,9 @@ export function evaluateLynxBlockEligibility({
 }
 
 /**
- * The compact product omits general worklet/ref ownership. Select it only when
- * the paired compiler facts prove those channels absent in addition to Block
- * eligibility and complete resident addressing.
+ * The compact product owns worklet/ref state sparsely from resident descriptors.
+ * Selection therefore requires paired feature facts and Block eligibility; the
+ * same support matrix has already validated the reported thread channels.
  */
 export function evaluateLynxCompiledProgramEligibility({ blockSelection, featureRequirements }) {
 	const reasons = [];
@@ -1073,35 +1073,6 @@ export function evaluateLynxCompiledProgramEligibility({ blockSelection, feature
 		reasons.push(reason('unsupported-feature-requirements-version'));
 	} else if (featureRequirements.paired !== true) {
 		reasons.push(reason('feature-requirements-unpaired'));
-	} else {
-		for (const module of featureRequirements.modules) {
-			for (const [thread, requirements] of [
-				['background', module.background],
-				['main-thread', module.mainThread],
-			]) {
-				for (const site of requirements.threadFunctions) {
-					reasons.push(
-						reason('thread-function-requires-general-application', {
-							module: module.module,
-							thread,
-							kind: site.kind,
-							id: site.id,
-							line: site.line,
-							column: site.column,
-						}),
-					);
-				}
-				for (const site of requirements.mainThreadProps) {
-					reasons.push(
-						reason('main-thread-prop-requires-general-application', {
-							module: module.module,
-							thread,
-							...cloneSourceSite(site),
-						}),
-					);
-				}
-			}
-		}
 	}
 	return Object.freeze({
 		version: LYNX_APPLICATION_SELECTION_VERSION,

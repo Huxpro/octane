@@ -243,4 +243,21 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 			},
 		]);
 	});
+	it('defers resident native-list worklet cells for demand-driven materialization', () => {
+		const driver = createLynxClientDriver();
+		const workletRow: UniversalHostTemplateProgram = {
+			nodes: [
+				{
+					type: 'list-item',
+					parent: -1,
+					props: {},
+					bindings: [{ name: 'main-thread:bindtap', valueIndex: 0 }],
+				},
+			],
+			events: [],
+		};
+
+		expect(driver.templates!.defer('list', workletRow)).toBe(true);
+		expect(driver.templates!.defer('view', workletRow)).toBe(false);
+	});
 });
