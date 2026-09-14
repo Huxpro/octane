@@ -221,6 +221,41 @@ sanitized lease identity, crash signature, cleanup, and rejection decision. It
 contains no completed benchmark record and makes no performance claim; SHA-256
 `937195b92ac5fbfd10fe811edf961cd2f50d356fb69669608cfd0326bb8824be`.
 
+A final PAPI phase-ablation run compared the clean `339107836` production
+bundle with five deliberately incomplete diagnostic bundles in one device
+session. The clean baseline reproduced the release result at 819 ms versus 830
+ms in the formal campaign. Each cell has five accepted samples and the same
+native-input-handler-to-second-native-frame boundary.
+
+| 1k create variant | Median | Difference from clean baseline |
+| --- | ---: | ---: |
+| Clean production baseline | 819 ms | - |
+| No repeated-run event registration | 693 ms | -126 ms (-15%) |
+| Complete subtrees, no root attachment | 378 ms | -441 ms (-54%) |
+| Full values/events, no three internal attachments | 358 ms | -461 ms (-56%) |
+| Four detached host creates, no values/events/internal attachments | 207 ms | -612 ms (-75%) |
+| One root create only | 189 ms | -630 ms (-77%) |
+
+The last five bundles intentionally violate visual output and are attribution
+probes only. Their medians are not additive cost accounting: removing an
+attachment changes later materialization and layout work. Two conclusions are
+nevertheless stable across the controls. First, adding three detached host
+creates changes the median by only 18 ms, so `__CreateElement` call count is not
+the leading owner. Second, independently removing root attachment or internal
+child attachment removes more than half of end-to-end latency. The remaining
+owner is therefore native subtree integration/materialization and its layout
+consequences, with event registration a smaller but material secondary cost.
+This also explains why swapping tail-append primitives and handle storage did
+not change the scaling curve: neither reduced the number of fully materialized
+trees.
+
+[`android-native-papi-phase-ablation.json`](evidence/android-native-papi-phase-ablation.json)
+is the exact six-cell partial diagnostic; SHA-256
+`9331d31f67d0d10139e5765a3c4fe0de413b8c839180a50f25389863229b434a`.
+It contains the production baseline and all control samples, bundle/input
+receipts, thermal readings, and only a one-way serial digest. It remains
+`checkpointComplete=false` and is not a publishable benchmark campaign.
+
 ## Upstream alignment and remaining owner work
 
 Upstream issue octanejs/octane#1055 was still open at the final remote check.
@@ -230,13 +265,19 @@ report remain suitable upstream seams. This branch additionally retains its
 resident compact program, native list/resource ownership, and fail-closed
 Universal fallback. No upstream acceptance or merge is claimed.
 
-The remaining framework-owned investigation is the candidate's superlinear
-Native creation path between 1k and 10k. Tail append, handle lookup, and now
-runtime deep-cloning have been eliminated as safe leading owners. Any next
-optimization needs an uninstrumented reproduction plus a separate profile/phase
-ablation before implementation is selected. In
-parallel, the benchmark owner must restore stable list viewport/key observation
-and recover the DevTool connector between entries. Only a new exact-head
-Android no-JIT/low-end and iOS campaign satisfying the registered AB/BA,
-tail-latency, memory/GC, bytecode, and list gates can reopen the default-switch
-decision. Until then, #383 and the performance objective in #291 remain open.
+The remaining framework-owned investigation is no longer an undifferentiated
+PAPI sequence. Tail append, handle lookup, detached host creation, and runtime
+deep-cloning have been eliminated as safe leading owners; controlled ablation
+places the dominant cost at native subtree integration/materialization. A
+credible next architecture must reduce the number of individually attached,
+fully materialized row trees through an SDK-supported compile-time template or
+batch boundary while preserving dynamic values, delegated native events,
+identity, refs, and updates. Inventing private template calls or reusing the
+crashing clone primitive would not meet that bar.
+
+In parallel, the benchmark owner must restore stable list viewport/key
+observation and recover the DevTool connector between entries. Only a new
+exact-head Android no-JIT/low-end and iOS campaign satisfying the registered
+AB/BA, tail-latency, memory/GC, bytecode, and list gates can reopen the
+default-switch decision. Until then, #383 and the performance objective in
+#291 remain open.
