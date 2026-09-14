@@ -24,8 +24,8 @@
 // events over the same nodes in the same order.
 //
 // What this does not cover is refused by name rather than half-rendered, and
-// the refusals are asserted here too: insertion-effect timing and nested keyed
-// range sites remain later composition layers.
+// the refusals are asserted here too: insertion-effect timing and independently
+// overlapping keyed range sites remain later composition layers.
 import { describe, expect, it, vi } from 'vitest';
 
 vi.hoisted(() => {
@@ -3811,7 +3811,7 @@ describe('Lynx compiled component with a keyed range on the Block core', () => {
 	});
 });
 
-describe('Lynx compiled component with a keyed range the Block core refuses', () => {
+describe('Lynx compiled component keyed-range semantic boundaries', () => {
 	const listedPlan = (children: readonly unknown[]) =>
 		universalPlan(LYNX_TRANSPORT_RENDERER, {
 			kind: 'host',
@@ -3922,6 +3922,25 @@ describe('Lynx compiled component with a keyed range the Block core refuses', ()
 		).rejects.toThrow(/row of one of its keyed ranges is rooted at a "text" node/);
 	});
 
+	it('mounts and updates a one-host resident row without enabling generic template collapse', async () => {
+		const TEXT_HOST_ROW = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'text',
+			bindings: [['text', 0]],
+		});
+		const Listed = listing(listedPlan([{ kind: 'slot', slot: 0 }]), (id) =>
+			universalValue(TEXT_HOST_ROW, [`row ${id}`]),
+		);
+		const universal = universalColumn(Listed as LynxComponent<TableProps>);
+		const block = blockColumn<TableProps>();
+
+		for (const props of [table([1, 2]), table([2, 3]), table([]), table([4])]) {
+			await universal.render(props);
+			await block.render(Listed as never, props);
+			expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
+		}
+	});
+
 	it('names a row that is not entirely compile-time host structure', async () => {
 		const NESTED_ROW = universalPlan(LYNX_TRANSPORT_RENDERER, {
 			kind: 'host',
@@ -3957,20 +3976,457 @@ describe('Lynx compiled component with a keyed range the Block core refuses', ()
 		).rejects.toThrow(/static prop or event site of one of its keyed range rows/);
 	});
 
-	it('names a range nested inside a range', async () => {
-		const Listed = listing(listedPlan([{ kind: 'slot', slot: 0 }]), (id) =>
+	it('matches Universal while nested keyed ranges mount, reorder, empty, and remount', async () => {
+		interface Group {
+			readonly id: number;
+			readonly rows: readonly TableRow[];
+		}
+		interface NestedProps {
+			readonly groups: readonly Group[];
+		}
+		const NESTED_PLAN = listedPlan([{ kind: 'slot', slot: 0 }]);
+		const INNER_EMPTY_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			props: { class: 'nested-empty' },
+			children: [
+				{ kind: 'host', type: 'text', props: {}, children: [{ kind: 'text', value: 'empty' }] },
+			],
+		});
+		const Nested = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Nested(props: NestedProps) {
+				return universalValue(NESTED_PLAN, [
+					universalFor(
+						props.groups,
+						(group: Group) => group.id,
+						(group: Group) =>
+							universalValue(TABLE_PLAN, [
+								universalFor(
+									group.rows,
+									(row: TableRow) => row.id,
+									(row: TableRow) =>
+										universalValue(ROW_PLAN, ['row', String(row.id), noop, row.label]),
+									() => universalValue(INNER_EMPTY_PLAN, []),
+								),
+							]),
+					),
+				]);
+			},
+		);
+		const row = (id: number, label = `row ${id}`): TableRow => ({ id, label });
+		const ladder: readonly NestedProps[] = [
+			{
+				groups: [
+					{ id: 1, rows: [row(11), row(12)] },
+					{ id: 2, rows: [row(21)] },
+				],
+			},
+			{
+				groups: [
+					{ id: 2, rows: [row(22), row(21, 'row twenty-one')] },
+					{ id: 1, rows: [row(12), row(11)] },
+				],
+			},
+			{ groups: [{ id: 2, rows: [row(21), row(22)] }] },
+			{ groups: [{ id: 2, rows: [] }] },
+			{ groups: [] },
+			{ groups: [{ id: 3, rows: [row(31)] }] },
+		];
+		const universal = universalColumn(Nested as LynxComponent<NestedProps>);
+		const block = blockColumn<NestedProps>();
+
+		for (const props of ladder) {
+			await universal.render(props);
+			await block.render(Nested as never, props);
+			expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
+		}
+		expect(paint(block.main.commits).tree).toContain('row #1');
+	});
+
+	it('consumes compiler-owned nested range metadata on both resident levels', async () => {
+		interface Group {
+			readonly id: number;
+			readonly rows: readonly TableRow[];
+		}
+		interface NestedProps {
+			readonly groups: readonly Group[];
+		}
+		const OUTER_PLAN = listedPlan([{ kind: 'slot', slot: 0 }]);
+		const OUTER_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+			...deriveLynxProgramIR(OUTER_PLAN.root as never)!,
+			address: { module: 'tests/NestedOuter.lynx.tsrx', index: 0, digest: 'nested-outer' },
+		});
+		const ROW_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+			version: 1,
+			address: { module: 'tests/NestedRow.lynx.tsrx', index: 0, digest: 'nested-row' },
+			wire: {
+				nodes: [
+					{ type: 'view', parent: -1, props: {}, bindings: [{ name: 'class', valueIndex: 0 }] },
+					{ type: 'text', parent: 0, props: { class: 'col-id' } },
+					{ type: '#text', parent: 1, props: {}, bindings: [{ name: 'value', valueIndex: 1 }] },
+					{ type: 'text', parent: 0, props: { class: 'col-label' } },
+					{ type: '#text', parent: 3, props: {}, bindings: [{ name: 'value', valueIndex: 2 }] },
+				],
+				events: [{ node: 3, type: 'bindtap', priority: 'discrete' }],
+			},
+			values: [
+				{ node: 0, name: 'class', slot: 0, text: false },
+				{ node: 2, name: 'value', slot: 1, text: true },
+				{ node: 4, name: 'value', slot: 3, text: true },
+			],
+			events: [
+				{
+					node: 3,
+					prop: 'bindtap',
+					slot: 2,
+					type: 'bindtap',
+					priority: 'discrete',
+				},
+			],
+			ranges: [],
+		});
+		const renderGroups = (groups: readonly Group[], compiler: boolean) =>
+			universalFor(
+				groups,
+				(group: Group) => group.id,
+				(group: Group) => {
+					const rows = universalFor(
+						group.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) =>
+							compiler
+								? (lynxProgramValue(ROW_PROGRAM, ['row', String(row.id), noop, row.label]) as never)
+								: universalValue(ROW_PLAN, ['row', String(row.id), noop, row.label]),
+					);
+					return compiler
+						? (lynxProgramValue(TABLE_COMPILER_PROGRAM, [rows]) as never)
+						: universalValue(TABLE_PLAN, [rows]);
+				},
+			);
+		const CompilerNested = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			(props: NestedProps) =>
+				lynxProgramValue(OUTER_PROGRAM, [renderGroups(props.groups, true)]) as never,
+		);
+		const PlanNested = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, (props: NestedProps) =>
+			universalValue(OUTER_PLAN, [renderGroups(props.groups, false)]),
+		);
+		const row = (id: number): TableRow => ({ id, label: `row ${id}` });
+		const ladder: readonly NestedProps[] = [
+			{
+				groups: [
+					{ id: 1, rows: [row(11), row(12)] },
+					{ id: 2, rows: [row(21)] },
+				],
+			},
+			{
+				groups: [
+					{ id: 2, rows: [row(22), row(21)] },
+					{ id: 1, rows: [row(12)] },
+				],
+			},
+			{ groups: [] },
+		];
+		const compiler = blockColumn<NestedProps>();
+		const plan = blockColumn<NestedProps>();
+
+		for (const props of ladder) {
+			await compiler.render(CompilerNested as never, props);
+			await plan.render(PlanNested as never, props);
+			expect(paint(compiler.main.commits).tree).toBe(paint(plan.main.commits).tree);
+		}
+	});
+
+	it('retains nested row state through both reorders and disposes it with the outer key', async () => {
+		interface Group {
+			readonly id: number;
+			readonly rows: readonly TableRow[];
+		}
+		interface NestedProps {
+			readonly groups: readonly Group[];
+		}
+		const lifecycle: string[] = [];
+		const Inner = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Inner(props: { readonly row: TableRow }) {
+				const [tone, setTone] = useState('quiet', 'nested-tone');
+				useEffect(
+					() => {
+						lifecycle.push(`mount:${props.row.id}`);
+						return () => lifecycle.push(`cleanup:${props.row.id}`);
+					},
+					[props.row.id],
+					'nested-lifecycle',
+				);
+				return universalValue(ROW_PLAN, [
+					'row',
+					String(props.row.id),
+					() => setTone('loud'),
+					`${props.row.label}-${tone}`,
+				]);
+			},
+			{ hookScope: true },
+		);
+		const NESTED_PLAN = listedPlan([{ kind: 'slot', slot: 0 }]);
+		const Nested = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Nested(props: NestedProps) {
+				return universalValue(NESTED_PLAN, [
+					universalFor(
+						props.groups,
+						(group: Group) => group.id,
+						(group: Group) =>
+							universalValue(TABLE_PLAN, [
+								universalFor(
+									group.rows,
+									(row: TableRow) => row.id,
+									(row: TableRow) =>
+										universalComponent(
+											LYNX_TRANSPORT_RENDERER,
+											Inner,
+											universalProps([['set', 'row', row]]),
+										),
+								),
+							]),
+					),
+				]);
+			},
+		);
+		const nestedListener = (
+			commits: readonly LynxTransportCommitMessage[],
+			groupIndex: number,
+			rowIndex: number,
+		): LynxResolvedNativeEvent => {
+			const papi = createFakePAPI();
+			const host = createLynxHostContainer(papi, { root: 1 });
+			for (const commit of commits) prepareLynxHostBatch(host, commit.batch).apply();
+			const label =
+				papi.pages[0]!.children[0]!.children[groupIndex]!.children[1]!.children[rowIndex]!
+					.children[1]!;
+			const listener = resolveLynxHostNativeEvent(host, [...label.events.values()][0]);
+			if (listener === null) throw new Error('the nested row bound no tap listener');
+			return listener;
+		};
+		const one = { id: 1, label: 'one' };
+		const two = { id: 2, label: 'two' };
+		const three = { id: 3, label: 'three' };
+		const block = blockColumn<NestedProps>();
+
+		await block.render(Nested as never, {
+			groups: [
+				{ id: 10, rows: [one, two] },
+				{ id: 20, rows: [three] },
+			],
+		});
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount:1', 'mount:2', 'mount:3']);
+		const oneListener = nestedListener(block.main.commits, 0, 0);
+		deliverTo(block, oneListener);
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('one-loud');
+
+		await block.render(Nested as never, {
+			groups: [
+				{ id: 20, rows: [three] },
+				{ id: 10, rows: [two, one] },
+			],
+		});
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('one-loud');
+		expect(lifecycle).toEqual(['mount:1', 'mount:2', 'mount:3']);
+
+		await block.render(Nested as never, { groups: [{ id: 20, rows: [three] }] });
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount:1', 'mount:2', 'mount:3', 'cleanup:2', 'cleanup:1']);
+		expect(() => deliverTo(block, oneListener)).toThrow(/listener/i);
+
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(lifecycle.at(-1)).toBe('cleanup:3');
+	});
+
+	it('resets nested semantic owners when an outer keyed component changes type', async () => {
+		interface ReplacementProps {
+			readonly alternate: boolean;
+		}
+		const lifecycle: string[] = [];
+		const Inner = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Inner() {
+				useEffect(
+					() => {
+						lifecycle.push('mount');
+						return () => lifecycle.push('cleanup');
+					},
+					[],
+					'nested-replacement-effect',
+				);
+				return universalValue(ROW_PLAN, ['row', '1', noop, 'same']);
+			},
+			{ hookScope: true },
+		);
+		const renderOuter = () =>
 			universalValue(TABLE_PLAN, [
 				universalFor(
-					[{ id, label: `row ${id}` }],
-					(item: TableRow) => item.id,
-					(item: TableRow) => universalValue(ROW_PLAN, ['row', String(item.id), noop, item.label]),
+					[1],
+					(id: number) => id,
+					() => universalComponent(LYNX_TRANSPORT_RENDERER, Inner),
+				),
+			]);
+		const OuterA = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function OuterA() {
+			return renderOuter();
+		});
+		const OuterB = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function OuterB() {
+			return renderOuter();
+		});
+		const NESTED_PLAN = listedPlan([{ kind: 'slot', slot: 0 }]);
+		const Nested = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, (props: ReplacementProps) =>
+			universalValue(NESTED_PLAN, [
+				universalFor(
+					[1],
+					(id: number) => id,
+					() => universalComponent(LYNX_TRANSPORT_RENDERER, props.alternate ? OuterB : OuterA),
 				),
 			]),
 		);
+		const block = blockColumn<ReplacementProps>();
+
+		const mounting = block.background.renderAsync(Nested as never, { alternate: false });
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits[0]!);
+		await mounting;
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount']);
+
+		const rejected = block.background.renderAsync(Nested as never, { alternate: true });
+		await flushMicrotasks();
+		block.main.reject(block.main.commits[1]!, 'injected nested replacement rejection');
+		await expect(rejected).rejects.toThrow('injected nested replacement rejection');
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount']);
+
+		const retried = block.background.renderAsync(Nested as never, { alternate: true });
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits[2]!);
+		await retried;
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount', 'cleanup', 'mount']);
+
+		const unmounting = block.background.unmountAsync();
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits[3]!);
+		await unmounting;
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount', 'cleanup', 'mount', 'cleanup']);
+	});
+
+	it('restores nested range ownership after a pre-ACK structural rejection', async () => {
+		const Nested = listing(listedPlan([{ kind: 'slot', slot: 0 }]), (id) =>
+			universalValue(TABLE_PLAN, [
+				universalFor(
+					[{ id, label: `nested ${id}` }],
+					(row: TableRow) => row.id,
+					(row: TableRow) => universalValue(ROW_PLAN, ['row', String(row.id), noop, row.label]),
+				),
+			]),
+		);
+		const initial = table([1, 2]);
+		const next = table([2, 3]);
 		const block = blockColumn<TableProps>();
-		await expect(
-			block.settle(block.background.renderAsync(Listed as never, table([1]))),
-		).rejects.toThrow(/nested inside a range/);
+		const mounting = block.background.renderAsync(Nested as never, initial);
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits[0]!);
+		await mounting;
+
+		const rejected = block.background.renderAsync(Nested as never, next);
+		await flushMicrotasks();
+		block.main.reject(block.main.commits[1]!, 'injected nested range rejection');
+		await expect(rejected).rejects.toThrow('injected nested range rejection');
+
+		const retried = block.background.renderAsync(Nested as never, next);
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits[2]!);
+		await retried;
+
+		const fresh = blockColumn<TableProps>();
+		await fresh.render(Nested as never, next);
+		expect(paint([block.main.commits[0]!, block.main.commits[2]!] as never).tree).toBe(
+			paint(fresh.main.commits).tree,
+		);
+	});
+
+	it('disconnects nested listeners and effects with inherited Activity visibility', async () => {
+		interface VisibilityProps {
+			readonly visible: boolean;
+		}
+		const lifecycle: string[] = [];
+		const taps: string[] = [];
+		const Inner = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Inner() {
+				useEffect(
+					() => {
+						lifecycle.push('mount');
+						return () => lifecycle.push('cleanup');
+					},
+					[],
+					'nested-visible-effect',
+				);
+				return universalValue(ROW_PLAN, ['row', '1', () => taps.push('tap'), 'nested']);
+			},
+			{ hookScope: true },
+		);
+		const NESTED_PLAN = listedPlan([{ kind: 'slot', slot: 0 }]);
+		const Nested = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Nested(props: VisibilityProps) {
+				return universalActivity(props.visible ? 'visible' : 'hidden', () =>
+					universalValue(NESTED_PLAN, [
+						universalFor(
+							[1],
+							(id: number) => id,
+							() =>
+								universalValue(TABLE_PLAN, [
+									universalFor(
+										[1],
+										(id: number) => id,
+										() => universalComponent(LYNX_TRANSPORT_RENDERER, Inner),
+									),
+								]),
+						),
+					]),
+				);
+			},
+		);
+		const listener = (commits: readonly LynxTransportCommitMessage[]): LynxResolvedNativeEvent => {
+			const papi = createFakePAPI();
+			const host = createLynxHostContainer(papi, { root: 1 });
+			for (const commit of commits) prepareLynxHostBatch(host, commit.batch).apply();
+			const label = papi.pages[0]!.children[0]!.children[0]!.children[1]!.children[0]!.children[1]!;
+			const resolved = resolveLynxHostNativeEvent(host, [...label.events.values()][0]);
+			if (resolved === null) throw new Error('the visible nested row bound no listener');
+			return resolved;
+		};
+		const block = blockColumn<VisibilityProps>();
+
+		await block.render(Nested as never, { visible: true });
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount']);
+		const visibleListener = listener(block.main.commits);
+		deliverTo(block, visibleListener);
+		expect(taps).toEqual(['tap']);
+
+		await block.render(Nested as never, { visible: false });
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount', 'cleanup']);
+		expect(() => deliverTo(block, visibleListener)).toThrow(/listener/i);
+
+		await block.render(Nested as never, { visible: true });
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['mount', 'cleanup', 'mount']);
+		deliverTo(block, listener(block.main.commits));
+		expect(taps).toEqual(['tap', 'tap']);
 	});
 
 	it('mounts, updates, removes, and remounts an @empty branch as its own keyed lifetime', async () => {

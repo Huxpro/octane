@@ -435,6 +435,26 @@ export function universalHostTemplateShape(
 ): readonly UniversalHostTemplateShapeNode[] | null {
 	const cached = encoder.templateShapes.get(plan);
 	if (cached !== undefined) return cached;
+	const shape = collectUniversalHostProgramShape(encoder, plan, 2);
+	encoder.templateShapes.set(plan, shape);
+	return shape;
+}
+
+/**
+ * Flatten the host topology shared by template and resident-program lowering.
+ *
+ * Ordinary Universal template mounts deliberately require two nodes: collapsing
+ * a lone host adds bookkeeping without removing a descendant walk. A resident
+ * compiler program has a different boundary — even one host must be addressable
+ * so a background range can name and instantiate it without the Universal core.
+ * Keeping the minimum at the caller prevents that correctness requirement from
+ * silently widening the generic template optimization.
+ */
+function collectUniversalHostProgramShape(
+	encoder: UniversalHostEncoder,
+	plan: UniversalHostPlan,
+	minimumNodes: 1 | 2,
+): readonly UniversalHostTemplateShapeNode[] | null {
 	const output: UniversalHostTemplateShapeNode[] = [];
 	const visit = (node: UniversalPlanNode, parent: number): boolean => {
 		if (node.kind === 'range') {
@@ -453,9 +473,7 @@ export function universalHostTemplateShape(
 		for (const child of node.children ?? []) if (!visit(child, index)) return false;
 		return true;
 	};
-	const shape = visit(plan, -1) && output.length > 1 ? Object.freeze(output) : null;
-	encoder.templateShapes.set(plan, shape);
-	return shape;
+	return visit(plan, -1) && output.length >= minimumNodes ? Object.freeze(output) : null;
 }
 
 /** A plan whose every node is compile-time host structure, flattened. */
@@ -506,6 +524,15 @@ export function compiledUniversalTemplateProgram(
 		encoder.compiledTemplatePrograms.set(plan, null);
 		return null;
 	}
+	const program = compileUniversalHostProgramFromShape(plan, shape);
+	encoder.compiledTemplatePrograms.set(plan, program);
+	return program;
+}
+
+function compileUniversalHostProgramFromShape(
+	plan: UniversalHostPlan,
+	shape: readonly UniversalHostTemplateShapeNode[],
+): CompiledUniversalTemplateProgram | null {
 	const plans: (UniversalHostPlan | UniversalTextPlan | UniversalSlotPlan)[] = [];
 	const visit = (node: UniversalPlanNode): boolean => {
 		if (node.kind === 'slot' || node.kind === 'text') {
@@ -538,8 +565,23 @@ export function compiledUniversalTemplateProgram(
 		visit(plan) && plans.length === shape.length
 			? Object.freeze({ shape, plans: Object.freeze(plans) })
 			: null;
-	encoder.compiledTemplatePrograms.set(plan, program);
 	return program;
+}
+
+/**
+ * Compile any non-empty, wholly static host topology, including a lone host.
+ *
+ * This is the correctness boundary used by resident program compilers and
+ * specialized runtimes. Unlike `compiledUniversalTemplateProgram`, it does not
+ * apply the generic template mount's two-node profitability threshold and is
+ * not cached; callers that retain a program should retain this result with it.
+ */
+export function compileUniversalHostProgram(
+	encoder: UniversalHostEncoder,
+	plan: UniversalHostPlan,
+): CompiledUniversalTemplateProgram | null {
+	const shape = collectUniversalHostProgramShape(encoder, plan, 1);
+	return shape === null ? null : compileUniversalHostProgramFromShape(plan, shape);
 }
 
 /**

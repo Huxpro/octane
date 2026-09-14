@@ -461,8 +461,8 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				program: {
 					version: 1,
 					complete: true,
-					pairedPlans: 9,
-					pairedAddressed: 9,
+					pairedPlans: 13,
+					pairedAddressed: 13,
 					reasons: [],
 				},
 				semantic: {
@@ -527,6 +527,18 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 											],
 										},
 									}),
+									expect.objectContaining({
+										empty: true,
+										nested: true,
+										lastChild: true,
+										row: { kind: 'inline-host', name: 'view' },
+									}),
+									expect.objectContaining({
+										empty: true,
+										nested: false,
+										lastChild: true,
+										row: { kind: 'inline-host', name: 'text' },
+									}),
 								],
 							},
 							mainThread: {
@@ -556,6 +568,18 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 												expect.objectContaining({ name: 'useLayoutEffect' }),
 											],
 										},
+									}),
+									expect.objectContaining({
+										empty: true,
+										nested: true,
+										lastChild: true,
+										row: { kind: 'inline-host', name: 'view' },
+									}),
+									expect.objectContaining({
+										empty: true,
+										nested: false,
+										lastChild: true,
+										row: { kind: 'inline-host', name: 'text' },
 									}),
 								],
 							},
@@ -1054,7 +1078,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 15,
+							version: 16,
 							runtimeNames: [
 								'Activity',
 								'createContext',
@@ -1083,7 +1107,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 							],
 							keyedRanges: {
 								empty: true,
-								nested: false,
+								nested: true,
 								lastChild: true,
 								nonTail: true,
 								rowKinds: ['inline-host', 'local-component'],

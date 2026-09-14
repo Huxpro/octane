@@ -85,6 +85,27 @@ export function Card(props: { items: readonly { id: number; label: string }[] })
 }
 `;
 
+/** Two independently keyed structural levels, each with an empty arm. */
+const NESTED_STRUCTURAL_ADDRESSABLE_CARD = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+interface Group { readonly id: number; readonly labels: readonly string[] }
+
+export function Card(props: { groups: readonly Group[] }) @{
+	<view class="page">
+		@for (const group of props.groups; key group.id) {
+			<view class="group">
+				@for (const label of group.labels; key label) {
+					<text>{label as string}</text>
+				} @empty {
+					<text>none</text>
+				}
+			</view>
+		} @empty {
+			<view class="empty"><text>no groups</text></view>
+		}
+	</view>
+}
+`;
+
 type CompileShape = {
 	readonly target?: 'lynx' | 'universal';
 	readonly thread?: 'main-thread' | 'background';
@@ -1756,6 +1777,29 @@ export function Card(props: { readonly visible: boolean; readonly label: string 
 		};
 		const drifted = evaluate(compiled(STRUCTURAL_ADDRESSABLE_CARD, { backend: shifted, module }));
 		expect(drifted.addresses[index].digest).not.toBe(main.addresses[index].digest);
+	});
+
+	it('addresses every plan owned by nested structural ranges', () => {
+		const module = 'src/NestedStructuralCard.lynx.tsrx';
+		const mainResult = compileCard(NESTED_STRUCTURAL_ADDRESSABLE_CARD, {
+			backend: Backend,
+			module,
+		});
+		const backgroundResult = compileCard(NESTED_STRUCTURAL_ADDRESSABLE_CARD, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+		const main = evaluate(mainResult.code);
+		const background = evaluate(backgroundResult.code);
+
+		expect(mainResult.mainThreadProgramCoverage).toEqual({ total: 5, addressed: 5 });
+		expect(backgroundResult.mainThreadProgramCoverage).toEqual({ total: 5, addressed: 5 });
+		expect(main.addresses).toHaveLength(5);
+		expect(main.addresses.every((address) => address !== undefined)).toBe(true);
+		expect(background.addresses).toEqual(main.addresses);
 	});
 
 	it('keeps a call through a local binding named String range-bearing', () => {

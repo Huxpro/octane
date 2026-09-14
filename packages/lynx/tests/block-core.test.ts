@@ -504,6 +504,37 @@ describe('Lynx block core — change-proportionality', () => {
 		expect(built.papi.pages[0]!.children[0]!.children[0]!.children).toEqual([]);
 	});
 
+	it('clears child ranges before individually destroying their outer members', () => {
+		const built = scene(rows(2), null);
+		const nested = new Map<unknown, LynxBlockForSlot>();
+		for (const [key, member] of built.slot.items) {
+			const slot = built.core.openForSlot(member, 0);
+			built.core.fillForSlot(
+				slot,
+				ROW_TEMPLATE,
+				[{ id: Number(key) * 10, label: `nested ${String(key)}` }],
+				(row) => row.id,
+				(row) => rowValues(row, null),
+			);
+			nested.set(key, slot);
+		}
+		built.apply();
+		built.core.resetCounters();
+
+		built.core.clearForSlot(
+			built.slot,
+			(member) => built.core.clearForSlot(nested.get(member.key)!),
+			true,
+		);
+		const batch = built.core.flush()!;
+		const outerDestroyRuns = batch.commands.filter(
+			(command) => command.op === 'destroy-run' && command.parent === built.slot.parent,
+		);
+		expect(outerDestroyRuns).toEqual([]);
+		prepareLynxHostBatch(built.container, batch).apply();
+		expect(built.papi.pages[0]!.children[0]!.children[0]!.children).toEqual([]);
+	});
+
 	it('coalesces adjacent allocations when clearing after an append', () => {
 		const built = scene(rows(2), null);
 		built.core.reconcileForSlot(

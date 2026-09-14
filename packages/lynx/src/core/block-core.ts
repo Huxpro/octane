@@ -395,7 +395,10 @@ export interface LynxBlockCore {
 	 * run is destroyed — the window in which an owner must release the block's
 	 * listeners and any other per-block resources it holds. A compiler owner may
 	 * pass the ascending indices whose row values it recomputed; omitted retains
-	 * the conservative contract and compares every survivor value.
+	 * the conservative contract and compares every survivor value. When members
+	 * own child ranges, `membersOwnRanges` keeps their teardown individual after
+	 * `departed` clears those children; the general host validates destroy runs
+	 * against the pre-batch tree and cannot accept an outer run across them.
 	 */
 	reconcileForSlot<Item>(
 		slot: LynxBlockForSlot,
@@ -405,12 +408,18 @@ export interface LynxBlockCore {
 		values: (item: Item, index: number) => readonly UniversalHostTemplateProgramValue[],
 		departed?: (block: LynxBlock) => void,
 		changedIndices?: readonly number[],
+		membersOwnRanges?: boolean,
 	): void;
 	/**
 	 * Tear down every member of a range site. `departed` fires per member
-	 * before destruction, with the same release obligation as reconcile.
+	 * before destruction, with the same release obligation and nested-range
+	 * teardown rule as reconcile.
 	 */
-	clearForSlot(slot: LynxBlockForSlot, departed?: (block: LynxBlock) => void): void;
+	clearForSlot(
+		slot: LynxBlockForSlot,
+		departed?: (block: LynxBlock) => void,
+		membersOwnRanges?: boolean,
+	): void;
 	/**
 	 * Remove compiler-proven departed keys without rediscovering every survivor.
 	 * During a render attempt the host commands are emitted immediately, while
@@ -801,7 +810,11 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	 * proof — the host validates each instance against accepted state before
 	 * applying the teardown.
 	 */
-	const destroyRange = (slot: LynxBlockForSlot, departed?: (block: LynxBlock) => void): void => {
+	const destroyRange = (
+		slot: LynxBlockForSlot,
+		departed?: (block: LynxBlock) => void,
+		membersOwnRanges = false,
+	): void => {
 		if (deltaProducer !== null) {
 			const site = slot as LynxBlockProgramRangeSite;
 			if (site[0] === undefined || site[1] === null) {
@@ -819,6 +832,13 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			}
 			deltaProducer.clear({ instance: site[1], slot: site[0] }, retiredInstances);
 			commandCount++;
+			return;
+		}
+		if (membersOwnRanges) {
+			for (const block of slot.items.values()) {
+				departed?.(block);
+				destroyBlock(slot.parent, block);
+			}
 			return;
 		}
 		let first: LynxBlock | null = null;
@@ -1008,13 +1028,17 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		link(slot, blocks);
 	};
 
-	const clearForSlot = (slot: LynxBlockForSlot, departed?: (block: LynxBlock) => void): void => {
+	const clearForSlot = (
+		slot: LynxBlockForSlot,
+		departed?: (block: LynxBlock) => void,
+		membersOwnRanges = false,
+	): void => {
 		if (slot.size === 0) return;
 		captureSlot(slot);
 		// The range site owns every child of its parent node, so all members can
 		// retain the dense proof `mountRun` established instead of spelling their
 		// host teardown individually.
-		destroyRange(slot, departed);
+		destroyRange(slot, departed, membersOwnRanges);
 		slot.items.clear();
 		slot.head = null;
 		slot.tail = null;
@@ -1176,7 +1200,16 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 
 		removeKeysForSlot,
 
-		reconcileForSlot(slot, template, items, key, values, departed, changedIndices) {
+		reconcileForSlot(
+			slot,
+			template,
+			items,
+			key,
+			values,
+			departed,
+			changedIndices,
+			membersOwnRanges = false,
+		) {
 			captureSlot(slot);
 			const previous = slot.items;
 			if (previous.size === 0) {
@@ -1188,7 +1221,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				// departure path an owner cannot see coming: every other member leaves
 				// through the removal sweep below, so an owner that released listeners
 				// there would still leak every listener of the last list it held.
-				clearForSlot(slot, departed);
+				clearForSlot(slot, departed, membersOwnRanges);
 				return;
 			}
 			if (LYNX_BLOCK_CORE_DEVELOPMENT && changedIndices !== undefined) {

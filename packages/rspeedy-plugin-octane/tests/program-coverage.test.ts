@@ -232,7 +232,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 15,
+				version: 16,
 				runtimeNames: [
 					'Activity',
 					'createContext',
@@ -261,7 +261,7 @@ describe('Lynx application Block eligibility', () => {
 				],
 				keyedRanges: {
 					empty: true,
-					nested: false,
+					nested: true,
 					lastChild: true,
 					nonTail: true,
 					rowKinds: ['inline-host', 'local-component'],
@@ -312,6 +312,34 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.matrix.runtimeNames).toEqual(
 			expect.arrayContaining(['useLayoutEffect', 'useMemo', 'useReducer']),
 		);
+	});
+
+	it('admits paired nested keyed-range ownership', () => {
+		const proofs = completeProofs();
+		const featureModule = proofs.featureRequirements.modules[0]!;
+		const nested = featureRequirements({
+			keyedRanges: [
+				{
+					line: 8,
+					column: 2,
+					empty: true,
+					nested: true,
+					lastChild: false,
+					row: { kind: 'inline-host', name: 'view' },
+				},
+			],
+		});
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			featureRequirements: {
+				...proofs.featureRequirements,
+				modules: [{ ...featureModule, background: nested, mainThread: nested }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.keyedRanges.nested).toBe(true);
 	});
 
 	it('fails closed when a proof is incomplete, unpaired, version-skewed, or covers another graph', () => {
@@ -467,13 +495,6 @@ describe('Lynx application Block eligibility', () => {
 					name: 'export-all',
 					line: 4,
 					column: 5,
-				},
-				{
-					code: 'keyed-range-nested',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					line: 10,
-					column: 2,
 				},
 				{
 					code: 'unsupported-keyed-range-row',
@@ -930,7 +951,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 15 },
+				matrix: { version: 16 },
 				eligible: true,
 				reasons: [],
 			},

@@ -19,6 +19,7 @@ interface BlockEligibleItem {
 	readonly id: number;
 	readonly image: string;
 	readonly label: string;
+	readonly tags: readonly string[];
 }
 
 const BlockEligibleRow = memo(function BlockEligibleRow(props: {
@@ -73,6 +74,22 @@ function BlockShell(props: {
 				</view>
 			}
 			<text class="rows-tail">Rows ready</text>
+		</view>
+		<view class="nested-groups">
+			@for (const item of props.items; key item.id) {
+				<view class="nested-group">
+					<text>{'Tags for ' + item.label}</text>
+					@for (const tag of item.tags; key tag) {
+						<text class="nested-tag">{tag as string}</text>
+					} @empty {
+						<text class="nested-tag-empty">No tags</text>
+					}
+				</view>
+			} @empty {
+				<view class="nested-group-empty">
+					<text>No groups</text>
+				</view>
+			}
 		</view>
 		<view class="if-region">
 			@if (props.selected === 'none') {

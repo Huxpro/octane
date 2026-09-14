@@ -175,6 +175,31 @@ const RangeApplication = defineUniversalComponent(
 	{ hookScope: false },
 );
 
+interface NestedRangeGroup {
+	readonly id: number;
+	readonly rows: readonly RangeRow[];
+}
+
+const NestedRangeApplication = defineUniversalComponent(
+	'lynx',
+	({ groups }: { readonly groups: readonly NestedRangeGroup[] }) =>
+		lynxProgramValue(RANGE_PARENT_PROGRAM, [
+			universalFor(
+				groups,
+				(group: NestedRangeGroup) => group.id,
+				(group: NestedRangeGroup) =>
+					lynxProgramValue(RANGE_PARENT_PROGRAM, [
+						universalFor(
+							group.rows,
+							(row: RangeRow) => row.id,
+							(row: RangeRow) => lynxProgramValue(RANGE_ROW_PROGRAM, ['row', row.label]) as never,
+						),
+					]) as never,
+			),
+		]) as never,
+	{ hookScope: false },
+);
+
 function emittedRangeParentPlan(): UniversalProgramPlan {
 	const emission = emitLynxMainThreadProgram(RANGE_PARENT_IR.wire, {
 		name: 'createCompactRangePage',
@@ -467,6 +492,117 @@ describe('Lynx compact compiled-program Block transport', () => {
 		await background.unmountAsync();
 		expect(page.children).toEqual([]);
 		expect(transport.directPreparationCount()).toBe(4);
+		transport.close();
+		receiver.close();
+	});
+
+	it('keeps nested range RUN and CLEAR ownership entirely in compact instance space', async () => {
+		const context = new HeldReplyContext();
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const receiver = installLynxCompiledProgramReceiver({
+			context,
+			page,
+			papi,
+			resolveProgram: (module, index) => {
+				if (index !== 0) return undefined;
+				if (module === RANGE_PARENT_MODULE) return emittedRangeParentPlan();
+				if (module === RANGE_ROW_MODULE) return emittedRangeRowPlan();
+				return undefined;
+			},
+		});
+		const container = createLynxClientContainer();
+		const transport = createLynxCompiledProgramBlockTransport(context, container);
+		const background = createLynxBlockBackgroundCore({
+			container,
+			transport,
+			scheduleMicrotask: (callback) => void Promise.resolve().then(callback),
+			transportRoot: 94,
+		});
+		bindTransportRoot(transport, background);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		const render = async (groups: readonly NestedRangeGroup[]) =>
+			transaction(await background.renderAsync(NestedRangeApplication, { groups }));
+		const mounted = await render([
+			{
+				id: 1,
+				rows: [
+					{ id: 11, label: 'one' },
+					{ id: 12, label: 'two' },
+				],
+			},
+			{ id: 2, rows: [{ id: 21, label: 'three' }] },
+		]);
+		expect(mounted.batch.commands).toEqual([]);
+		expect(preparedLynxBlockDeltaBatch(mounted.batch)!.operations).toEqual([
+			expect.objectContaining({
+				op: 'run',
+				parent: { instance: 1, slot: 0 },
+				firstInstance: 2,
+				count: 1,
+			}),
+			expect.objectContaining({
+				op: 'run',
+				parent: { instance: 2, slot: 0 },
+				firstInstance: 3,
+				count: 2,
+			}),
+			expect.objectContaining({
+				op: 'run',
+				parent: { instance: 3, slot: 0 },
+				firstInstance: 5,
+				count: 2,
+			}),
+			expect.objectContaining({
+				op: 'run',
+				parent: { instance: 4, slot: 0 },
+				firstInstance: 7,
+				count: 1,
+			}),
+		]);
+		const groupOne = page.children[0]!.children[0]!;
+		const oneUid = groupOne.children[0]!.uid;
+
+		const updated = await render([
+			{
+				id: 2,
+				rows: [
+					{ id: 21, label: 'three' },
+					{ id: 22, label: 'four' },
+				],
+			},
+			{
+				id: 1,
+				rows: [
+					{ id: 12, label: 'two' },
+					{ id: 11, label: 'one edited' },
+				],
+			},
+		]);
+		expect(updated.batch.commands).toEqual([]);
+		expect(
+			preparedLynxBlockDeltaBatch(updated.batch)!.operations.map((operation) => operation.op),
+		).toEqual(expect.arrayContaining(['move', 'run', 'set']));
+		expect(page.children[0]!.children[1]!.children[1]!.uid).toBe(oneUid);
+		expect(page.children[0]!.children[1]!.children[1]!.children[0]!.children[0]!.text).toBe(
+			'one edited',
+		);
+
+		const cleared = await render([]);
+		expect(cleared.batch.commands).toEqual([]);
+		expect(preparedLynxBlockDeltaBatch(cleared.batch)!.operations).toEqual([
+			{ op: 'clear', parent: { instance: 3, slot: 0 } },
+			{ op: 'clear', parent: { instance: 4, slot: 0 } },
+			{ op: 'clear', parent: { instance: 2, slot: 0 } },
+		]);
+		expect(page.children[0]!.children).toEqual([]);
+		expect(transport.directPreparationCount()).toBe(3);
+
+		await background.unmountAsync();
+		expect(page.children).toEqual([]);
 		transport.close();
 		receiver.close();
 	});

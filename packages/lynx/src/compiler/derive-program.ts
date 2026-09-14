@@ -79,7 +79,7 @@ import type {
 	UniversalTemplateHostPlacement,
 } from 'octane/universal/native';
 import {
-	compiledUniversalTemplateProgram,
+	compileUniversalHostProgram,
 	createUniversalHostEncoder,
 	prepareUniversalTemplateProgram,
 	universalTemplateProgramWithoutRanges,
@@ -302,7 +302,7 @@ export function deriveLynxProgramIR(plan: UniversalHostPlan): LynxProgramIR | nu
 	const encoder = buildTimeEncoder();
 	const refReduction = universalHostPlanWithoutRefs(plan);
 	if (refReduction === null) return null;
-	const compiled = compiledUniversalTemplateProgram(encoder, refReduction.plan);
+	const compiled = compileUniversalHostProgram(encoder, refReduction.plan);
 	if (compiled === null) return null;
 	const reduced = universalTemplateProgramWithoutRanges(compiled, EVERY_SLOT_HOLE_IS_A_RANGE);
 	if (reduced === null) return null;

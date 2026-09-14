@@ -20,7 +20,7 @@ export const LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO = 'octane:lynx-background
 export const LYNX_BACKGROUND_CORE_SELECTION_VERSION = 1;
 export const LYNX_APPLICATION_SELECTION_ASSET_INFO = 'octane:lynx-application-selection';
 export const LYNX_APPLICATION_SELECTION_VERSION = 2;
-export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 15;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 16;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
 	// Each name has an independent assertion through the Block component path.
@@ -53,7 +53,7 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	]),
 	keyedRanges: Object.freeze({
 		empty: true,
-		nested: false,
+		nested: true,
 		lastChild: true,
 		nonTail: true,
 		rowKinds: Object.freeze(['inline-host', 'local-component']),
@@ -937,7 +937,8 @@ function unsupportedFeatureReasons(reasons, module, thread, requirements) {
 		const site = { module, thread, line: range.line, column: range.column };
 		if (range.empty && !LYNX_BLOCK_SUPPORT_MATRIX.keyedRanges.empty)
 			reasons.push(reason('keyed-range-empty-branch', site));
-		if (range.nested) reasons.push(reason('keyed-range-nested', site));
+		if (range.nested && !LYNX_BLOCK_SUPPORT_MATRIX.keyedRanges.nested)
+			reasons.push(reason('keyed-range-nested', site));
 		if (!range.lastChild && !LYNX_BLOCK_SUPPORT_MATRIX.keyedRanges.nonTail)
 			reasons.push(reason('keyed-range-not-last-child', site));
 		if (!LYNX_BLOCK_RANGE_ROW_KINDS.has(range.row.kind)) {

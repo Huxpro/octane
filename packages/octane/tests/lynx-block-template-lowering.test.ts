@@ -33,6 +33,7 @@ import { compile } from '../src/compiler/compile.js';
 // extraction is that a bundle which does not carry the universal core can still
 // perform the lowering, and only the export map can say so.
 import {
+	compileUniversalHostProgram,
 	compiledUniversalTemplateProgram,
 	createUniversalHostEncoder,
 	prepareUniversalTemplateProgram,
@@ -164,6 +165,35 @@ describe('lynx block template lowering', () => {
 		]);
 		expect((plans[ROW]!.root as UniversalHostPlan).type).toBe('view');
 		expect((plans[PAGE]!.root as UniversalHostPlan).type).toBe('view');
+	});
+
+	it('compiles a one-host resident program without widening generic template mounts', () => {
+		const plan = Renderer.universalPlan('lynx', {
+			kind: 'host',
+			type: 'text',
+			bindings: [['text', 0]],
+		});
+		const encoder = lynxEncoder();
+
+		// A generic template mount keeps its two-node profitability threshold.
+		expect(compiledUniversalTemplateProgram(encoder, plan.root as UniversalHostPlan)).toBeNull();
+		const compiled = compileUniversalHostProgram(encoder, plan.root as UniversalHostPlan);
+		expect(compiled).toEqual({
+			shape: [{ type: 'text', parent: -1 }],
+			plans: [plan.root],
+		});
+		expect(prepareUniversalTemplateProgram(encoder, compiled!)?.wire).toEqual({
+			nodes: [
+				{
+					type: 'text',
+					parent: -1,
+					props: {},
+					bindings: [{ name: 'text', valueIndex: 0 }],
+				},
+			],
+			events: [],
+		});
+		expect(compiledUniversalTemplateProgram(encoder, plan.root as UniversalHostPlan)).toBeNull();
 	});
 
 	it('lowers Row to the row template block-program.ts hand-writes', () => {
