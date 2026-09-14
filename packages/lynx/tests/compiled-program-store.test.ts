@@ -719,6 +719,8 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 				'reuse-identifier': 'feed-row',
 			},
 		);
+		papi.lists[0]!.componentAtIndex(listNode, listNode.uid, 0);
+		const settlementsBefore = profile.listProgramCellSettlementLookups;
 
 		store.begin();
 		expect(store.set(502, 2, 'selected')).toBe(true);
@@ -726,6 +728,7 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count);
 		expect(profile.listProgramItemDescriptorPlanBuilds - plansBefore).toBe(1);
 		expect(profile.listProgramItemDescriptorValueReads - readsBefore).toBe(count);
+		expect(profile.listProgramCellSettlementLookups).toBe(settlementsBefore);
 		expect(publications).toHaveLength(1);
 
 		store.begin();
@@ -733,6 +736,7 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		store.commit();
 		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count + 1);
 		expect(profile.listProgramItemDescriptorValueReads - readsBefore).toBe(count + 1);
+		expect(profile.listProgramCellSettlementLookups - settlementsBefore).toBe(1);
 		expect(publications).toHaveLength(2);
 		expect(publications.at(-1)).toMatchObject({
 			updateAction: [{ from: 499, to: 499, 'item-key': 'item-499-updated' }],
@@ -743,6 +747,7 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		store.prepareCommit();
 		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count + 2);
 		expect(profile.listProgramItemDescriptorValueReads - readsBefore).toBe(count + 2);
+		expect(profile.listProgramCellSettlementLookups - settlementsBefore).toBe(1);
 		store.rollback();
 
 		store.begin();
@@ -750,6 +755,7 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		store.commit();
 		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count + 3);
 		expect(profile.listProgramItemDescriptorValueReads - readsBefore).toBe(count + 3);
+		expect(profile.listProgramCellSettlementLookups - settlementsBefore).toBe(2);
 		expect(publications.at(-1)).toMatchObject({
 			updateAction: [{ from: 499, to: 499, 'item-key': 'item-499-retry' }],
 		});
@@ -761,6 +767,7 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count + 3);
 		expect(profile.listProgramItemDescriptorPlanBuilds - plansBefore).toBe(1);
 		expect(profile.listProgramItemDescriptorValueReads - readsBefore).toBe(count + 3);
+		expect(profile.listProgramCellSettlementLookups - settlementsBefore).toBe(3);
 		expect(publications).toHaveLength(publicationsBeforeMove + 1);
 		store.dispose();
 	});
@@ -1449,18 +1456,21 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(replacementSign).not.toBe(firstSign);
 		const replacement = nativeList.node.children[0]!;
 		expect(replacement.children[0]!.children[0]!.text).toBe('Row 0');
+		const finalSign = nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 1);
+		expect(finalSign).not.toBe(replacementSign);
+		nativeList.enqueueComponent(nativeList.node, nativeList.node.uid, replacementSign);
 		nativeList.enqueueComponent(nativeList.node, nativeList.node.uid, firstSign);
-		expect(nativeList.node.children[0]).toBe(replacement);
+		expect(nativeList.node.children).toContain(replacement);
 
 		store.begin();
 		store.clear(listNode);
 		store.commit();
 		expect(store.size()).toBe(1);
 		expect(nativeList.node.children).toEqual([]);
-		expect(profile.listProgramCellRuns - cellsBefore.runs).toBe(2);
-		expect(profile.listProgramCellHosts - cellsBefore.hosts).toBe(6);
-		expect(profile.listProgramCellRetainedHostRefs - cellsBefore.retained).toBe(4);
-		expect(profile.listProgramCellReleasedHostRefs - cellsBefore.released).toBe(2);
+		expect(profile.listProgramCellRuns - cellsBefore.runs).toBe(3);
+		expect(profile.listProgramCellHosts - cellsBefore.hosts).toBe(9);
+		expect(profile.listProgramCellRetainedHostRefs - cellsBefore.retained).toBe(6);
+		expect(profile.listProgramCellReleasedHostRefs - cellsBefore.released).toBe(3);
 		expect(profile.listProgramCellLiveRetainedHostRefs).toBe(cellsBefore.live);
 		expect(nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 0)).toBe(-1);
 

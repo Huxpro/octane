@@ -277,6 +277,13 @@ does not copy the root props table or reinterpret unrelated root bindings.
 `listProgramItemDescriptorValueReads` distinguish the template-constant work
 from the value-density work.
 
+After a logical list delta publishes, physical-cell settlement resolves current
+items through the store's authoritative instance table. It no longer builds a
+second whole-list handle map or snapshots each ownership table before cleanup;
+pooled tables swap before re-partitioning so cleanup may safely mutate the old
+table. `listProgramCellSettlementLookups` therefore scales with materialized
+cells, not the number of dormant logical rows.
+
 A list may demand a physical cell while its logical row is retained but hidden.
 Fresh and recycled cells paint that hidden state without native event tokens,
 host-ref attachment publication, or main-thread worklet/ref activation. A later

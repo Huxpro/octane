@@ -217,6 +217,8 @@ export interface LynxWireProfile {
 	listProgramItemDescriptorPlanBuilds: number;
 	/** Main: dynamic list metadata values read while building logical descriptors. */
 	listProgramItemDescriptorValueReads: number;
+	/** Main: physical cells resolved while settling an accepted logical-list delta. */
+	listProgramCellSettlementLookups: number;
 	/** Main: cell-scoped values arrays copied for legacy drivers or worklet rewriting. */
 	listProgramCellValueCopies: number;
 	/** Main: addressed native-list cells that retained generic materialization. */
@@ -298,6 +300,7 @@ export function lynxWireProfile(): LynxWireProfile {
 		listProgramItemDescriptorBuilds: 0,
 		listProgramItemDescriptorPlanBuilds: 0,
 		listProgramItemDescriptorValueReads: 0,
+		listProgramCellSettlementLookups: 0,
 		listProgramCellValueCopies: 0,
 		listProgramCellFallbacks: 0,
 		listProgramCellFallback: null,

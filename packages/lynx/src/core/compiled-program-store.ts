@@ -113,7 +113,7 @@ interface CompiledProgramListState<Node extends LynxElementRef> {
 	readonly cellsBySign: Map<number, CompiledProgramListCell<Node>>;
 	readonly attachedByHandle: Map<number, CompiledProgramListCell<Node>>;
 	readonly retainedByHandle: Map<number, CompiledProgramListCell<Node>>;
-	readonly recyclePools: Map<string, CompiledProgramListCell<Node>[]>;
+	recyclePools: Map<string, CompiledProgramListCell<Node>[]>;
 	disposed: boolean;
 }
 
@@ -1157,30 +1157,53 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			prepared.push({ list, previous, next });
 		}
 	};
-	const finalizePreparedList = ({ list, next }: CompiledProgramPreparedList<Node>): void => {
-		const byHandle = new Map(next.map((item) => [item.handle, item]));
-		for (const cell of [...list.attachedByHandle.values()]) {
-			const item = byHandle.get(cell.item.handle);
+	const currentListItem = (
+		list: CompiledProgramListState<Node>,
+		handle: number,
+	): CompiledProgramListItem<Node> | undefined => {
+		if (LYNX_PROFILE) lynxWireProfile().listProgramCellSettlementLookups++;
+		const instance = instances.get(handle);
+		if (
+			instance === undefined ||
+			!instance.run.deferred ||
+			instance.parent !== list.node ||
+			instance.range !== list.range
+		) {
+			return undefined;
+		}
+		const item = instance.listItem;
+		if (item === undefined) fail(StoreFailure.RangeOrder);
+		return item;
+	};
+	const finalizePreparedList = ({ list }: CompiledProgramPreparedList<Node>): void => {
+		for (const cell of list.attachedByHandle.values()) {
+			const item = currentListItem(list, cell.item.handle);
 			if (item === undefined) detachListCell(list, cell, 'await');
 			else cell.item = item;
 		}
-		for (const [handle, cell] of [...list.retainedByHandle]) {
-			const item = byHandle.get(handle);
+		for (const [handle, cell] of list.retainedByHandle) {
+			const item = currentListItem(list, handle);
 			if (item === undefined) destroyListCell(list, cell);
 			else cell.item = item;
 		}
-		const pooled = [...list.recyclePools.values()].flat();
-		list.recyclePools.clear();
-		for (const cell of pooled) {
-			const item = byHandle.get(cell.item.handle);
-			if (item === undefined) destroyListCell(list, cell);
-			else {
-				cell.item = item;
-				poolListCell(list, cell);
+		if (list.recyclePools.size !== 0) {
+			const previousPools = list.recyclePools;
+			list.recyclePools = new Map();
+			for (const pool of previousPools.values()) {
+				for (const cell of pool) {
+					const item = currentListItem(list, cell.item.handle);
+					if (item === undefined) destroyListCell(list, cell);
+					else {
+						cell.item = item;
+						poolListCell(list, cell);
+					}
+				}
 			}
 		}
-		for (const cell of [...list.cellsBySign.values()]) {
-			if (cell.awaitingEnqueue && !byHandle.has(cell.item.handle)) destroyListCell(list, cell);
+		for (const cell of list.cellsBySign.values()) {
+			if (cell.awaitingEnqueue && currentListItem(list, cell.item.handle) === undefined) {
+				destroyListCell(list, cell);
+			}
 		}
 	};
 	const rollbackPreparedLists = (errors: unknown[]): void => {
