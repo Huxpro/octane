@@ -218,4 +218,47 @@ describe('@octanejs/lynx compact compiled-program worklets', () => {
 		expect(page.children[0]!.classes).toBe('ordinary');
 		store.dispose();
 	});
+
+	it('still removes a partially inserted root when worklet abort also fails', () => {
+		const descriptor = registerMainThreadWorklet(IDS[0], undefined, () => 'fault');
+		const ref = createLynxMainThreadRefDescriptor('compact:fault-ref');
+		const baseRegistry = createLynxMainThreadWorkletRegistry();
+		const registry = {
+			...baseRegistry,
+			release(value: LynxActivatedMainThreadWorklet | number) {
+				baseRegistry.release(value);
+				throw new Error('worklet abort fault');
+			},
+		};
+		const base = emittedHost();
+		let failInsert = true;
+		const papi: typeof base = {
+			...base,
+			insertBefore(parent, child, before) {
+				base.insertBefore(parent, child, before);
+				if (failInsert) {
+					failInsert = false;
+					throw new Error('insert-after-mutation fault');
+				}
+			},
+		};
+		const page = papi.createPage('entry', 0);
+		const store = createLynxCompiledProgramStore(
+			papi,
+			papi.getUniqueId(page),
+			47,
+			1,
+			undefined,
+			undefined,
+			undefined,
+			registry,
+		);
+
+		store.begin();
+		expect(() => mount(store, page, plan(), descriptor, ref)).toThrow(AggregateError);
+		expect(page.children).toEqual([]);
+		expect(store.isFaulted()).toBe(true);
+		store.dispose();
+		baseRegistry.close();
+	});
 });

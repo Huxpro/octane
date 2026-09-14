@@ -273,6 +273,13 @@ does not prevent sibling cells from releasing, and a later terminal retry keeps
 ownership of only the failed cells instead of treating the callback-closed list
 as fully disposed.
 
+Creation failure cleanup is also best-effort across ownership classes. If a
+prepared main-thread worklet abort fails, native roots are still removed; if a
+root removal also fails, the original create/insert error and every cleanup
+error are reported together and the compact store becomes terminally faulted.
+List callback failures use the same rule instead of replacing the producer
+failure with whichever cleanup happened to throw first.
+
 A same-machine production A/B against exact parent `887042796` attributes the
 shipping cost instead of the already-stale frozen absolute budget. Preview adds
 244 raw / 76 gzip bundle bytes (decoded MTS: 130 / 44); IFR adds 265 raw / 95

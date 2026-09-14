@@ -780,8 +780,24 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				list.cellsBySign.set(sign, cell);
 				publishListCellOwnership(run.plan);
 			} catch (error) {
-				preparedWorklets?.abort();
-				cleanupRoot(papi, nodes[0]);
+				const cleanupErrors: unknown[] = [];
+				try {
+					preparedWorklets?.abort();
+				} catch (cleanupError) {
+					cleanupErrors.push(cleanupError);
+				}
+				try {
+					cleanupRoot(papi, nodes[0]);
+				} catch (cleanupError) {
+					cleanupErrors.push(cleanupError);
+				}
+				if (cleanupErrors.length !== 0) {
+					faulted = true;
+					failAggregate(
+						[error, ...cleanupErrors],
+						LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled native-list cell cleanup failed.',
+					);
+				}
 				throw error;
 			}
 		} else {
@@ -1734,8 +1750,12 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					papi.insertBefore(input.parent, node, before);
 				}
 			} catch (error) {
-				preparedWorklets?.abort();
 				const cleanupErrors: unknown[] = [];
+				try {
+					preparedWorklets?.abort();
+				} catch (cleanupError) {
+					cleanupErrors.push(cleanupError);
+				}
 				for (let index = input.count - 1; index >= 0; index--) {
 					try {
 						cleanupRoot(papi, created[index * nodeStride]);

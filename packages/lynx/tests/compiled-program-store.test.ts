@@ -1380,6 +1380,61 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(profile.listProgramCellLiveRetainedHostRefs).toBe(liveBefore);
 	});
 
+	it('aggregates native-list materialization and cleanup faults without skipping root removal', () => {
+		const base = emittedHost(true);
+		let failInsert = true;
+		let failRemove = true;
+		const papi: typeof base = {
+			...base,
+			insertBefore(parent, child, before) {
+				base.insertBefore(parent, child, before);
+				if (failInsert && parent.type === 'list') {
+					failInsert = false;
+					throw new Error('list cell insert-after-mutation fault');
+				}
+			},
+			remove(parent, child) {
+				base.remove(parent, child);
+				if (failRemove && parent.type === 'list') {
+					failRemove = false;
+					throw new Error('list cell cleanup-after-mutation fault');
+				}
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const reported: unknown[] = [];
+		const store = createLynxCompiledProgramStore(
+			papi,
+			papi.getUniqueId(page),
+			47,
+			1,
+			undefined,
+			(error) => reported.push(error),
+		);
+		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }]);
+		const row = emittedListPlan(LIST_EVENT_ROW, ['p:item-key', 'c', 'e:bindtap'], [0, 1]);
+		store.begin();
+		store.mount({ firstHandle: 2, count: 1, parent: page, before: null, plan: shell, values: [] });
+		const listNode = store.range(2, 0);
+		store.mount({
+			firstHandle: 3,
+			count: 1,
+			parent: listNode,
+			before: null,
+			plan: row,
+			values: ['item-0', 'Row 0'],
+		});
+		store.commit();
+
+		expect(papi.lists[0]!.componentAtIndex(listNode, listNode.uid, 0)).toBe(-1);
+		expect(listNode.children).toEqual([]);
+		expect(reported).toHaveLength(1);
+		expect(reported[0]).toBeInstanceOf(AggregateError);
+		expect((reported[0] as AggregateError).errors).toHaveLength(2);
+		expect(store.isFaulted()).toBe(true);
+		store.dispose();
+	});
+
 	it('faults an unknowable list publication and reports an accepted callback failure', () => {
 		const base = emittedHost(true);
 		let failPublication = true;
