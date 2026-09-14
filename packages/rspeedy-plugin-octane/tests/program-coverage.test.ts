@@ -232,7 +232,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 14,
+				version: 15,
 				runtimeNames: [
 					'Activity',
 					'createContext',
@@ -240,6 +240,9 @@ describe('Lynx application Block eligibility', () => {
 					'useCallback',
 					'useContext',
 					'useEffect',
+					'useLayoutEffect',
+					'useMemo',
+					'useReducer',
 					'useRef',
 					'useState',
 					'useSyncExternalStore',
@@ -288,6 +291,27 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.eligible).toBe(true);
 		expect(report.reasons).toEqual([]);
 		expect(report.matrix.runtimeNames).toContain('Activity');
+	});
+
+	it('admits the retained reducer, memo, and layout-effect hook set only when paired', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const hooks = semanticRequirements({
+			runtimeUses: [site('useLayoutEffect', 4, 2), site('useMemo', 5, 2), site('useReducer', 6, 2)],
+		});
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: hooks, mainThread: hooks }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toEqual(
+			expect.arrayContaining(['useLayoutEffect', 'useMemo', 'useReducer']),
+		);
 	});
 
 	it('fails closed when a proof is incomplete, unpaired, version-skewed, or covers another graph', () => {
@@ -370,7 +394,7 @@ describe('Lynx application Block eligibility', () => {
 					{
 						...semanticModule,
 						background: semanticRequirements({
-							runtimeUses: [site('useReducer', 2, 3)],
+							runtimeUses: [site('useTransition', 2, 3)],
 							runtimeExports: [site('Suspense', 3, 4)],
 							opaqueRuntimeAccesses: [site('export-all', 4, 5)],
 						}),
@@ -424,7 +448,7 @@ describe('Lynx application Block eligibility', () => {
 					code: 'unsupported-runtime-use',
 					module: '/src/App.tsrx',
 					thread: 'background',
-					name: 'useReducer',
+					name: 'useTransition',
 					line: 2,
 					column: 3,
 				},
@@ -906,7 +930,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 14 },
+				matrix: { version: 15 },
 				eligible: true,
 				reasons: [],
 			},

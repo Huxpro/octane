@@ -470,10 +470,26 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					paired: true,
 					requirements: {
 						background: {
-							runtimeUses: ['Activity', 'createContext', 'memo', 'useContext', 'useState'],
+							runtimeUses: [
+								'Activity',
+								'createContext',
+								'memo',
+								'useContext',
+								'useLayoutEffect',
+								'useMemo',
+								'useReducer',
+							],
 						},
 						mainThread: {
-							runtimeUses: ['Activity', 'createContext', 'memo', 'useContext', 'useState'],
+							runtimeUses: [
+								'Activity',
+								'createContext',
+								'memo',
+								'useContext',
+								'useLayoutEffect',
+								'useMemo',
+								'useReducer',
+							],
 						},
 					},
 					reasons: [],
@@ -504,8 +520,10 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 											kind: 'local-component',
 											name: 'BlockEligibleRow',
 											hooks: [
-												expect.objectContaining({ name: 'useState' }),
+												expect.objectContaining({ name: 'useReducer' }),
 												expect.objectContaining({ name: 'useContext' }),
+												expect.objectContaining({ name: 'useMemo' }),
+												expect.objectContaining({ name: 'useLayoutEffect' }),
 											],
 										},
 									}),
@@ -532,8 +550,10 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 											kind: 'local-component',
 											name: 'BlockEligibleRow',
 											hooks: [
-												expect.objectContaining({ name: 'useState' }),
+												expect.objectContaining({ name: 'useReducer' }),
 												expect.objectContaining({ name: 'useContext' }),
+												expect.objectContaining({ name: 'useMemo' }),
+												expect.objectContaining({ name: 'useLayoutEffect' }),
 											],
 										},
 									}),
@@ -1034,7 +1054,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 14,
+							version: 15,
 							runtimeNames: [
 								'Activity',
 								'createContext',
@@ -1042,6 +1062,9 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'useCallback',
 								'useContext',
 								'useEffect',
+								'useLayoutEffect',
+								'useMemo',
+								'useReducer',
 								'useRef',
 								'useState',
 								'useSyncExternalStore',

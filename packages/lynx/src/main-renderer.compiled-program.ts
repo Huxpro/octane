@@ -748,6 +748,35 @@ export function useState<T>(
 
 export const __useStateWithGetter = useState;
 
+export function useReducer<S, A, I = S>(
+	_reducer: (state: S, action: A) => S,
+	initialArg: I,
+	initOrSlot?: ((value: I) => S) | unknown,
+	_maybeSlot?: unknown,
+): [S, (action: A) => void, () => S] {
+	requireRender();
+	const value =
+		typeof initOrSlot === 'function'
+			? (initOrSlot as (value: I) => S)(initialArg)
+			: (initialArg as unknown as S);
+	return [value, NOOP_UPDATE, () => value];
+}
+
+export const __useReducerWithGetter = useReducer;
+
+export function useLayoutEffect(): void {
+	requireRender();
+}
+
+export function useMemo<T>(
+	compute: () => T,
+	_deps?: readonly unknown[] | null,
+	_slot?: unknown,
+): T {
+	requireRender();
+	return compute();
+}
+
 export function useCallback<T extends (...args: any[]) => any>(
 	callback: T,
 	_deps?: readonly unknown[] | null,

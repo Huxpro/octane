@@ -2736,6 +2736,47 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		expect(paint(block.main.commits).tree).toContain('lead-thrice');
 	});
 
+	it('matches Universal output for reducer, memo, and layout-effect components', async () => {
+		interface HookProps {
+			readonly label: string;
+		}
+		let initializerCalls = 0;
+		const HookPage = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function HookPage(props: HookProps) {
+				const [count] = useReducer(
+					(value: number, amount: number) => value + amount,
+					3,
+					(value) => {
+						initializerCalls++;
+						return value * 2;
+					},
+					'hook-parity-reducer',
+				);
+				const value = useMemo(
+					() => `${props.label}:${count}`,
+					[props.label, count],
+					'hook-parity-memo',
+				);
+				useLayoutEffect(() => undefined, [value], 'hook-parity-layout');
+				return universalValue(CARD_PLAN, ['hooks', value, 'hooks-meta', noop, value]);
+			},
+		);
+		const universal = universalColumn(HookPage as never);
+		const block = blockColumn<HookProps>();
+
+		for (const props of [{ label: 'alpha' }, { label: 'beta' }, { label: 'gamma' }] as const) {
+			await universal.render(props);
+			await block.render(HookPage as never, props);
+			await flushMicrotasks();
+			expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
+		}
+		// Painted commits rank numeric identities instead of leaking allocator values;
+		// the reducer's initialized `6` is therefore the first non-zero rank.
+		expect(paint(block.main.commits).tree).toContain('gamma:#1');
+		expect(initializerCalls).toBe(2);
+	});
+
 	it('publishes keyed row layout and passive phases only after host acknowledgement', async () => {
 		const lifecycle: string[] = [];
 		interface EffectListProps {

@@ -1,5 +1,13 @@
 /** @jsxImportSource @octanejs/lynx/intrinsics */
-import { Activity, createContext, memo, useContext, useState } from 'octane';
+import {
+	Activity,
+	createContext,
+	memo,
+	useContext,
+	useLayoutEffect,
+	useMemo,
+	useReducer,
+} from 'octane';
 import type { OctaneNode } from 'octane';
 import type { UniversalRenderable } from 'octane/universal/native';
 
@@ -17,14 +25,16 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 	readonly item: BlockEligibleItem;
 	readonly onSelect: (label: string) => void;
 }) @{
-	const [taps, setTaps] = useState(0);
+	const [taps, incrementTaps] = useReducer((value: number, amount: number) => value + amount, 0);
 	const theme = useContext(BlockTheme);
+	const rowClass = useMemo(() => ['row', theme, 'taps-' + taps], [theme, taps]);
+	useLayoutEffect(() => undefined, [theme]);
 	const item = props.item;
 	const onTap = () => {
 		props.onSelect(item.label);
-		setTaps((value) => value + 1);
+		incrementTaps(1);
 	};
-	<view id={'row-' + item.id} class={['row', theme, 'taps-' + taps]}>
+	<view id={'row-' + item.id} class={rowClass}>
 		<image id={'image-' + item.id} src={item.image} mode="aspectFill" />
 		<text bindtap={onTap}>{item.label + ':' + taps as string}</text>
 	</view>

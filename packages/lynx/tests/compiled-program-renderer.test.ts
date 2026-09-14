@@ -29,6 +29,9 @@ import {
 	universalSwitch,
 	universalValue,
 	useContext,
+	useLayoutEffect,
+	useMemo,
+	useReducer,
 } from '../src/main-renderer.compiled-program.js';
 
 const WIRE: UniversalHostTemplateProgram = {
@@ -79,6 +82,30 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 		expect(node.kind).toBe('program');
 		expect(node.values).toEqual([authoredClass, 42, authoredText]);
 		expect(node.selectedValues).toEqual(['row active', '42', '']);
+	});
+
+	it('evaluates reducer initialization and memo values without publishing first-screen effects', () => {
+		const plan = universalPlan('lynx', PLAN);
+		let memoCalls = 0;
+		const App = defineUniversalComponent('lynx', () => {
+			const [count, _dispatch, getCount] = useReducer(
+				(value: number, amount: number) => value + amount,
+				3,
+				(value) => value * 2,
+			);
+			const label = useMemo(() => {
+				memoCalls++;
+				return `count:${getCount()}`;
+			}, [count]);
+			useLayoutEffect(() => {
+				throw new Error('the compact first screen must not publish layout effects');
+			}, [label]);
+			return universalValue(plan, [label, count, label]);
+		});
+
+		const result = renderLynxFirstScreen(App, {});
+		expect(result.nodes[0]?.selectedValues).toEqual(['count:6', '6', 'count:6']);
+		expect(memoCalls).toBe(1);
 	});
 
 	it('materializes only the selected if and switch branches as stable ranges', () => {
