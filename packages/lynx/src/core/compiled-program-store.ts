@@ -128,6 +128,7 @@ const enum JournalOpcode {
 }
 
 const MAX_INSTANCE_HANDLE = 2 ** 31 - 1;
+const EMPTY_PROGRAM_VALUES: readonly never[] = Object.freeze([]);
 const LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 const LYNX_COMPILED_PROGRAM_STORE_ERROR = 'Octane Lynx OL484';
@@ -794,30 +795,48 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		const run = item.instance.run;
 		const valuesAt = item.instance.index * run.plan.values.length;
-		const values = run.values.slice(valuesAt, valuesAt + run.plan.values.length);
 		const reused = cell !== undefined;
 		const reuseNotification = reused && cell!.item.handle !== item.handle;
 		if (cell === undefined) {
 			const directWorklets = workletsFor(run.plan);
+			let values: readonly unknown[] | null = null;
+			if (run.plan.values.length === 0) values = EMPTY_PROGRAM_VALUES;
+			else if (directWorklets !== null || run.create.runValueOffset !== true) {
+				values = run.values.slice(valuesAt, valuesAt + run.plan.values.length);
+				if (LYNX_PROFILE) lynxWireProfile().listProgramCellValueCopies++;
+			}
 			const preparedWorklets =
-				directWorklets?.prepareMount(run.plan, 1, values, item.instance.visible) ?? null;
-			const physicalValues = preparedWorklets?.values ?? values;
+				directWorklets?.prepareMount(run.plan, 1, values!, item.instance.visible) ?? null;
+			const physicalValues = preparedWorklets?.values ?? values ?? run.values;
+			const physicalValueOffset = values === null ? valuesAt : 0;
 			const nodes = new Array<Node | undefined>(run.stride);
-			const tokens = new Array<string | undefined>(run.plan.events.length);
-			for (let site = 0; site < run.plan.events.length; site++) {
-				const event = run.plan.events[site]!;
-				tokens[site] = item.instance.visible
-					? encodePrevalidatedLynxNativeEventToken(
-							root as number,
-							item.handle,
-							1,
-							run.listener + item.instance.index * run.plan.events.length + site,
-							event.priority,
-						)
-					: undefined;
+			let tokens: readonly (string | undefined)[] = EMPTY_PROGRAM_VALUES;
+			if (run.plan.events.length !== 0) {
+				const mutable = new Array<string | undefined>(run.plan.events.length);
+				for (let site = 0; site < run.plan.events.length; site++) {
+					const event = run.plan.events[site]!;
+					mutable[site] = item.instance.visible
+						? encodePrevalidatedLynxNativeEventToken(
+								root as number,
+								item.handle,
+								1,
+								run.listener + item.instance.index * run.plan.events.length + site,
+								event.priority,
+							)
+						: undefined;
+				}
+				tokens = mutable;
 			}
 			try {
-				run.create.run(pageId, 1, physicalValues, tokens, [], nodes);
+				run.create.run(
+					pageId,
+					1,
+					physicalValues,
+					tokens,
+					EMPTY_PROGRAM_VALUES,
+					nodes,
+					physicalValueOffset,
+				);
 				preparedWorklets?.publish(nodes, run.stride);
 				const rootNode = nodes[0];
 				if (rootNode === undefined)
@@ -860,8 +879,8 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				attachCellOwner(cell, item);
 				const set = run.create.set;
 				if (run.plan.values.length !== 0 && set === undefined) fail(StoreFailure.SlotSetter);
-				for (let slot = 0; slot < values.length; slot++) {
-					if (!writeListPhysicalSlot(item.instance, slot, values[slot]))
+				for (let slot = 0; slot < run.plan.values.length; slot++) {
+					if (!writeListPhysicalSlot(item.instance, slot, run.values[valuesAt + slot]))
 						fail(StoreFailure.SlotSetter);
 				}
 				writeCellEvents(item, item.instance.visible);

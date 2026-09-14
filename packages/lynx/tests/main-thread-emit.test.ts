@@ -32,6 +32,7 @@ import type {
 	UniversalHostBatch,
 	UniversalHostTemplateProgram,
 	UniversalHostTemplateProgramValue,
+	UniversalProgramCreate,
 } from 'octane/universal/native';
 
 import {
@@ -1761,6 +1762,37 @@ describe('Lynx main-thread program dense run driver', () => {
 			'\t\t\tout[oi + 6] = t1;',
 			'\t\t\tvi += 1; ei += 2; ri += 2; oi += 7;',
 		]);
+	});
+
+	it('reads a driver value window only when the emission advertises the offset capability', () => {
+		const papi = createHost();
+		const page = papi.createPage('0', 0);
+		const create = instantiate(
+			LIST_ITEM,
+			'createOffsetListItem',
+		)(papi) as unknown as UniversalProgramCreate;
+		const out: unknown[] = new Array(LIST_ITEM.nodes.length);
+		expect(create.runValueOffset).toBe(true);
+		create.run!(
+			papi.getUniqueId(page),
+			1,
+			['ignored-key', 'Ignored', 'actual-key', 'Actual'],
+			[],
+			[],
+			out,
+			2,
+		);
+		expect(shape(out[0] as never)).toEqual(
+			expect.objectContaining({
+				attributes: expect.objectContaining({ 'item-key': 'actual-key' }),
+			}),
+		);
+		expect(shape(out[1] as never)).toEqual(
+			expect.objectContaining({ children: [expect.objectContaining({ text: 'Actual' })] }),
+		);
+		expect(instantiate(RANGED_ROW, 'createOrdinaryRow', RANGED_ROW_SITES)(papi)).not.toHaveProperty(
+			'runValueOffset',
+		);
 	});
 
 	it('leaves the created prefix in the output table when a later PAPI write throws', () => {

@@ -261,6 +261,14 @@ the live gauge to its prior value. Attachment moves resident handles from the
 physical-cell table into the logical run, and recycling moves them back, rather
 than keeping duplicate references in both owners.
 
+Generated fixed-shape list-item resident drivers advertise a values-offset
+capability. Fresh list cells without main-thread worklet rewriting therefore
+read their row directly from the retained run table instead of allocating a
+cell-sized slice; legacy or hand-written drivers keep the zero-based ABI and
+receive the old copy. Reuse setters also read the retained table in place, and
+eventless fixed-shape rows share immutable empty event/range tables. The profile counter
+`listProgramCellValueCopies` records only the compatibility/worklet copies.
+
 A list may demand a physical cell while its logical row is retained but hidden.
 Fresh and recycled cells paint that hidden state without native event tokens,
 host-ref attachment publication, or main-thread worklet/ref activation. A later

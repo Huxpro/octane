@@ -303,7 +303,9 @@ export interface UniversalProgramCreate {
 	 * after creation, before later PAPI writes for that instance, so a caller can
 	 * retain and clean the created prefix if one of those writes throws. Nothing
 	 * is appended to a parent: the caller still attaches each instance's root,
-	 * exactly as it does per call.
+	 * exactly as it does per call. A driver advertising `runValueOffset` may read
+	 * the first instance's values at the optional `valueOffset`; drivers without
+	 * that capability retain the original zero-based table contract.
 	 */
 	readonly run?: (
 		pageId: unknown,
@@ -312,7 +314,10 @@ export interface UniversalProgramCreate {
 		events: readonly unknown[],
 		ranges: readonly unknown[],
 		out: unknown[],
+		valueOffset?: number,
 	) => void;
+	/** The driver accepts `valueOffset` without requiring a cell-scoped values copy. */
+	readonly runValueOffset?: true;
 }
 
 export interface UniversalProgramPlan {

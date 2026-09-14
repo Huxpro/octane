@@ -46,11 +46,11 @@ const lynxProductMainThreadRenderers = Object.freeze({
 // and the backend signature test forces both constants to move together.
 const DEFAULT_MAIN_THREAD_PROGRAM_BACKEND = Object.freeze({
 	request: fileURLToPath(import.meta.resolve('@octanejs/lynx/compiler')),
-	signature: 'lynx-main-thread-program/31',
+	signature: 'lynx-main-thread-program/33',
 });
 const ELEMENT_TEMPLATE_MAIN_THREAD_PROGRAM_BACKEND = Object.freeze({
 	request: fileURLToPath(import.meta.resolve('@octanejs/lynx/compiler/element-template')),
-	signature: 'lynx-main-thread-program/31+element-template/5',
+	signature: 'lynx-main-thread-program/33+element-template/5',
 });
 /**
  * What the main-thread layer compiles differently from the background one.

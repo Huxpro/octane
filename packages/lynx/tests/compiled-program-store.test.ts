@@ -68,6 +68,11 @@ const LIST_EVENT_ROW: UniversalHostTemplateProgram = {
 	events: [{ node: 0, type: 'bindtap', priority: 'discrete' }],
 };
 
+const LIST_ROW: UniversalHostTemplateProgram = {
+	...LIST_EVENT_ROW,
+	events: [],
+};
+
 function emittedPlan(
 	papi: LynxElementPAPI<FakeNode>,
 	resident?: readonly number[],
@@ -1218,6 +1223,79 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(page.children).toEqual([]);
 		expect(() => store.begin()).toThrow(/closing or closed/);
 	});
+
+	it('passes one native-list value window by offset and copies only for a legacy driver', () => {
+		const mount = (row: UniversalProgramPlan) => {
+			const papi = emittedHost(true);
+			const page = papi.createPage('0', 0);
+			const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47);
+			const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }]);
+			store.begin();
+			store.mount({
+				firstHandle: 2,
+				count: 1,
+				parent: page,
+				before: null,
+				plan: shell,
+				values: [],
+			});
+			const listNode = store.range(2, 0);
+			store.mount({
+				firstHandle: 3,
+				count: 2,
+				parent: listNode,
+				before: null,
+				plan: row,
+				values: ['item-0', 'Row 0', 'item-1', 'Row 1'],
+			});
+			store.commit();
+			return { papi, store, listNode };
+		};
+		const emitted = emittedListPlan(LIST_ROW, ['p:item-key', 'c'], [0, 1]);
+		const directCalls: Parameters<NonNullable<UniversalProgramCreate['run']>>[] = [];
+		const directPlan: UniversalProgramPlan = {
+			...emitted,
+			bind(host) {
+				const create = emitted.bind(host);
+				const run = create.run!;
+				Object.defineProperty(create, 'run', {
+					value(...args: Parameters<NonNullable<UniversalProgramCreate['run']>>) {
+						directCalls.push(args);
+						return run(...args);
+					},
+				});
+				return create;
+			},
+		};
+		const profile = lynxWireProfile();
+		const copiesBefore = profile.listProgramCellValueCopies;
+		const direct = mount(directPlan);
+		direct.papi.lists[0]!.componentAtIndex(direct.listNode, direct.listNode.uid, 1);
+		expect(direct.listNode.children[0]!.children[0]!.children[0]!.text).toBe('Row 1');
+		expect(profile.listProgramCellValueCopies).toBe(copiesBefore);
+		expect(directCalls).toHaveLength(1);
+		expect(directCalls[0]![2]).toEqual(['item-0', 'Row 0', 'item-1', 'Row 1']);
+		expect(directCalls[0]![6]).toBe(2);
+		expect(directCalls[0]![3]).toBe(directCalls[0]![4]);
+		expect(directCalls[0]![3]).toEqual([]);
+		expect(Object.isFrozen(directCalls[0]![3])).toBe(true);
+		direct.store.dispose();
+
+		const legacy: UniversalProgramPlan = {
+			...emitted,
+			bind(host) {
+				const create = emitted.bind(host);
+				Object.defineProperty(create, 'runValueOffset', { value: undefined });
+				return create;
+			},
+		};
+		const fallback = mount(legacy);
+		fallback.papi.lists[0]!.componentAtIndex(fallback.listNode, fallback.listNode.uid, 1);
+		expect(fallback.listNode.children[0]!.children[0]!.children[0]!.text).toBe('Row 1');
+		expect(profile.listProgramCellValueCopies - copiesBefore).toBe(1);
+		fallback.store.dispose();
+	});
+
 	it('keeps hidden native-list resources dormant across fresh demand, reuse, and reveal', () => {
 		const papi = emittedHost(true);
 		const page = papi.createPage('0', 0);

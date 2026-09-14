@@ -213,6 +213,8 @@ export interface LynxWireProfile {
 	listProgramCellLiveRetainedHostRefs: number;
 	/** Main: logical native-list descriptors built after a per-instance cache miss. */
 	listProgramItemDescriptorBuilds: number;
+	/** Main: cell-scoped values arrays copied for legacy drivers or worklet rewriting. */
+	listProgramCellValueCopies: number;
 	/** Main: addressed native-list cells that retained generic materialization. */
 	listProgramCellFallbacks: number;
 	/** Main: why the latest addressed native-list cell retained the generic path. */
@@ -290,6 +292,7 @@ export function lynxWireProfile(): LynxWireProfile {
 		listProgramCellReleasedHostRefs: 0,
 		listProgramCellLiveRetainedHostRefs: 0,
 		listProgramItemDescriptorBuilds: 0,
+		listProgramCellValueCopies: 0,
 		listProgramCellFallbacks: 0,
 		listProgramCellFallback: null,
 	});

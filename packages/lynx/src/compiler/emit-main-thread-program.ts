@@ -1111,6 +1111,7 @@ export function emitLynxMainThreadProgram(
 	// number of logical IDs. Keep this explicit so existing callers preserve both
 	// their source bytes and the stronger dense-run meaning by default.
 	const runDriver = denseRun || options.structuralRuns === true;
+	const runValueOffset = runDriver && program.nodes[0]!.type === 'list-item';
 	const stride = program.nodes.length + ranges.length;
 
 	const preamble = [
@@ -1164,8 +1165,8 @@ export function emitLynxMainThreadProgram(
 								// straight into `out` at this instance's offset instead of into a
 								// returned array, which is the second allocation per instance this
 								// deletes; `out` is one array the caller sizes once.
-								`\t${options.name}.run = function (pageId, count, values, events, ranges, out) {`,
-								`\t\tvar vi = 0, ei = 0, ri = 0, oi = 0;`,
+								`\t${options.name}.run = function (pageId, count, values, events, ranges, out${runValueOffset ? ', valueOffset' : ''}) {`,
+								`\t\tvar vi = ${runValueOffset ? 'valueOffset === undefined ? 0 : valueOffset' : '0'}, ei = 0, ri = 0, oi = 0;`,
 								`\t\tfor (var i = 0; i < count; i++) {`,
 								...Array.from(
 									{ length: valueCount },
@@ -1188,6 +1189,7 @@ export function emitLynxMainThreadProgram(
 								`\t\t\tvi += ${valueCount}; ei += ${program.events.length}; ri += ${ranges.length}; oi += ${stride};`,
 								`\t\t}`,
 								`\t};`,
+								...(runValueOffset ? [`\t${options.name}.runValueOffset = true;`] : []),
 							]
 						: []),
 					...setter,
