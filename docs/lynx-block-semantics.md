@@ -259,6 +259,13 @@ compaction, and the attached/pool lifetime. Rebinding a pooled cell does not
 increase any cumulative count or the live gauge; destroying that cell returns
 the live gauge to its prior value.
 
+A list may demand a physical cell while its logical row is retained but hidden.
+Fresh and recycled cells paint that hidden state without native event tokens,
+host-ref attachment publication, or main-thread worklet/ref activation. A later
+visible transaction installs those resources exactly once; hiding or recycling
+the cell disconnects them before the physical owner returns to the pool. This
+keeps demand from activating a dormant logical handle merely to clean it up.
+
 A same-machine production A/B against exact parent `887042796` attributes the
 shipping cost instead of the already-stale frozen absolute budget. Preview adds
 244 raw / 76 gzip bundle bytes (decoded MTS: 130 / 44); IFR adds 265 raw / 95

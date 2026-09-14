@@ -631,7 +631,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const owner = cell.owner;
 		if (owner === null) return;
 		deactivateInstanceWorklets(owner);
-		updateCellRefs(cell, owner, false);
+		if (owner.visible) updateCellRefs(cell, owner, false);
 		writeCellEvents(cell, cell.item, false);
 		const run = owner.run;
 		const offset = owner.index * run.stride;
@@ -695,7 +695,19 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		cell.item = item;
 		cell.owner = item.instance;
 		cell.awaitingEnqueue = false;
-		updateCellRefs(cell, item.instance, true);
+		if (item.instance.visible) updateCellRefs(cell, item.instance, true);
+	};
+	const writeListPhysicalSlot = (
+		instance: CompiledProgramInstance<Node>,
+		slot: number,
+		value: unknown,
+	): boolean => {
+		const run = instance.run;
+		const worklets = workletsFor(run.plan);
+		if (!instance.visible && worklets?.validValue(run.plan, slot, value) === true) {
+			return worklets.set(run.plan, run.nodes, instance.index * run.stride, slot, undefined);
+		}
+		return writePhysicalSlot(instance, slot, value);
 	};
 	const materializeListItem = (
 		list: CompiledProgramListState<Node>,
@@ -724,19 +736,22 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const reuseNotification = reused && cell!.item.handle !== item.handle;
 		if (cell === undefined) {
 			const directWorklets = workletsFor(run.plan);
-			const preparedWorklets = directWorklets?.prepareMount(run.plan, 1, values) ?? null;
+			const preparedWorklets =
+				directWorklets?.prepareMount(run.plan, 1, values, item.instance.visible) ?? null;
 			const physicalValues = preparedWorklets?.values ?? values;
 			const nodes = new Array<Node | undefined>(run.stride);
-			const tokens = new Array<string>(run.plan.events.length);
+			const tokens = new Array<string | undefined>(run.plan.events.length);
 			for (let site = 0; site < run.plan.events.length; site++) {
 				const event = run.plan.events[site]!;
-				tokens[site] = encodePrevalidatedLynxNativeEventToken(
-					root as number,
-					item.handle,
-					1,
-					run.listener + item.instance.index * run.plan.events.length + site,
-					event.priority,
-				);
+				tokens[site] = item.instance.visible
+					? encodePrevalidatedLynxNativeEventToken(
+							root as number,
+							item.handle,
+							1,
+							run.listener + item.instance.index * run.plan.events.length + site,
+							event.priority,
+						)
+					: undefined;
 			}
 			try {
 				run.create.run(pageId, 1, physicalValues, tokens, [], nodes);
@@ -765,7 +780,8 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			const set = run.create.set;
 			if (run.plan.values.length !== 0 && set === undefined) fail(StoreFailure.SlotSetter);
 			for (let slot = 0; slot < values.length; slot++) {
-				if (!writePhysicalSlot(item.instance, slot, values[slot])) fail(StoreFailure.SlotSetter);
+				if (!writeListPhysicalSlot(item.instance, slot, values[slot]))
+					fail(StoreFailure.SlotSetter);
 			}
 			writeCellEvents(cell, item, item.instance.visible);
 		}
@@ -1280,6 +1296,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const offset = instance.index * run.stride;
 		if (run.deferred && run.nodes[offset] === undefined) return;
 		const node = rootOf(instance);
+		const listCell = run.deferred
+			? lists?.get(instance.parent)?.attachedByHandle.get(handle)
+			: undefined;
 		const firstId = run.values[run.values.length - 2] as number;
 		const stride = run.values[run.values.length - 1] as number;
 		if (visible) papi.setAttribute(node, 'hidden', false);
@@ -1307,6 +1326,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		if (visible) activateInstanceWorklets(instance);
 		else deactivateInstanceWorklets(instance);
+		if (listCell !== undefined) updateCellRefs(listCell, instance, visible);
 		if (!visible) papi.setAttribute(node, 'hidden', true);
 	};
 	const writeVisibility = (

@@ -120,6 +120,7 @@ export interface LynxCompiledProgramWorkletStore<Node extends LynxElementRef> {
 		plan: UniversalProgramPlan,
 		count: number,
 		values: readonly unknown[],
+		active?: boolean,
 	): LynxCompiledProgramPreparedWorklets<Node> | null;
 	activateInstance(
 		plan: UniversalProgramPlan,
@@ -292,7 +293,7 @@ export function createLynxCompiledProgramWorkletStore<Node extends LynxElementRe
 			else refDescriptor(value);
 			return true;
 		},
-		prepareMount(plan, count, values) {
+		prepareMount(plan, count, values, enabled = true) {
 			const sites = sitesFor(plan);
 			if (sites === null) return null;
 			const physical = [...values];
@@ -311,10 +312,11 @@ export function createLynxCompiledProgramWorkletStore<Node extends LynxElementRe
 						const value = values[valueOffset + slot];
 						if (site.kind === 'ref') {
 							refDescriptor(value);
+							if (!enabled) physical[valueOffset + slot] = undefined;
 							continue;
 						}
 						const descriptor = eventDescriptor(value, site.name);
-						if (descriptor === null) {
+						if (!enabled || descriptor === null) {
 							physical[valueOffset + slot] = undefined;
 							continue;
 						}
@@ -344,6 +346,12 @@ export function createLynxCompiledProgramWorkletStore<Node extends LynxElementRe
 				publish(nodes: readonly (Node | undefined)[], stride: number) {
 					if (published || aborted) fail('mount worklets were already settled');
 					published = true;
+					if (!enabled) {
+						publicationComplete = true;
+						publishedNodes = nodes;
+						publishedStride = stride;
+						return;
+					}
 					let eventIndex = 0;
 					try {
 						for (let row = 0; row < count; row++) {

@@ -1145,18 +1145,28 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(page.children).toEqual([]);
 		expect(() => store.begin()).toThrow(/closing or closed/);
 	});
-	it('declares native-list rows lazily, rebinds one physical cell, and rejects stale callbacks', () => {
+	it('keeps hidden native-list resources dormant across fresh demand, reuse, and reveal', () => {
 		const papi = emittedHost(true);
 		const page = papi.createPage('0', 0);
-		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47);
-		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }], [0, 1]);
-		const row = emittedListPlan(
-			LIST_EVENT_ROW,
-			['p:item-key', 'c', 'e:bindtap'],
-			[0, 1],
-			[],
-			[0, 2],
+		const attachments: { id: number; attached: boolean }[] = [];
+		const store = createLynxCompiledProgramStore(
+			papi,
+			papi.getUniqueId(page),
+			47,
+			1,
+			undefined,
+			undefined,
+			(changes) => {
+				for (const change of changes) {
+					attachments.push({ id: change.id, attached: change.attached });
+				}
+			},
 		);
+		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }], [0, 1]);
+		const row: UniversalProgramPlan = {
+			...emittedListPlan(LIST_EVENT_ROW, ['p:item-key', 'c', 'e:bindtap'], [0, 1], [], [0, 2]),
+			refs: [0],
+		};
 
 		store.begin();
 		store.mount({
@@ -1176,6 +1186,9 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 			plan: row,
 			values: ['item-0', 'Row 0', 'item-1', 'Row 1', 'item-2', 'Row 2'],
 		});
+		store.refs(3, 100, 3);
+		expect(store.visibility(3, false)).toBe(true);
+		expect(store.visibility(4, false)).toBe(true);
 		store.commit();
 		const profile = lynxWireProfile();
 		const cellsBefore = {
@@ -1199,6 +1212,8 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		const firstSign = nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 0, 11);
 		const cell = nativeList.node.children[0]!;
 		expect(cell.children[0]!.children[0]!.text).toBe('Row 0');
+		expect(cell.events.has('bindEvent:tap')).toBe(false);
+		expect(attachments).toEqual([]);
 		expect({
 			runs: profile.listProgramCellRuns - cellsBefore.runs,
 			hosts: profile.listProgramCellHosts - cellsBefore.hosts,
@@ -1206,7 +1221,13 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 			released: profile.listProgramCellReleasedHostRefs - cellsBefore.released,
 			live: profile.listProgramCellLiveRetainedHostRefs - cellsBefore.live,
 		}).toEqual({ runs: 1, hosts: 3, retained: 2, released: 1, live: 2 });
+		store.begin();
+		expect(store.visibility(3, true)).toBe(true);
+		store.commit();
+		expect(cell.events.has('bindEvent:tap')).toBe(true);
+		expect(attachments).toEqual([{ id: 100, attached: true }]);
 		nativeList.enqueueComponent(nativeList.node, nativeList.node.uid, firstSign);
+		expect(attachments.at(-1)).toEqual({ id: 100, attached: false });
 		expect(profile.listProgramCellLiveRetainedHostRefs - cellsBefore.live).toBe(2);
 		const secondSign = nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 1, 12);
 		expect(secondSign).toBe(firstSign);
@@ -1214,6 +1235,13 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(profile.listProgramCellLiveRetainedHostRefs - cellsBefore.live).toBe(2);
 		expect(nativeList.node.children[0]).toBe(cell);
 		expect(cell.children[0]!.children[0]!.text).toBe('Row 1');
+		expect(cell.events.has('bindEvent:tap')).toBe(false);
+		expect(attachments).toHaveLength(2);
+
+		store.begin();
+		expect(store.visibility(4, true)).toBe(true);
+		store.commit();
+		expect(attachments.at(-1)).toEqual({ id: 103, attached: true });
 		expect(decodeLynxNativeEventToken(cell.events.get('bindEvent:tap'))).toMatchObject({
 			root: 47,
 			id: 4,
@@ -1230,6 +1258,7 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		store.remove(4);
 		store.commit();
 		expect(nativeList.node.children).toEqual([]);
+		expect(attachments.at(-1)).toEqual({ id: 103, attached: false });
 		expect(profile.listProgramCellLiveRetainedHostRefs).toBe(cellsBefore.live);
 		const replacementSign = nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 0);
 		expect(replacementSign).not.toBe(firstSign);

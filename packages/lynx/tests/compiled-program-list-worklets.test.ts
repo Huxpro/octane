@@ -156,12 +156,22 @@ describe.sequential('@octanejs/lynx compact native-list worklets', () => {
 				plan: row,
 				values: ['first', 'First', first, firstRef, 'second', 'Second', second, secondRef],
 			});
+			expect(store.visibility(3, false)).toBe(true);
+			expect(store.visibility(4, false)).toBe(true);
 			store.commit();
 			papi.flush(page);
 
 			const list = (page as unknown as Element).querySelector('#feed')!;
+			const activationsBeforeFirstDemand = activations.length;
+			const firstRefBeforeDemand = firstCell.current;
 			const firstSign = globalThis.elementTree.enterListItemAtIndex(list as never, 0);
 			const physicalCell = list.firstElementChild!;
+			expect(activations).toHaveLength(activationsBeforeFirstDemand);
+			expect(firstCell.current).toBe(firstRefBeforeDemand);
+
+			store.begin();
+			expect(store.visibility(3, true)).toBe(true);
+			store.commit();
 			const firstActive = activations.at(-1)!;
 			expect(registry.runWorklet(firstActive)).toBe('first');
 			expect(firstCell.current).toBe(physicalCell);
@@ -169,10 +179,18 @@ describe.sequential('@octanejs/lynx compact native-list worklets', () => {
 			globalThis.elementTree.leaveListItem(list as never, firstSign);
 			expect(firstCell.current).toBeNull();
 			expect(() => registry.runWorklet(firstActive)).toThrow(/stale or foreign/);
+			const activationsBeforeHiddenDemand = activations.length;
+			const secondRefBeforeDemand = secondCell.current;
 			const secondSign = globalThis.elementTree.enterListItemAtIndex(list as never, 1);
-			const secondActive = activations.at(-1)!;
 			expect(secondSign).toBe(firstSign);
 			expect(list.firstElementChild).toBe(physicalCell);
+			expect(activations).toHaveLength(activationsBeforeHiddenDemand);
+			expect(secondCell.current).toBe(secondRefBeforeDemand);
+
+			store.begin();
+			expect(store.visibility(4, true)).toBe(true);
+			store.commit();
+			const secondActive = activations.at(-1)!;
 			expect(registry.runWorklet(secondActive)).toBe('second');
 			expect(secondCell.current).toBe(physicalCell);
 
