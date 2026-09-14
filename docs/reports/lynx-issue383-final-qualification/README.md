@@ -1,0 +1,192 @@
+# Lynx R11 final qualification: NO-GO
+
+This is the release decision for roadmap issue #383 and the final-candidate
+handoff from #382. The decision is **NO-GO**: do not switch the Lynx default and
+do not remove the Universal compatibility path. The Android candidate has a
+large-batch creation regression, the Native list lane produced no valid sample,
+and the required iOS, AB/BA tail-latency, memory/GC, low-end no-JIT, and device
+bytecode evidence is absent. These are release blockers, not documentation-only
+follow-ups.
+
+The existing whole-entry product selection and fail-closed Universal fallback
+therefore remain unchanged. No post-switch build or old-path retirement was run
+because the pre-switch gate failed.
+
+## Frozen cohort
+
+The cohort was last checked against the live remotes at 2026-09-14 01:28:07
+UTC. Both upstream and the peer source still matched the commits used by the
+artifacts.
+
+| Role | Source | Commit |
+| --- | --- | --- |
+| R11 release candidate | `Huxpro/octane`, this branch | `b62a642a187298fee10a22329dfe906966efd8f7` |
+| Published `new-lynx` tip at qualification | `Huxpro/octane:new-lynx` | `7a523bf20d04578c39fe0b5fe532cdef6dab3e9e` |
+| Latest upstream comparator | `octanejs/octane:main` | `8e5ca22a6e17582b4293232406a2c0420509f4a4` |
+| ReactLynx/VueLynx comparator source | `Huxpro/vue-lynx:feat/unified-benchmark-framework-ui` | `0da216caf3b474347423a8cd694d5449fa4e4215` |
+| Benchmark runner base | `Huxpro/lynx-js-framework-benchmark` PR 66 checkout | `429c9f958ed32157078c2297300a1911df796589` |
+
+The runner checkout changed only the frozen campaign label, candidate pin, and
+upstream pin (plus the matching contract assertions); the binary diff SHA-256
+is `1b4d2618bc9e36cf001ee7329ed261a4751e57a69a95d4f43102c22347bce3ef`.
+The result receipts independently hash the adapter, runner sources, manifests,
+and every served bundle, so generated-artifact identity does not rely on this
+description.
+
+The formal Native cohort contains eight entries: candidate, latest upstream,
+ReactLynx default, ReactLynx + Element Template, Vue Vapor default, Vue Vapor +
+IFR, Vue VDOM default, and Vue VDOM + IFR + Element Template. M3 entries were
+kept as archive-only inputs and were not mixed into the scorecard.
+
+## Device and input receipt
+
+The Android run used one leased ByteDance `aries_10` device on Android 10, eight
+cores, through the direct DevTool transport. Raw ADB serials do not cross the
+evidence boundary; the stable serial digest is
+`692a7527b3d158f8057196b819af64e93d4af1ead4a1ff5ab0e46f8e60fbdd60`.
+All observed battery-temperature readings were 35 C and thermal status remained
+0.
+
+The installed official Lynx Explorer 4.1.0 APK was 173,293,606 bytes with
+SHA-256 `6ae29787a2166974c29c2f23d87f3b20a137abcf9a8c17903ad19f3fb7f00cb6`.
+The connector receipt freezes `@byted/agent-lynx@0.14.12`,
+`@byted-lynx/devtool-connector@0.15.5`, and
+`@byted-lynx/bdc-client@0.4.5`; its combined package-tree SHA-256 is
+`aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199`.
+
+Table/startup campaign ID `3afdd19acf016876` used device cohort
+`b04046c85d4128a8`, matrix contract
+`08d23cf1ab5940bd8a96b7e927850484e1be481d5e9dafd18a0ad3d5d10da3d8`,
+and input receipt
+`31529ef9edc32df4db35eed6a3b3e66aacafc5326e0859bcff59805669378fab`.
+Native-list campaign ID `e6b1359942e543f9` used device cohort
+`31f9f55f4cd4d82c`. Lease handoffs retained the same serial digest and were
+validated against the full device cohort before resume.
+
+## Android table and startup result
+
+The uninstrumented production run covered 184/184 declared records: 105
+measured, 56 DNF, and 23 capability-unsupported. The result is a complete
+checkpoint. Table cells used five repetitions; startup cells used three. Native
+table interactions were triggered by actual device taps and measured from the
+native input handler to the second native frame, with semantic pre/post-state
+checks.
+
+The creation result alone blocks the default switch:
+
+| Entry | 1k | 3k | 5k | 10k | 20k | 30k |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Octane candidate | 830 | 3,471 | 7,657 | DNF | DNF | DNF |
+| ReactLynx default | 140 | 390 | 671 | 1,332 | 2,692 | 4,219 |
+| ReactLynx + ET | 209 | 557 | 879 | 1,869 | 3,727 | 5,681 |
+| Vue Vapor default | 320 | 932 | 1,501 | 3,360 | 6,405 | 9,952 |
+| Vue Vapor + IFR | 315 | 980 | 1,597 | 3,466 | 6,756 | 10,482 |
+| Vue VDOM default | 299 | 935 | 1,578 | 3,232 | 5,961 | 9,456 |
+| Vue VDOM + IFR + ET | 317 | 947 | 1,540 | 3,148 | 6,014 | 9,139 |
+
+Values are median milliseconds, not a formal AB/BA aggregate. The candidate is
+already 5.9x slower than ReactLynx default at 1k, 11.4x slower at 5k, and 5/5
+attempts at each of 10k, 20k, and 30k exceeded the 240-second operation timeout.
+Every peer completed all five creation attempts at all six scales. This is a
+candidate large-batch creation/scaling failure even though the run is too small
+to satisfy the final confidence-interval gate.
+
+The candidate did complete the 1k follow-up actions: replace 987 ms, append-1k
+1,424 ms, update-every-tenth 49 ms, select 30 ms, swap 43 ms, and remove 43 ms.
+Its rows-0 startup medians were 110 ms to compact transport acknowledgement and
+134 ms to the second frame; rows-1k was 936/969 ms. Rows-10k and rows-30k
+startup were DNF. These smaller successes do not offset the required creation
+cells.
+
+The latest upstream build intentionally had no patched
+`lynx-native-bench-v2` producer, so all 23 of its records were classified as
+capability-unsupported rather than silently compared. At 10k, steady-operation
+cells for the candidate and all peers were also lost to initialization or
+DevTool transport failures; 30k startup failed across the runnable peers. The
+result recorded 16 recovered transport disconnects before the remaining DNF
+cells. Those lane-wide failures are measurement limitations, not evidence that
+the frameworks tie.
+
+## Native-list result
+
+The runner visited all 32 Native execution cells (four per entry: startup at 1k
+and 10k, recycle at 10k, and fling at 10k), 20 repetitions each. All 640
+physical attempts failed, so all 80 emitted metric records have `n=0` and
+`dnfCount=20`. The coverage assertion correctly exited non-zero with 32 failed
+Native cells and left `checkpointComplete=false`; this means “fully visited but
+failed qualification,” not an interrupted successful campaign. The additional
+32 Web cells in the coverage contract are `unscheduled` because this was a
+Native-only run; Web is not used to fill Native evidence.
+
+Failure ownership is deliberately separated:
+
+- Candidate: 60 attempts found no Native list viewport; 20 found a visible cell
+  with an undefined `item-key`.
+- Latest upstream: 37 attempts found no viewport and 43 timed out enabling the
+  CDP runtime.
+- Both ReactLynx variants: each had 56 undefined-`item-key` failures and 24 CDP
+  runtime-enable timeouts.
+- The four Vue variants lost the DevTool channel after the first Vue capture;
+  their remaining attempts failed opening the page.
+
+Because an undefined stable key reproduces outside Octane and the transport
+subsequently closes across the Vue entries, the list lane is not a valid
+cross-framework performance comparison. It also cannot establish candidate
+list correctness, recycling, fling smoothness, or wire cost. A repaired
+fixture/observer and stable DevTool lifecycle are prerequisites for a rerun.
+
+## Release-gate disposition
+
+| Gate inherited from #290/#291/#383 | Result | Evidence or gap |
+| --- | --- | --- |
+| Android output, identity, events/effects, real input | **Partial / fail** | Smaller table cells passed semantic state checks and native taps; large creation, high-scale startup, and all list cells failed. |
+| Latest upstream strict win, weighted geometric mean, CI upper bound `< 1.0` | **Inconclusive / fail** | Upstream lacks the Native producer; no valid full scorecard exists. |
+| Peer strict win and per-cell non-inferiority CI upper bound `<= 1.05` | **Fail** | Candidate creation is materially slower and becomes DNF at 10k while every peer completes. |
+| At least 10 independent AB/BA pairs | **Missing** | The diagnostic Native matrix used 5 table and 3 startup repetitions; it is not relabeled as formal AB/BA. |
+| Ready/first-tap/steady p95 from at least 100 valid interactions | **Missing** | No cell has the required 100 valid samples; list has none. |
+| Peak/settled/after-clear heap and 20 create-clear-recreate GC cycles | **Missing** | No current-candidate Native memory campaign was completed. |
+| Native list reuse, recycle, fling, and stable identity | **Fail** | 640/640 Native attempts DNF across the lane. |
+| Android no-JIT and retained low-end device | **Missing** | The Android 10 cohort is recorded, but a no-JIT policy and a separate retained low-end lane were not established. |
+| iOS correctness/performance, separately reported | **Externally blocked** | Qualification host is Linux x86_64 and has no `xcrun`/Simulator or leased iOS device. Android cannot substitute. |
+| Native bytecode/chunk-load and bundle budget | **Incomplete** | R10 records source/encoded/gzip/Brotli inventories; device VM bytecode and native chunk-load latency remain unmeasured. |
+| Framework self-time near the platform floor | **Missing** | No current-candidate phase-ablation/profile campaign attributes the critical path. |
+| Default build rerun and old-path retirement | **Not attempted** | Preconditions failed; changing the default would violate the release contract. |
+
+Historical #291/M4 and earlier Web/profile reports remain useful diagnostic
+context, but a new release-candidate head and a newer upstream commit invalidate
+them as final qualification. They are not counted as R11 passes.
+
+## Evidence
+
+- [`android-native-table-startup.json`](evidence/android-native-table-startup.json)
+  is the 184-record table/startup result; SHA-256
+  `85ee045fd06f8ffc061f2c23a1e3ddf93ea6b889245d77a4341e07a7d110fbb1`.
+- [`android-native-list.json`](evidence/android-native-list.json) is the failed
+  80-record list result; SHA-256
+  `c4e2065aa51ff629d4c0860b3100ad5dbadbf24e1fe3be1d947f7b4d106d6a89`.
+- [`../lynx-issue382-release-candidate/README.md`](../lynx-issue382-release-candidate/README.md)
+  records the source/build, external-consumer, semantic, graph-retention, and
+  bundle inventory qualification inherited from R10.
+
+Both raw result files retain DNF records, per-repetition failures, served bundle
+hashes, source/manifests receipts, device/thermal metadata, lease-chain hashes,
+and exact runner arguments. They contain only the one-way serial digest, not the
+raw leased serial.
+
+## Upstream alignment and remaining owner work
+
+Upstream issue octanejs/octane#1055 was still open at the final remote check.
+The shared compiler IR, independent two-thread lowering, versioned paired ABI,
+attempt/acceptance boundary, and whole-root selection described in the R10
+report remain suitable upstream seams. This branch additionally retains its
+resident compact program, native list/resource ownership, and fail-closed
+Universal fallback. No upstream acceptance or merge is claimed.
+
+The next framework-owned investigation is the candidate's superlinear Native
+creation path between 1k and 10k. It needs an uninstrumented reproduction plus a
+separate profile/phase ablation before another optimization is selected. In
+parallel, the benchmark owner must restore stable list viewport/key observation
+and recover the DevTool connector between entries. Only a new exact-head
+Android no-JIT/low-end and iOS campaign satisfying the registered AB/BA,
+tail-latency, memory/GC, bytecode, and list gates can reopen the default-switch
+decision. Until then, #383 and the performance objective in #291 remain open.
