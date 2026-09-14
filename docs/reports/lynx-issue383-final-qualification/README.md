@@ -14,7 +14,7 @@ because the pre-switch gate failed.
 
 ## Frozen cohort
 
-The cohort was last checked against the live remotes at 2026-09-14 01:28:07
+The cohort was last checked against the live remotes at 2026-09-14 02:55:01
 UTC. Both upstream and the peer source still matched the commits used by the
 artifacts.
 
@@ -255,6 +255,68 @@ is the exact six-cell partial diagnostic; SHA-256
 It contains the production baseline and all control samples, bundle/input
 receipts, thermal readings, and only a one-way serial digest. It remains
 `checkpointComplete=false` and is not a publishable benchmark campaign.
+
+## Element Template feasibility boundary
+
+The SDK-supported compile-time boundary was checked against the latest
+`lynx-family/lynx-stack` source at commit
+[`2b837edbf640587be59211ad146a764a1703851b`](https://github.com/lynx-family/lynx-stack/tree/2b837edbf640587be59211ad146a764a1703851b)
+and the official
+[`experimental_useElementTemplate`](https://lynx.bytedance.net/3.8/api/rspeedy/react-rsbuild-plugin.pluginreactlynxoptions.experimental_useelementtemplate.html)
+option. The public option only enables the feature. The source establishes the
+actual contract used for this architecture decision:
+
+- The transform emits per-module template records with a `templateId` and a
+  compiled tree. Static attributes remain in that tree, while dynamic
+  attributes/events and structural children become indexed attribute and child
+  slots. The webpack plugin collects and collision-checks these records, sets
+  `enableUnifyFixedBehavior`, and writes them to `encodeData.elementTemplate`
+  before Lynx encoding. See the
+  [template lowering](https://github.com/lynx-family/lynx-stack/blob/2b837edbf640587be59211ad146a764a1703851b/packages/react/transform/crates/swc_plugin_element_template/template_definition.rs)
+  and
+  [encoder handoff](https://github.com/lynx-family/lynx-stack/blob/2b837edbf640587be59211ad146a764a1703851b/packages/webpack/react-webpack-plugin/src/ReactWebpackPlugin.ts).
+- Native instances are created and updated with the Element Template API,
+  including `__CreateElementTemplate`, `__SetAttributeOfElementTemplate`, and
+  `__InsertNodeToElementTemplate`. Even the page is created as a typed template
+  and receives roots through child slot zero. See the
+  [runtime API types](https://github.com/lynx-family/lynx-stack/blob/2b837edbf640587be59211ad146a764a1703851b/packages/react/runtime/src/element-template/types.d.ts)
+  and
+  [page setup](https://github.com/lynx-family/lynx-stack/blob/2b837edbf640587be59211ad146a764a1703851b/packages/react/runtime/src/element-template/runtime/page/page.ts)
+  plus
+  [root insertion](https://github.com/lynx-family/lynx-stack/blob/2b837edbf640587be59211ad146a764a1703851b/packages/react/runtime/src/element-template/runtime/render/render-main-thread.ts).
+- The official types intentionally make `ElementTemplateHandle` and ordinary
+  `ElementRef` mutually unassignable. This rules out inserting a templated row
+  into Octane's current ordinary-element page through the existing
+  `insertBefore` store path. A partial emitter swap would cross an explicit SDK
+  ownership boundary rather than provide a safe batch primitive.
+
+Octane's Rspeedy application already owns one `LynxTemplatePlugin` instance per
+authored entry, so it has a suitable future encoder hook. The missing work is
+not access to that hook; it is a separately selectable **whole-root Element
+Template backend**. Such a backend must keep every parent, root, and structural
+child in the template-handle domain; lower compiled-program values, delegated
+event tokens, refs, and ranges to stable attribute/child slots; use a typed
+template page; and define independent adoption, rollback, removal, native-list,
+serialization, and first-screen behavior. The current positive compact-program
+handle space also cannot be reused as the native template UID until collision,
+page ownership, and lifecycle rules are proven on device.
+
+No partial Element Template code is retained from this investigation. Before a
+whole-root backend can enter another device A/B, it must satisfy all of these
+fail-closed preconditions:
+
+1. Production encoding contains the expected template metadata and the decoded
+   source/encoder receipt pins the SDK/toolchain contract.
+2. Static trees, dynamic values, delegated native events, refs, keyed ranges,
+   fragments, portals, native typed elements/lists, and teardown/rollback each
+   pass main/background semantic tests without converting template handles to
+   ordinary element refs.
+3. First-screen serialization or hydration has an explicit template-native
+   implementation; unsupported entries reject specialization before build
+   selection and retain the Universal fallback.
+4. A real Android semantic smoke test proves page/root insertion, updates,
+   event dispatch, stable identity, and cleanup before any timing sample is
+   accepted. The full Android/iOS qualification gates below still apply.
 
 ## Upstream alignment and remaining owner work
 
