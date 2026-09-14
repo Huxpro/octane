@@ -257,7 +257,9 @@ rows do not own native hosts. `listProgramCellHosts`,
 `listProgramCellLiveRetainedHostRefs` count fresh cell materialization, resident
 compaction, and the attached/pool lifetime. Rebinding a pooled cell does not
 increase any cumulative count or the live gauge; destroying that cell returns
-the live gauge to its prior value.
+the live gauge to its prior value. Attachment moves resident handles from the
+physical-cell table into the logical run, and recycling moves them back, rather
+than keeping duplicate references in both owners.
 
 A list may demand a physical cell while its logical row is retained but hidden.
 Fresh and recycled cells paint that hidden state without native event tokens,

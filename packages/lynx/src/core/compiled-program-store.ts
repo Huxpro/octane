@@ -375,6 +375,28 @@ function compactResidentNodes<Node extends LynxElementRef>(
 	return compact;
 }
 
+function transferResidentNodes<Node extends LynxElementRef>(
+	plan: UniversalProgramPlan,
+	stride: number,
+	source: (Node | undefined)[],
+	sourceOffset: number,
+	target: (Node | undefined)[],
+	targetOffset: number,
+): void {
+	const resident = plan.resident;
+	if (resident === undefined) {
+		for (let index = 0; index < stride; index++) {
+			target[targetOffset + index] = source[sourceOffset + index];
+			source[sourceOffset + index] = undefined;
+		}
+		return;
+	}
+	for (const index of resident) {
+		target[targetOffset + index] = source[sourceOffset + index];
+		source[sourceOffset + index] = undefined;
+	}
+}
+
 function cleanupRoot<Node extends LynxElementRef>(
 	papi: LynxElementPAPI<Node>,
 	root: Node | undefined,
@@ -523,16 +545,13 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'ref run is not linked');
 		return run.refFirstId + index * run.refStride + node;
 	};
-	const updateCellRefs = (
-		cell: CompiledProgramListCell<Node>,
-		instance: CompiledProgramInstance<Node>,
-		attached: boolean,
-	): void => {
+	const updateCellRefs = (instance: CompiledProgramInstance<Node>, attached: boolean): void => {
 		const refs = instance.run.plan.refs;
 		if (refs === undefined || instance.run.refFirstId === null) return;
 		const changes: LynxHostAttachmentChange[] = [];
+		const offset = instance.index * instance.run.stride;
 		for (const node of refs) {
-			const physical = cell.nodes[node];
+			const physical = instance.run.nodes[offset + node];
 			if (physical === undefined)
 				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'lost a ref-bearing list node');
 			const id = refId(instance.run, instance.index, node);
@@ -605,13 +624,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const list = lists?.get(parent);
 		if (list !== undefined) (dirtyLists ??= new Set()).add(list);
 	};
-	const writeCellEvents = (
-		cell: CompiledProgramListCell<Node>,
-		item: CompiledProgramListItem<Node>,
-		visible: boolean,
-	): void => {
+	const writeCellEvents = (item: CompiledProgramListItem<Node>, visible: boolean): void => {
 		const run = item.instance.run;
 		const set = run.create.set;
+		const offset = item.instance.index * run.stride;
 		if (run.plan.events.length !== 0 && set === undefined) fail(StoreFailure.SlotSetter);
 		for (let site = 0; site < run.plan.events.length; site++) {
 			const event = run.plan.events[site]!;
@@ -624,22 +640,18 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 						event.priority,
 					)
 				: undefined;
-			if (!set!(cell.nodes, ~site, value, 0)) fail(StoreFailure.SlotSetter);
+			if (!set!(run.nodes, ~site, value, offset)) fail(StoreFailure.SlotSetter);
 		}
 	};
 	const clearCellOwner = (cell: CompiledProgramListCell<Node>): void => {
 		const owner = cell.owner;
 		if (owner === null) return;
 		deactivateInstanceWorklets(owner);
-		if (owner.visible) updateCellRefs(cell, owner, false);
-		writeCellEvents(cell, cell.item, false);
+		if (owner.visible) updateCellRefs(owner, false);
+		writeCellEvents(cell.item, false);
 		const run = owner.run;
 		const offset = owner.index * run.stride;
-		if (run.plan.resident === undefined) {
-			for (let index = 0; index < run.stride; index++) run.nodes[offset + index] = undefined;
-		} else {
-			for (const index of run.plan.resident) run.nodes[offset + index] = undefined;
-		}
+		transferResidentNodes(run.plan, run.stride, run.nodes, offset, cell.nodes, 0);
 		cell.owner = null;
 	};
 	const destroyListCell = (
@@ -686,17 +698,14 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	): void => {
 		const run = item.instance.run;
 		const offset = item.instance.index * run.stride;
-		if (run.plan.resident === undefined) {
-			for (let index = 0; index < run.stride; index++)
-				run.nodes[offset + index] = cell.nodes[index];
-		} else {
-			for (const index of run.plan.resident) run.nodes[offset + index] = cell.nodes[index];
-		}
+		transferResidentNodes(run.plan, run.stride, cell.nodes, 0, run.nodes, offset);
 		cell.item = item;
 		cell.owner = item.instance;
 		cell.awaitingEnqueue = false;
-		if (item.instance.visible) updateCellRefs(cell, item.instance, true);
+		if (item.instance.visible) updateCellRefs(item.instance, true);
 	};
+	const rootOfCell = (cell: CompiledProgramListCell<Node>): Node =>
+		cell.owner === null ? cell.nodes[0]! : rootOf(cell.owner);
 	const writeListPhysicalSlot = (
 		instance: CompiledProgramInstance<Node>,
 		slot: number,
@@ -783,11 +792,11 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				if (!writeListPhysicalSlot(item.instance, slot, values[slot]))
 					fail(StoreFailure.SlotSetter);
 			}
-			writeCellEvents(cell, item, item.instance.visible);
+			writeCellEvents(item, item.instance.visible);
 		}
 		if (cell.owner === null) attachCellOwner(cell, item);
-		if (!item.instance.visible) papi.setAttribute(cell.nodes[0]!, 'hidden', true);
-		else if (reused) papi.setAttribute(cell.nodes[0]!, 'hidden', false);
+		if (!item.instance.visible) papi.setAttribute(rootOfCell(cell), 'hidden', true);
+		else if (reused) papi.setAttribute(rootOfCell(cell), 'hidden', false);
 		list.attachedByHandle.set(item.handle, cell);
 		return { cell, reuseNotification };
 	};
@@ -821,7 +830,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			invokeListCallback(-1, () => {
 				if (state === undefined || state.disposed) return -1;
 				const result = materializeListItem(state, index);
-				papi.flush(result.cell.nodes[0]!, {
+				papi.flush(rootOfCell(result.cell), {
 					triggerLayout: true,
 					...(operationId === undefined ? null : { operationID: operationId }),
 					elementID: result.cell.sign,
@@ -864,7 +873,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				const results = indexes.map((index) => materializeListItem(state!, index));
 				if (asyncFlush) {
 					for (const result of results) {
-						papi.flush(result.cell.nodes[0]!, {
+						papi.flush(rootOfCell(result.cell), {
 							asyncFlush: true,
 							...(result.reuseNotification && enableReuseNotification
 								? {
@@ -1326,7 +1335,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		if (visible) activateInstanceWorklets(instance);
 		else deactivateInstanceWorklets(instance);
-		if (listCell !== undefined) updateCellRefs(listCell, instance, visible);
+		if (listCell !== undefined) updateCellRefs(instance, visible);
 		if (!visible) papi.setAttribute(node, 'hidden', true);
 	};
 	const writeVisibility = (
