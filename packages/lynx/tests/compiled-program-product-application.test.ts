@@ -45,7 +45,7 @@ const SOURCE = readFileSync(
 	fileURLToPath(new URL('./_fixtures/compiled-program-product.lynx.tsrx', import.meta.url)),
 	'utf8',
 );
-const EXPORT_NAMES = ['CompiledProgramProductFixture'] as const;
+const EXPORT_NAMES = ['CompiledProgramProductFixture', 'CompiledProgramNativeListFixture'] as const;
 
 interface ProductRow {
 	readonly id: number;
@@ -60,8 +60,19 @@ interface ProductProps {
 	readonly onRowTap: (id: number, previousTaps: number) => void;
 }
 
+interface NativeListRow {
+	readonly id: string;
+	readonly label: string;
+}
+
+interface NativeListProps {
+	readonly rows: readonly NativeListRow[];
+	readonly onRowTap: (id: string, previousTaps: number) => void;
+}
+
 interface ProductLayer {
 	readonly CompiledProgramProductFixture: UniversalComponent<ProductProps>;
+	readonly CompiledProgramNativeListFixture: UniversalComponent<NativeListProps>;
 }
 
 interface CompiledProductLayers {
@@ -136,10 +147,10 @@ async function compileProductLayers(): Promise<CompiledProductLayers> {
 	expect(
 		backgroundResult.mainThreadProgramCoverage,
 		`background compile:\n${backgroundResult.code}`,
-	).toEqual({ total: 2, addressed: 2 });
+	).toEqual({ total: 4, addressed: 4 });
 	expect(mainResult.mainThreadProgramCoverage, `main compile:\n${mainResult.code}`).toEqual({
-		total: 2,
-		addressed: 2,
+		total: 4,
+		addressed: 4,
 	});
 	const backgroundCode = backgroundResult.code;
 	const mainCode = mainResult.code;
@@ -388,6 +399,130 @@ describe.sequential('@octanejs/lynx ordinary compiled-program product applicatio
 		row1!.dispatchEvent(late);
 		for (let turn = 0; turn < 8; turn++) await Promise.resolve();
 		expect(taps).toEqual(['1:0', '1:1']);
+		expect(diagnostics).toEqual([]);
+	});
+
+	it('keeps authored native-list state and event ownership across physical cell reuse', async () => {
+		const layers = await compileProductLayers();
+		expect(layers.backgroundCode).toContain('"type": "list"');
+		expect(layers.backgroundCode).toContain('"type": "list-item"');
+		expect(layers.mainCode).toContain('papi.createElement("list", pageId');
+		expect(layers.mainCode).toContain('papi.createElement("list-item", pageId');
+
+		dom = new JSDOM('<!doctype html><html><body></body></html>');
+		installLynxTestingEnv(globalThis, {
+			window: dom.window as unknown as Window & typeof globalThis,
+		});
+		globalThis.lynxTestingEnv.switchToMainThread();
+		const diagnostics: Error[] = [];
+		application = installLynxCompiledProgramApplicationMainThread({
+			firstScreen: true,
+			pageReady: true,
+			onDiagnostic: (error) => diagnostics.push(error),
+		});
+		const paintedRows: readonly NativeListRow[] = [
+			{ id: 'alpha', label: 'Painted Alpha' },
+			{ id: 'bravo', label: 'Painted Bravo' },
+			{ id: 'charlie', label: 'Painted Charlie' },
+		];
+		const firstScreen = firstScreenRoot.render(layers.main.CompiledProgramNativeListFixture, {
+			rows: paintedRows,
+			onRowTap() {},
+		});
+		markFirstScreenSyncReady();
+		// Compact native-list IFR is deliberately deferred: rows are logical records
+		// materialized by Lynx callbacks, not eager first-screen elements. The authored
+		// main layer is still accepted and the background owns the first physical list.
+		expect(firstScreen).not.toBeNull();
+		expect(dom.window.document.querySelector('#compiled-product-list')).toBeNull();
+
+		globalThis.lynxTestingEnv.switchToBackgroundThread();
+		const taps: string[] = [];
+		const rows: readonly NativeListRow[] = [
+			{ id: 'alpha', label: 'Alpha' },
+			{ id: 'bravo', label: 'Bravo' },
+			{ id: 'charlie', label: 'Charlie' },
+		];
+		backgroundRoot = createLynxRoot({
+			onDiagnostic: (error) => diagnostics.push(error),
+		});
+		await backgroundRoot.ready;
+		const adopted = await backgroundRoot.render(
+			layers.background.CompiledProgramNativeListFixture,
+			{
+				rows,
+				onRowTap: (id, previous) => taps.push(`${id}:${previous}`),
+			},
+		);
+		await settle();
+		expect(directOperations(adopted).some((operation) => operation.op === 'run')).toBe(true);
+		const list = dom.window.document.querySelector('#compiled-product-list');
+		expect(list).not.toBeNull();
+		expect(list!.children).toHaveLength(0);
+
+		globalThis.lynxTestingEnv.switchToMainThread();
+		const alphaSign = globalThis.elementTree.enterListItemAtIndex(list as never, 0);
+		const physicalCell = list!.firstElementChild;
+		expect(alphaSign).toBeGreaterThanOrEqual(0);
+		expect(physicalCell).not.toBeNull();
+		expect(physicalCell!.textContent).toBe('Alpha:0');
+		tap('#native-row-alpha');
+
+		globalThis.lynxTestingEnv.switchToBackgroundThread();
+		await settle();
+		expect(taps).toEqual(['alpha:0']);
+		expect(physicalCell!.textContent).toBe('Alpha:1');
+
+		globalThis.lynxTestingEnv.switchToMainThread();
+		globalThis.elementTree.leaveListItem(list as never, alphaSign);
+		const bravoSign = globalThis.elementTree.enterListItemAtIndex(list as never, 1);
+		expect(bravoSign).toBe(alphaSign);
+		expect(list!.firstElementChild).toBe(physicalCell);
+		expect(physicalCell!.textContent).toBe('Bravo:0');
+		tap('#native-row-bravo');
+
+		globalThis.lynxTestingEnv.switchToBackgroundThread();
+		await settle();
+		expect(taps).toEqual(['alpha:0', 'bravo:0']);
+		expect(physicalCell!.textContent).toBe('Bravo:1');
+
+		globalThis.lynxTestingEnv.switchToMainThread();
+		globalThis.elementTree.leaveListItem(list as never, bravoSign);
+		expect(globalThis.elementTree.enterListItemAtIndex(list as never, 0)).toBe(alphaSign);
+		expect(list!.firstElementChild).toBe(physicalCell);
+		expect(physicalCell!.textContent).toBe('Alpha:1');
+		globalThis.elementTree.leaveListItem(list as never, alphaSign);
+
+		globalThis.lynxTestingEnv.switchToBackgroundThread();
+		await backgroundRoot.render(layers.background.CompiledProgramNativeListFixture, {
+			rows: [
+				{ id: 'charlie', label: 'Charlie' },
+				{ id: 'alpha', label: 'Alpha edited' },
+				{ id: 'delta', label: 'Delta' },
+			],
+			onRowTap: (id, previous) => taps.push(`${id}:${previous}`),
+		});
+		await settle();
+
+		globalThis.lynxTestingEnv.switchToMainThread();
+		expect(globalThis.elementTree.enterListItemAtIndex(list as never, 1)).toBe(alphaSign);
+		expect(list!.firstElementChild).toBe(physicalCell);
+		expect(physicalCell!.textContent).toBe('Alpha edited:1');
+		globalThis.elementTree.leaveListItem(list as never, alphaSign);
+		expect(globalThis.elementTree.enterListItemAtIndex(list as never, 0)).toBe(alphaSign);
+		expect(physicalCell!.textContent).toBe('Charlie:0');
+		globalThis.elementTree.leaveListItem(list as never, alphaSign);
+
+		globalThis.lynxTestingEnv.switchToBackgroundThread();
+		await backgroundRoot.unmount();
+		backgroundRoot = null;
+		expect(dom.window.document.querySelector('#compiled-product-list')).toBeNull();
+		const beforeLateTap = [...taps];
+		const late = new dom.window.Event('bindEvent:tap', { bubbles: true });
+		Object.defineProperty(late, 'type', { configurable: true, value: 'tap' });
+		physicalCell!.firstElementChild!.dispatchEvent(late);
+		for (let turn = 0; turn < 8; turn++) await Promise.resolve();
+		expect(taps).toEqual(beforeLateTap);
 		expect(diagnostics).toEqual([]);
 	});
 });
