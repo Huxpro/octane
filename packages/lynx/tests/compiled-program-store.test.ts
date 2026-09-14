@@ -578,6 +578,54 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'selected', 'row-3']);
 	});
 
+	it('uses the native append primitive for tail-mounted dense roots', () => {
+		const base = emittedHost();
+		const page = base.createPage('0', 0);
+		const rootAppends: FakeNode[] = [];
+		const rootInserts: Array<{ child: FakeNode; before: FakeNode | null }> = [];
+		const papi: typeof base = {
+			...base,
+			append(parent, child) {
+				base.append!(parent, child);
+				if (parent === page) rootAppends.push(child);
+			},
+			insertBefore(parent, child, before) {
+				base.insertBefore(parent, child, before);
+				if (parent === page) rootInserts.push({ child, before });
+			},
+		};
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		const plan = emittedPlan(papi);
+
+		store.begin();
+		store.mount({
+			firstHandle: 1,
+			count: 2,
+			parent: page,
+			before: null,
+			plan,
+			values: ['row-1', 'cold', 'one', 'row-2', 'cold', 'two'],
+		});
+		store.commit();
+
+		expect(rootAppends.map((node) => node.id)).toEqual(['row-1', 'row-2']);
+		expect(rootInserts).toEqual([]);
+
+		store.begin();
+		store.mount({
+			firstHandle: 3,
+			count: 1,
+			parent: page,
+			before: 2,
+			plan,
+			values: ['row-3', 'cold', 'three'],
+		});
+		store.commit();
+
+		expect(rootInserts).toEqual([{ child: page.children[1]!, before: page.children[2]! }]);
+		expect(page.children.map((node) => node.id)).toEqual(['row-1', 'row-3', 'row-2']);
+	});
+
 	it('retains only later-observable nodes across mount, update, move, and clear', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);
@@ -659,6 +707,9 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		const inserted: unknown[] = [];
 		const papi: typeof base = {
 			...base,
+			append(_parent, child) {
+				inserted.push(child);
+			},
 			insertBefore(_parent, child) {
 				inserted.push(child);
 			},
@@ -803,6 +854,10 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		const base = emittedHost();
 		const papi: typeof base = {
 			...base,
+			append(parent, child) {
+				base.append!(parent, child);
+				throw new Error('insert fault');
+			},
 			insertBefore(parent, child, before) {
 				base.insertBefore(parent, child, before);
 				throw new Error('insert fault');

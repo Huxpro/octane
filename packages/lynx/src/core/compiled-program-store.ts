@@ -1575,11 +1575,15 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				preparedWorklets?.publish(created, nodeStride);
 				compact = compactResidentNodes(plan, input.count, nodeStride, created);
 				const before = next === null ? range.before : rootOf(instances.get(next)!);
+				const append = before === null ? papi.append : undefined;
 				for (let index = 0; index < input.count; index++) {
 					const node = created[index * nodeStride];
 					if (node === null || node === undefined)
 						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && `did not publish root ${index}`);
-					papi.insertBefore(input.parent, node, before);
+					// A native null-anchor insertion may scan the growing sibling tail. Use
+					// the equivalent append primitive when this run has no physical anchor.
+					if (append === undefined) papi.insertBefore(input.parent, node, before);
+					else append(input.parent, node);
 				}
 			} catch (error) {
 				preparedWorklets?.abort();

@@ -238,6 +238,13 @@ describe('@octanejs/lynx compact compiled-program controller', () => {
 		let abortDuringInsert = true;
 		const papi: typeof base = {
 			...base,
+			append(parent, child) {
+				base.append!(parent, child);
+				if (abortDuringInsert) {
+					abortDuringInsert = false;
+					controller.abort(identity(1));
+				}
+			},
 			insertBefore(parent, child, before) {
 				base.insertBefore(parent, child, before);
 				if (abortDuringInsert) {
