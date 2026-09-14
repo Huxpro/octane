@@ -20,7 +20,7 @@ export const LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO = 'octane:lynx-background
 export const LYNX_BACKGROUND_CORE_SELECTION_VERSION = 1;
 export const LYNX_APPLICATION_SELECTION_ASSET_INFO = 'octane:lynx-application-selection';
 export const LYNX_APPLICATION_SELECTION_VERSION = 2;
-export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 18;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 19;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
 	// Each name has an independent assertion through the Block component path.
@@ -28,6 +28,7 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	runtimeNames: Object.freeze([
 		'Activity',
 		'createContext',
+		'createPortal',
 		'memo',
 		'use',
 		'useBatch',
@@ -51,6 +52,7 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 		'inline-render-prop',
 		'local-component',
 		'native-list',
+		'portal',
 		'switch',
 		'try',
 	]),
@@ -1092,6 +1094,29 @@ export function evaluateLynxCompiledProgramEligibility({ blockSelection, feature
 		reasons.push(reason('unsupported-feature-requirements-version'));
 	} else if (featureRequirements.paired !== true) {
 		reasons.push(reason('feature-requirements-unpaired'));
+	} else {
+		for (const module of [...featureRequirements.modules].sort((left, right) =>
+			left.module.localeCompare(right.module),
+		)) {
+			for (const [thread, requirements] of [
+				['background', module.background],
+				['main-thread', module.mainThread],
+			]) {
+				for (const feature of requirements.templateFeatures) {
+					if (feature.kind !== 'portal') continue;
+					reasons.push(
+						reason('compiled-program-unsupported-template-feature', {
+							module: module.module,
+							thread,
+							kind: feature.kind,
+							name: feature.name,
+							line: feature.line,
+							column: feature.column,
+						}),
+					);
+				}
+			}
+		}
 	}
 	return Object.freeze({
 		version: LYNX_APPLICATION_SELECTION_VERSION,

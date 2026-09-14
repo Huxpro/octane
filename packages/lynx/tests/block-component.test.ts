@@ -33,6 +33,7 @@ vi.hoisted(() => {
 });
 
 import {
+	createPortal,
 	createContext,
 	createUniversalRoot,
 	defineUniversalComponent,
@@ -69,7 +70,11 @@ import { lynxProgram, lynxProgramValue } from '../src/core/compiler-program.js';
 import { createLynxBlockBackgroundCore } from '../src/core/block-background.js';
 import { createLynxBlockCore, type LynxBlockCore } from '../src/core/block-core.js';
 import { withLynxBlockProgram } from '../src/core/block-program.js';
-import { createLynxClientContainer, createLynxClientDriver } from '../src/core/client-driver.js';
+import {
+	createLynxClientContainer,
+	createLynxClientDriver,
+	type LynxPublicHandle,
+} from '../src/core/client-driver.js';
 import { registerUniversalProgram, residentRunProgram } from '../src/core/program-registry.js';
 import { lynxWireProfile } from '../src/core/profiling.js';
 import {
@@ -573,9 +578,10 @@ function universalColumn<Props>(component: LynxComponent<Props>) {
 function blockColumn<Props = CardProps>(
 	core?: LynxBlockCore,
 	resolveProgram?: Parameters<typeof installMainSide>[2],
+	compact = false,
 ) {
 	const context = new FakeContextProxy();
-	const main = installMainSide(context, false, resolveProgram);
+	const main = installMainSide(context, compact, resolveProgram);
 	const container = createLynxClientContainer();
 	const transport = createLynxBackgroundTransport(context, container);
 	const background = createLynxBlockBackgroundCore({
@@ -616,6 +622,9 @@ function blockColumn<Props = CardProps>(
 		background,
 		settle,
 		acknowledgePending,
+		markPendingHandled(): void {
+			acknowledged = main.commits.length;
+		},
 		async render(component: LynxComponent<Props>, props: Props): Promise<void> {
 			await settle(background.renderAsync(component as never, props as never));
 		},
@@ -2033,6 +2042,258 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 			unorderedHandleLifecycle(universalPaint.handles),
 		);
 		expect(blockPaint.tree).toContain('ready');
+	});
+
+	it('retains a stateful portal across target moves and releases it only after acknowledgement', async () => {
+		interface PortalProps {
+			readonly target: LynxPublicHandle | null;
+			readonly theme: string;
+			readonly captureTargetA: (handle: LynxPublicHandle | null) => void;
+			readonly captureTargetB: (handle: LynxPublicHandle | null) => void;
+			readonly capturePortal: (handle: LynxPublicHandle | null) => void;
+		}
+		const Theme = createContext('missing');
+		const lifecycle: string[] = [];
+		const targetARefs: Array<LynxPublicHandle | null> = [];
+		const targetBRefs: Array<LynxPublicHandle | null> = [];
+		const portalRefs: Array<LynxPublicHandle | null> = [];
+		const shellPlan = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			props: { id: 'portal-page' },
+			children: [
+				{
+					kind: 'host',
+					type: 'view',
+					props: { id: 'target-a' },
+				},
+				{
+					kind: 'host',
+					type: 'view',
+					props: { id: 'target-b' },
+				},
+				{ kind: 'slot', slot: 0 },
+			],
+		});
+		const shellProgram = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+			...deriveLynxProgramIR(shellPlan.root as never)!,
+			address: {
+				module: 'tests/BlockPortalShell.lynx.tsrx',
+				index: 0,
+				digest: 'block-portal-shell',
+			},
+			refs: [
+				{ node: 1, slot: 1 },
+				{ node: 2, slot: 2 },
+			],
+		});
+		registerUniversalProgram('tests/BlockPortalShell.lynx.tsrx', 0, {
+			kind: 'program',
+			slots: [],
+			nodes: shellProgram.wire.nodes.length,
+			values: [],
+			events: [],
+			ranges: [],
+			bind: (() => {
+				throw new Error('The portal shell fixture is mounted from its wire descriptor.');
+			}) as never,
+			wire: shellProgram.wire,
+		});
+		const portalProgram = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+			...CARD_PROGRAM_IR,
+			address: {
+				module: 'tests/BlockPortalLeaf.lynx.tsrx',
+				index: 0,
+				digest: 'block-portal-leaf',
+			},
+			refs: [{ node: 0, slot: 5 }],
+		});
+		registerUniversalProgram('tests/BlockPortalLeaf.lynx.tsrx', 0, {
+			kind: 'program',
+			slots: [],
+			nodes: portalProgram.wire.nodes.length,
+			values: [],
+			events: [],
+			ranges: [],
+			bind: (() => {
+				throw new Error('The portal resident fixture is mounted from its wire descriptor.');
+			}) as never,
+			wire: portalProgram.wire,
+		});
+		const PortalLeaf = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function PortalLeaf({ capture }: { readonly capture: PortalProps['capturePortal'] }) {
+				const theme = useContext(Theme);
+				const [count, setCount] = useState(0, 'portal-count');
+				useEffect(
+					() => {
+						lifecycle.push(`effect:${theme}:${count}`);
+						return () => lifecycle.push(`cleanup:${theme}:${count}`);
+					},
+					[theme, count],
+					'portal-effect',
+				);
+				return lynxProgramValue(portalProgram, [
+					`portal-content ${theme}`,
+					theme,
+					'portal-meta',
+					() => setCount((value) => value + 1),
+					`${theme}:${count}`,
+					capture,
+				]) as never;
+			},
+		);
+		const PortalPage = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			(props: PortalProps) =>
+				universalContext(
+					Theme,
+					props.theme,
+					lynxProgramValue(shellProgram, [
+						props.target === null
+							? null
+							: createPortal(
+									universalComponent(LYNX_TRANSPORT_RENDERER, PortalLeaf, {
+										capture: props.capturePortal,
+									}),
+									props.target,
+								),
+						props.captureTargetA,
+						props.captureTargetB,
+					]) as never,
+				),
+			{ hookScope: false },
+		);
+		const captureTargetA = (handle: LynxPublicHandle | null) => void targetARefs.push(handle);
+		const captureTargetB = (handle: LynxPublicHandle | null) => void targetBRefs.push(handle);
+		const capturePortal = (handle: LynxPublicHandle | null) => void portalRefs.push(handle);
+		const props = (target: LynxPublicHandle | null, theme: string): PortalProps => ({
+			target,
+			theme,
+			captureTargetA,
+			captureTargetB,
+			capturePortal,
+		});
+		const block = blockColumn<PortalProps>(undefined, residentRunProgram, true);
+
+		await block.render(PortalPage as never, props(null, 'warm'));
+		const targetA = targetARefs.at(-1)!;
+		const targetB = targetBRefs.at(-1)!;
+		expect(targetA).toMatchObject({ active: true, attached: true, type: 'view' });
+		expect(targetB).toMatchObject({ active: true, attached: true, type: 'view' });
+
+		await block.render(PortalPage as never, props(targetA, 'warm'));
+		await flushMicrotasks();
+		const portalHandle = portalRefs.at(-1)!;
+		expect(portalHandle).toMatchObject({ active: true, attached: true, type: 'view' });
+		expect(lifecycle).toEqual(['effect:warm:0']);
+		expect(paint(block.main.commits).tree).toContain('portal-content warm');
+
+		await block.render(PortalPage as never, props(targetB, 'cool'));
+		await flushMicrotasks();
+		expect(portalRefs.at(-1)).toBe(portalHandle);
+		expect(lifecycle).toEqual(['effect:warm:0', 'cleanup:warm:0', 'effect:cool:0']);
+		const move = block.main.commits.at(-1)!.batch.commands;
+		expect(move.filter((command) => command.op === 'destroy')).toHaveLength(0);
+		expect(move.filter((command) => command.op === 'mount-template-run')).toHaveLength(0);
+		expect(move.filter((command) => command.op === 'move')).toHaveLength(1);
+
+		const portalListener = (): LynxResolvedNativeEvent => {
+			const papi = createFakePAPI();
+			const host = createLynxHostContainer(papi, { root: 1 });
+			for (const commit of block.main.commits) prepareLynxHostBatch(host, commit.batch).apply();
+			const target = papi.pages[0]!.children[0]!.children[1]!;
+			const label = target.children[0]!.children[0]!;
+			const resolved = resolveLynxHostNativeEvent(host, [...label.events.values()][0]);
+			if (resolved === null) throw new Error('the portal child bound no event site');
+			return resolved;
+		};
+		deliverTo(block, portalListener());
+		await block.settle(Promise.resolve());
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('portal-content cool');
+		expect(portalRefs.at(-1)).toBe(portalHandle);
+
+		const lifecycleBeforeReject = [...lifecycle];
+		const refCountBeforeReject = portalRefs.length;
+		const removal = block.background.renderAsync(PortalPage as never, props(null, 'cool'));
+		await flushMicrotasks();
+		const rejectedCommit = block.main.commits.at(-1)!;
+		block.main.reject(rejectedCommit, 'injected portal removal rejection');
+		block.markPendingHandled();
+		await expect(removal).rejects.toThrow('injected portal removal rejection');
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(lifecycleBeforeReject);
+		expect(portalRefs).toHaveLength(refCountBeforeReject);
+		expect(portalHandle.active).toBe(true);
+
+		await block.render(PortalPage as never, props(null, 'cool'));
+		await flushMicrotasks();
+		expect(portalRefs.at(-1)).toBeNull();
+		expect(lifecycle.at(-1)).toBe('cleanup:cool:1');
+		expect(portalHandle.active).toBe(false);
+		const acceptedCommits = block.main.commits.filter((commit) => commit !== rejectedCommit);
+		expect(paint(acceptedCommits).tree).not.toContain('portal-content');
+
+		await block.settle(block.background.unmountAsync());
+		expect(targetA.active).toBe(false);
+		expect(targetB.active).toBe(false);
+	});
+
+	it('refuses two Block portal boundaries that claim the same target', async () => {
+		interface PortalPairProps {
+			readonly target: LynxPublicHandle | null;
+			readonly captureTarget: (handle: LynxPublicHandle | null) => void;
+			readonly second: boolean;
+		}
+		const targetRefs: Array<LynxPublicHandle | null> = [];
+		const pairPlan = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			children: [
+				{ kind: 'host', type: 'view' },
+				{ kind: 'slot', slot: 0 },
+				{ kind: 'slot', slot: 1 },
+			],
+		});
+		const pairProgram = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+			...deriveLynxProgramIR(pairPlan.root as never)!,
+			address: {
+				module: 'tests/BlockPortalPair.lynx.tsrx',
+				index: 0,
+				digest: 'block-portal-pair',
+			},
+			refs: [{ node: 1, slot: 2 }],
+		});
+		const leaf = (label: string) =>
+			universalValue(CARD_PLAN, ['portal', label, 'meta', noop, label]);
+		const Pair = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			(props: PortalPairProps) =>
+				lynxProgramValue(pairProgram, [
+					props.target === null ? null : createPortal(leaf('first'), props.target),
+					props.target === null || !props.second
+						? null
+						: createPortal(leaf('second'), props.target),
+					props.captureTarget,
+				]) as never,
+			{ hookScope: false },
+		);
+		const captureTarget = (handle: LynxPublicHandle | null) => void targetRefs.push(handle);
+		const block = blockColumn<PortalPairProps>();
+		await block.render(Pair as never, { target: null, captureTarget, second: false });
+		const target = targetRefs.at(-1)!;
+		const commits = block.main.commits.length;
+
+		await expect(
+			block.settle(
+				block.background.renderAsync(Pair as never, { target, captureTarget, second: true }),
+			),
+		).rejects.toThrow(/one active portal boundary per Lynx target/);
+		expect(block.main.commits).toHaveLength(commits);
+
+		await block.render(Pair as never, { target, captureTarget, second: false });
+		expect(paint(block.main.commits).tree).toContain('first');
 	});
 
 	it('retains a committed Suspense body while pending and reconnects its stateful owner', async () => {

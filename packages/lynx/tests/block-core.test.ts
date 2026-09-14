@@ -28,6 +28,7 @@ import {
 import {
 	universalProgramRangeCommandSlot,
 	type UniversalHostCommand,
+	type UniversalPortalTargetHandle,
 } from 'octane/universal/native';
 import {
 	createLynxMainThreadWorkletRegistry,
@@ -133,6 +134,53 @@ function scene(list: readonly Row[], selected: number | null): Scene {
 }
 
 describe('Lynx block core — compiler range provenance', () => {
+	it('retargets a renderer-owned range without replacing its retained members', () => {
+		const target = (id: string): UniversalPortalTargetHandle =>
+			Object.freeze({
+				$$kind: 'octane.universal.portal-target',
+				renderer: 'octane.lynx',
+				root: 1,
+				id,
+			});
+		const first = target('first');
+		const second = target('second');
+		const core = createLynxBlockCore();
+		const slot = core.openForParent(first);
+
+		core.beginAttempt();
+		core.fillForSlot(
+			slot,
+			ROW_TEMPLATE,
+			rows(2),
+			(row) => row.id,
+			(row) => rowValues(row, null),
+		);
+		const mounted = core.flush()!;
+		core.acceptAttempt();
+		const identities = [...slot.items.values()];
+		expect(mounted.commands.some((command) => command.op === 'create')).toBe(true);
+		expect(mounted.commands.some((command) => command.op === 'mount-template-run')).toBe(false);
+
+		core.beginAttempt();
+		core.retargetForSlot(slot, second);
+		const rejected = core.flush()!;
+		expect(rejected.commands.map((command) => command.op)).toEqual(['move', 'move']);
+		expect(slot.parent).toBe(second);
+		expect(core.abortAttempt()).toBe(true);
+		expect(slot.parent).toBe(first);
+		expect([...slot.items.values()]).toEqual(identities);
+
+		core.beginAttempt();
+		core.retargetForSlot(slot, second);
+		const accepted = core.flush()!;
+		core.acceptAttempt();
+		expect(slot.parent).toBe(second);
+		expect([...slot.items.values()]).toEqual(identities);
+		expect(
+			accepted.commands.flatMap((command) => (command.op === 'move' ? [command.id] : [])),
+		).toEqual(identities.map((member) => member.firstId));
+	});
+
 	it('does not guess a compiler slot for a hand-written range site', () => {
 		const core = createLynxBlockCore();
 		const page = core.mount(null, null, PAGE_TEMPLATE, []);

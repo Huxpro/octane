@@ -23,10 +23,11 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  *
  * Component-local hook scopes sit above these scoped entry points and publish at
  * the same render-attempt boundary. Native lists reuse these instance and range
- * identities while the main-thread store alone materializes physical cells. De-opt
- * regions and portals remain selected out until their slices. Activity and retained
- * Suspense visibility are owned by the component layer and lowered here to
- * transactional VIS operations over the same resident instance identities.
+ * identities while the main-thread store alone materializes physical cells.
+ * De-opt regions remain selected out. Activity and retained Suspense visibility
+ * are owned by the component layer and lowered here to transactional VIS
+ * operations; portals use the general command backend's renderer-owned parent
+ * and MOVE the same retained instances between acknowledged targets.
  */
 
 import { sameLynxUniversalHostPropValue } from './host-props.js';
@@ -242,6 +243,8 @@ export interface LynxBlock {
 	readonly firstListenerId: number | null;
 	/** Compact instance identity; absent on the general host-command path. */
 	readonly instance: number | null;
+	/** Whether the general command path mounted this block as a template/program run. */
+	readonly runMounted: boolean;
 	/** True while the instance is a logical native-list row without a physical cell. */
 	readonly deferred: boolean;
 	/** Last accepted Activity visibility for this retained instance. */
@@ -266,7 +269,7 @@ export interface LynxBlock {
  * the host what its children are.
  */
 export interface LynxBlockForSlot {
-	readonly parent: UniversalHostParent;
+	parent: UniversalHostParent;
 	readonly items: Map<unknown, LynxBlock>;
 	head: LynxBlock | null;
 	tail: LynxBlock | null;
@@ -382,6 +385,14 @@ export interface LynxBlockCore {
 		programRangeSlot?: number,
 		beforeNodeIndex?: number | null,
 	): LynxBlockForSlot;
+	/** Open a range whose physical parent is supplied by a renderer capability such as a portal. */
+	openForParent(parent: UniversalHostParent): LynxBlockForSlot;
+	/** Move every retained member to a new physical parent without changing member identity. */
+	retargetForSlot(
+		slot: LynxBlockForSlot,
+		parent: UniversalHostParent,
+		before?: number | null,
+	): void;
 	/**
 	 * Fill an empty range site. The mount-linear fast path `runtime.ts` takes
 	 * when `oldSize === 0`: there is no survivor to match, so there is no diff.
@@ -536,6 +547,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	let commandCount = 0;
 	interface SlotSnapshot {
 		readonly slot: LynxBlockForSlot;
+		readonly parent: UniversalHostParent;
 		readonly items: Map<unknown, LynxBlock>;
 		readonly ordered: readonly LynxBlock[];
 	}
@@ -558,7 +570,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		captured.add(slot);
 		const ordered: LynxBlock[] = [];
 		for (let block = slot.head; block !== null; block = block.next) ordered.push(block);
-		(attemptSlots ??= []).push({ slot, items: new Map(slot.items), ordered });
+		(attemptSlots ??= []).push({ slot, parent: slot.parent, items: new Map(slot.items), ordered });
 	};
 
 	const emit = (command: UniversalHostCommand): void => {
@@ -621,6 +633,11 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			}
 		}
 		let firstInstance: number | null = null;
+		const portalParent =
+			parent !== null &&
+			typeof parent === 'object' &&
+			parent.$$kind === 'octane.universal.portal-target';
+		const runMounted = deltaProducer === null && !portalParent && templateRunsAllowed();
 		if (deltaProducer !== null) {
 			if (!templateRunsAllowed()) {
 				fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'the direct delta producer requires resident runs');
@@ -666,7 +683,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				...(template.refs === undefined ? null : { refs: { firstId, stride: template.hostCount } }),
 			});
 			commandCount++;
-		} else if (templateRunsAllowed()) {
+		} else if (runMounted) {
 			const physicalBefore =
 				beforeBlock === null || beforeBlock === undefined
 					? ((rangeSite === undefined ? null : nextSiblingHead(rangeSite)?.firstId) ?? before)
@@ -705,6 +722,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				template,
 				firstId: firstId + row * template.hostCount,
 				instance: firstInstance === null ? null : firstInstance + row,
+				runMounted,
 				deferred: rangeSite?.[4] === true,
 				visible: true,
 				// The listener run is dense in exactly the way the host run is, so a
@@ -878,6 +896,11 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		};
 		for (const block of slot.items.values()) {
 			departed?.(block);
+			if (!block.runMounted) {
+				flush();
+				destroyBlock(slot.parent, block);
+				continue;
+			}
 			if (
 				first !== null &&
 				block.template === first.template &&
@@ -1163,7 +1186,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				block.visible = attemptVisibility![index + 1] as boolean;
 			}
 			for (let index = (attemptSlots?.length ?? 0) - 1; index >= 0; index--) {
-				const { slot, items, ordered } = attemptSlots![index]!;
+				const { slot, parent, items, ordered } = attemptSlots![index]!;
+				slot.parent = parent;
 				slot.items.clear();
 				for (const [key, block] of items) slot.items.set(key, block);
 				link(slot, ordered);
@@ -1223,6 +1247,44 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			}
 			sites.push(site);
 			return site;
+		},
+
+		openForParent(parent) {
+			if (deltaProducer !== null) {
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT &&
+						'a direct compiled-program range requires a compiler-owned parent site',
+				);
+			}
+			return {
+				0: undefined,
+				1: null,
+				2: null,
+				3: null,
+				4: false,
+				5: null,
+				parent,
+				items: new Map(),
+				head: null,
+				tail: null,
+				size: 0,
+			} as LynxBlockProgramRangeSite;
+		},
+
+		retargetForSlot(slot, parent, before = null) {
+			if (Object.is(slot.parent, parent)) return;
+			if (deltaProducer !== null) {
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT &&
+						'a direct compiled-program range cannot target a renderer-owned parent',
+				);
+			}
+			captureSlot(slot);
+			for (let member = slot.head; member !== null; member = member.next) {
+				blockLookups++;
+				emit({ op: 'move', parent, id: member.firstId, before });
+			}
+			slot.parent = parent;
 		},
 
 		fillForSlot,

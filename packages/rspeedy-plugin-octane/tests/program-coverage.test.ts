@@ -55,6 +55,7 @@ function featureRequirements(
 				| 'if'
 				| 'inline-render-prop'
 				| 'native-list'
+				| 'portal'
 				| 'program-root-event'
 				| 'renderable-hole'
 				| 'switch'
@@ -232,10 +233,11 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 18,
+				version: 19,
 				runtimeNames: [
 					'Activity',
 					'createContext',
+					'createPortal',
 					'memo',
 					'use',
 					'useBatch',
@@ -259,6 +261,7 @@ describe('Lynx application Block eligibility', () => {
 					'inline-render-prop',
 					'local-component',
 					'native-list',
+					'portal',
 					'switch',
 					'try',
 				],
@@ -640,6 +643,53 @@ describe('Lynx compiled-program application eligibility', () => {
 		).toEqual({ version: 2, eligible: true, reasons: [] });
 	});
 
+	it('keeps compiler-proved portals on the general Block application', () => {
+		const { proofs, featureRequirements: compactRequirements } = compactFeatureRequirements();
+		const featureModule = compactRequirements.modules[0]!;
+		const portal = featureRequirements({
+			templateFeatures: [{ kind: 'portal', name: null, line: 14, column: 3 }],
+		});
+		const requirements = {
+			...compactRequirements,
+			modules: [{ ...featureModule, background: portal, mainThread: portal }],
+		};
+		const blockSelection = evaluateLynxBlockEligibility({
+			...proofs,
+			featureRequirements: requirements,
+		});
+
+		expect(blockSelection.eligible).toBe(true);
+		expect(
+			evaluateLynxCompiledProgramEligibility({
+				blockSelection,
+				featureRequirements: requirements,
+			}),
+		).toEqual({
+			version: 2,
+			eligible: false,
+			reasons: [
+				{
+					code: 'compiled-program-unsupported-template-feature',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					kind: 'portal',
+					name: null,
+					line: 14,
+					column: 3,
+				},
+				{
+					code: 'compiled-program-unsupported-template-feature',
+					module: '/src/App.tsrx',
+					thread: 'main-thread',
+					kind: 'portal',
+					name: null,
+					line: 14,
+					column: 3,
+				},
+			],
+		});
+	});
+
 	it('fails closed for selection or feature proof skew and unpaired facts', () => {
 		const { proofs, featureRequirements } = compactFeatureRequirements();
 		const blockSelection = evaluateLynxBlockEligibility({ ...proofs, featureRequirements });
@@ -984,7 +1034,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 18 },
+				matrix: { version: 19 },
 				eligible: true,
 				reasons: [],
 			},

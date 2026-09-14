@@ -2391,6 +2391,44 @@ function componentHoleProof(node, state) {
 	return { kind: 'conditional', node: value, consequent, alternate };
 }
 
+function importedRuntimeCall(node, imported, state) {
+	const callee = node?.type === 'CallExpression' ? node.callee : null;
+	if (callee?.type !== 'Identifier' || state.runtimeImports.get(callee.name) !== imported) {
+		return false;
+	}
+	const lexical = state.immutableLocalComponents.lexical;
+	const binding = lexical.resolveBinding(
+		lexical.nodeScopes.get(callee) ?? lexical.rootScope,
+		callee.name,
+	);
+	return binding?.scope === lexical.rootScope;
+}
+
+function portalHoleLeaf(node, state) {
+	const value = unwrapFirstScreenExpression(node);
+	if (importedRuntimeCall(value, 'createPortal', state)) return 'portal';
+	if (
+		(value?.type === 'Literal' && (value.value === null || typeof value.value === 'boolean')) ||
+		(value?.type === 'UnaryExpression' && value.operator === 'void')
+	) {
+		return 'empty';
+	}
+	return null;
+}
+
+/** A host child expression whose complete value set is a portal or empty. */
+function portalHoleProof(node, state) {
+	const value = unwrapFirstScreenExpression(node);
+	const leaf = portalHoleLeaf(value, state);
+	if (leaf === 'portal') return true;
+	if (value?.type !== 'ConditionalExpression') return false;
+	const consequent = portalHoleLeaf(value.consequent, state);
+	const alternate = portalHoleLeaf(value.alternate, state);
+	return (
+		consequent !== null && alternate !== null && (consequent === 'portal' || alternate === 'portal')
+	);
+}
+
 function blockTemplateFeature(node, rangeRowNodes, state) {
 	if (node.type === 'JSXActivityExpression') {
 		return Object.freeze({ kind: 'activity', name: null, ...sourcePosition(node) });
@@ -2521,10 +2559,15 @@ function lynxBlockFeatureRequirements(ast, state) {
 			node.expression?.type !== 'JSXEmptyExpression' &&
 			!isStaticallyPrimitiveTextExpression(node.expression)
 		) {
-			const componentHole = componentHoleProof(node.expression, state);
+			const portalHole = portalHoleProof(node.expression, state);
+			const componentHole = portalHole ? null : componentHoleProof(node.expression, state);
 			templateFeatures.push(
 				Object.freeze({
-					kind: componentHole === null ? 'renderable-hole' : 'component-hole',
+					kind: portalHole
+						? 'portal'
+						: componentHole === null
+							? 'renderable-hole'
+							: 'component-hole',
 					name: null,
 					...sourcePosition(node),
 				}),

@@ -11,6 +11,7 @@ const LYNX_BLOCK_TEMPLATE_FEATURE_KINDS = new Set([
 	'host-ref',
 	'if',
 	'native-list',
+	'portal',
 	'program-root-event',
 	'renderable-hole',
 	'switch',

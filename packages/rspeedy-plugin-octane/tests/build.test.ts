@@ -415,6 +415,26 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 		]);
 	}, 120_000);
 
+	it('keeps compiler-proved portals on the general application with the Block core', async () => {
+		const entry = { main: './src/portal-eligible.ts' };
+		expect(await collectCoreSelections('production', entry)).toEqual([
+			{
+				version: 1,
+				mode: 'automatic',
+				selected: 'block',
+				eligible: true,
+				reasons: [],
+			},
+		]);
+		expect(await collectCoreSelections('production', entry, 'application')).toEqual([
+			{
+				version: 2,
+				selected: 'general',
+				reasons: [{ code: 'entry-ineligible', entry: 'main__octane_main_thread' }],
+			},
+		]);
+	}, 120_000);
+
 	it('publishes an eligible verdict for a real production Block-compatible graph', async () => {
 		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-block-eligibility-'));
 		const reports: unknown[] = [];
@@ -1092,10 +1112,11 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 18,
+							version: 19,
 							runtimeNames: [
 								'Activity',
 								'createContext',
+								'createPortal',
 								'memo',
 								'use',
 								'useBatch',
@@ -1119,6 +1140,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'inline-render-prop',
 								'local-component',
 								'native-list',
+								'portal',
 								'switch',
 								'try',
 							],

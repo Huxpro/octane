@@ -11,8 +11,10 @@ The implementation has three distinct outcomes:
 
 - **Block selected**: the paired main/background application graph is completely
   addressed, every compiler fact is supported by the versioned Block matrix,
-  and the production build selects the Block application and compact compiled
-  program product.
+  and the production build selects the Block core. The independent application
+  decision selects the compact compiled-program product only when every parent
+  and resource can be represented by its delta vocabulary; otherwise it keeps
+  the general Block application.
 - **Block kernel proved**: focused source tests exercise the Block component
   core, but the production selector still fails closed for that syntax. An
   ordinary application therefore takes the whole-entry Universal compatibility
@@ -56,7 +58,7 @@ must satisfy the runtime invariants below.
 | Main-thread props and thread functions | General Block application only | The Block transport can carry them, but the compact compiled-program product fails closed and keeps the general application product. |
 | Ordered host spreads with unknown property names | Whole-entry Universal compatibility | `UniversalHostPlan.propsSlot` has no resident Block prop-name table. Static named props remain Block-native. |
 | Generic renderable holes (primitive/array/fragment shape changes) | Whole-entry Universal compatibility | The compiler cannot yet prove a stable structural region kind, and Block does not infer one from the first value. |
-| Portals | Whole-entry Universal compatibility | Cross-container physical ownership still requires a separate Block transaction and identity proof. |
+| Compiler-proved portals | General Block application only | A direct `createPortal`, or a conditional whose outcomes are a portal and an explicit empty value, owns a retained Block range under an acknowledged same-root Lynx handle. Target changes emit `MOVE` for the existing hosts, preserving child state/ref identity; removal, rejection, and unmount release listeners, refs, effects, and target registration only after ACK. The compact delta product cannot encode renderer-owned parents, so the production selector keeps the Block core but chooses the general application. Block currently admits one active portal boundary per target; arrays remain whole-entry Universal compatibility, while multiple sibling boundaries that dynamically claim one target refuse explicitly instead of aliasing ownership. |
 | Nested keyed ranges | Block selected | Every outer key retains independent recursive range state; nested RUN/MOVE/CLEAR stays compiler-addressed, including `@empty`, visibility, rollback, and recursive resource cleanup. |
 | Multiple independently owned keyed ranges under one host | Block selected | Every range keeps its compiler `(owner, slot)` identity even when several slots resolve to the same native parent and static anchor. General and compact RUN/MOVE/CLEAR, rollback, first-screen paint, and Element Template child slots preserve authored order; an empty middle range does not hide the next live sibling anchor. |
 | Insertion effects | Rejected by Block | The Block transaction has no pre-mutation publication phase. |
@@ -180,6 +182,26 @@ The arm wrappers reuse the Block keyed-row hook kernel. Their host output is an
 addressed compiler program, and their physical state is a normal template
 instance plus range member. No Universal host record, host-plan executor, or
 Universal reconciler is added to the selected production graph.
+
+## Portal boundary cost
+
+A proven portal retains one range site and one registration for its current
+renderer-owned target. The program caches one opaque target handle per target ID
+it has observed; handles and registrations are root-scoped and are cleared on
+unmount. Mounting below a portal uses the general create vocabulary because the
+run protocol deliberately cannot name a portal parent. Stable updates remain
+ordinary keyed slot writes. Retargeting visits each top-level portal member once
+and emits one `MOVE` per member, so its cost is O(portal member count), without
+recreating descendants or changing refs and hook cells.
+
+The target must already be a current, attached `LynxPublicHandle` acknowledged
+by this root; an initial portal cannot race the target's first ref publication.
+Target claims, registration replacement, member removal, listener/ref release,
+and effect cleanup share the Block attempt journal. A rejected frame restores
+the previous target and ownership and releases only the speculative
+registration. The compact application remains ineligible because its instance
+parent vocabulary has no renderer-owned target representation; this boundary
+does not add Universal host records, plan execution, or a mid-tree core switch.
 
 ## Resident host retention
 

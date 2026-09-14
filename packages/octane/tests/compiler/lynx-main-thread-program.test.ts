@@ -1529,6 +1529,49 @@ export function App(props: { show: boolean; identity: string; label: string }) @
 		expect(result.code).toContain('universalIf as');
 		expect(background.code).not.toContain('universalPlan as');
 	});
+
+	it('proves imported portal-or-empty host holes independently of generic renderables', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { createPortal as portal } from 'octane';
+
+export function App(props: { target: unknown | null; label: string }) @{
+	<view>
+		{props.target === null ? null : portal(<text>{props.label as string}</text>, props.target)}
+	</view>
+}
+`;
+		const module = 'src/PortalHole.lynx.tsrx';
+		const main = compileCard(source, { backend: Backend, module });
+		const background = compileCard(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+
+		expect(main.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'portal', name: null, line: 6, column: 2 },
+		]);
+		expect(background.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'portal', name: null, line: 6, column: 2 },
+		]);
+		expect(main.lynxBlockSemanticRequirements?.runtimeUses).toEqual([
+			{ name: 'createPortal', line: 6, column: 34 },
+		]);
+
+		const shadowed = compileCard(`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { createPortal as portal } from 'octane';
+
+export function App(props: { portal: typeof portal; target: Element }) @{
+	const portal = props.portal;
+	<view>{portal(<text>shadowed</text>, props.target)}</view>
+}
+`);
+		expect(shadowed.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'renderable-hole', name: null, line: 6, column: 7 },
+		]);
+	});
 });
 
 // Issue-#246 E1 — how a background-originated mount names a resident program.

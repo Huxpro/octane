@@ -562,7 +562,7 @@ describe('getOctaneRspackBuildInfo', () => {
 				version: 2,
 				threadFunctions: [],
 				mainThreadProps: [],
-				templateFeatures: [{ kind: 'portal', name: null, line: 1, column: 0 }],
+				templateFeatures: [{ kind: 'unknown-feature', name: null, line: 1, column: 0 }],
 				keyedRanges: [],
 			},
 			{

@@ -1194,6 +1194,19 @@ in §3 and the extraction-first decision in §5.
   Template build also accepts the same graph. These are deterministic semantic
   and build proofs, not native-device performance evidence.
 
+- **R6 Block portal ownership.** Compiler-proved direct and nullable portals
+  now retain a keyed Block range under an acknowledged renderer-owned Lynx
+  target. Retargeting emits one general-host `MOVE` per portal member and keeps
+  host, ref, state, context, listener, and effect identity; rejected removal and
+  target changes publish no cleanup, while accepted removal and unmount release
+  every resource and target registration. Portal members use legacy create and
+  explicit destroy commands because template RUN parents cannot be portals.
+  The version-19 support matrix admits `createPortal` to the Block core while
+  rejecting it from the compact application, so the production build selects
+  the general Block application. One active portal boundary per target is the
+  current explicit invariant; arrays stay on the whole-entry Universal path,
+  and sibling boundaries that dynamically share one target refuse explicitly.
+
 - **L3 (direct first-screen, first slice):** `renderFirstScreenNow` applies
   the rendered record tree straight to the Element PAPI
   (`applyLynxFirstScreenDirect`): no command staging, cloned record maps, or

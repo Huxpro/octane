@@ -67,6 +67,10 @@ import type {
 	UniversalHostDriver,
 	UniversalHostPropCodecContext,
 	UniversalHostTemplateProgramValue,
+	UniversalPortalCapability,
+	UniversalPortalTargetHandle,
+	UniversalPortalTargetRegistration,
+	UniversalPortalValue,
 	UniversalPlan,
 	UniversalSwitchValue,
 	UniversalTryValue,
@@ -150,6 +154,7 @@ const UNIVERSAL_CHILDREN: symbol = Symbol.for('octane.universal.children');
 const UNIVERSAL_CONTEXT: symbol = Symbol.for('octane.universal.context');
 const UNIVERSAL_ACTIVITY: symbol = Symbol.for('octane.universal.activity');
 const UNIVERSAL_TRY: symbol = Symbol.for('octane.universal.try');
+const UNIVERSAL_PORTAL: symbol = Symbol.for('octane.universal.portal');
 
 // Guard the call-site arguments as well as the final message. A production
 const UNIVERSAL_IF: symbol = Symbol.for('octane.universal.if');
@@ -392,6 +397,14 @@ function isTryValue(value: unknown): value is UniversalTryValue {
 	);
 }
 
+function isPortalValue(value: unknown): value is UniversalPortalValue {
+	return (
+		value !== null &&
+		typeof value === 'object' &&
+		(value as { $$kind?: unknown }).$$kind === UNIVERSAL_PORTAL
+	);
+}
+
 function isDynamicRegionValue(
 	value: unknown,
 ): value is
@@ -399,13 +412,15 @@ function isDynamicRegionValue(
 	| UniversalBranchValue
 	| UniversalComponentValue
 	| UniversalActivityValue
-	| UniversalTryValue {
+	| UniversalTryValue
+	| UniversalPortalValue {
 	return (
 		isRangeValue(value) ||
 		isBranchValue(value) ||
 		isComponentRegionValue(value) ||
 		isActivityValue(value) ||
-		isTryValue(value)
+		isTryValue(value) ||
+		isPortalValue(value)
 	);
 }
 
@@ -471,6 +486,12 @@ interface RangeTryState {
 	bodyKey: unknown;
 }
 
+interface RangePortalState {
+	target: unknown;
+	registration: UniversalPortalTargetRegistration | null;
+	site: LynxBlockForSlot | null;
+}
+
 function createRangeTemplateState(): RangeTemplateState {
 	return { plan: null, compiled: null, prepared: null, template: null, ranges: null };
 }
@@ -496,6 +517,7 @@ interface RangeState {
 	readonly emptyTemplate: RangeTemplateState;
 	readonly branchTemplates: Map<unknown, RangeBranchState> | null;
 	readonly tryState: RangeTryState | null;
+	portalState: RangePortalState | null;
 	/**
 	 * What the last applied render produced, per key, for the rows it can be
 	 * asked about again.
@@ -569,7 +591,11 @@ function createRangeState(definition: RangeDefinition, value: unknown): RangeSta
 			isBranchValue(value) ||
 			isComponentRegionValue(value) ||
 			isActivityValue(value) ||
-			isTryValue(value)
+			isTryValue(value) ||
+			isPortalValue(value) ||
+			value === null ||
+			value === undefined ||
+			typeof value === 'boolean'
 				? new Map()
 				: null,
 		tryState: isTryValue(value)
@@ -583,6 +609,7 @@ function createRangeState(definition: RangeDefinition, value: unknown): RangeSta
 					bodyKey: null,
 				}
 			: null,
+		portalState: isPortalValue(value) ? { target: null, registration: null, site: null } : null,
 		retained: null,
 		hasScopedRows: false,
 		keys: null,
@@ -682,6 +709,10 @@ interface RangeRender {
 	readonly visibilityChanged?: readonly number[];
 	/** Previously committed descendants hidden without re-running their setup. */
 	readonly hideNested?: NestedRangeState;
+	/** Renderer-owned parent selected by a portal boundary for this range. */
+	readonly portalTarget?: UniversalPortalTargetHandle;
+	/** Undo renderer resources when a later sibling abandons this completed render. */
+	readonly discard?: () => void;
 	readonly rendered: readonly number[];
 	readonly source: Iterable<unknown>;
 	readonly keyedSelection: NonNullable<UniversalForValue['keyedSelection']> | null;
@@ -812,6 +843,10 @@ export function lynxBlockProgramForComponent<Props>(
 	let preparationError: unknown = null;
 
 	let encoder: UniversalHostEncoder | null = null;
+	let portalCapability: UniversalPortalCapability<LynxClientContainer> | null = null;
+	const portalHandles = new Map<string | number, UniversalPortalTargetHandle>();
+	const portalTargetClaims = new Map<string | number, RangeState>();
+	let portalDraftClaims: Map<string | number, RangeState> | null = null;
 	let plan: UniversalPlan | LynxCompilerProgram | null = null;
 	let compiled: CompiledUniversalTemplateProgram | null = null;
 	let prepared: PreparedUniversalTemplateProgram | null = null;
@@ -1158,6 +1193,64 @@ export function lynxBlockProgramForComponent<Props>(
 			resourceRoot: context.root.transportRoot,
 			transported: true,
 		}));
+
+	const portalCapabilityFor = (
+		context: LynxBlockProgramContext,
+	): UniversalPortalCapability<LynxClientContainer> => {
+		if (portalCapability !== null) return portalCapability;
+		const capability = loweringDriver(context.container).portals;
+		if (capability === undefined) {
+			return refuse(
+				subject,
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'the Lynx host driver does not declare renderer-owned portal targets.',
+			);
+		}
+		portalCapability = capability;
+		return capability;
+	};
+
+	const preparePortalTarget = (
+		context: LynxBlockProgramContext,
+		target: unknown,
+	): UniversalPortalTargetRegistration =>
+		portalCapabilityFor(context).prepareTarget({
+			container: context.container,
+			renderer: LYNX_TRANSPORT_RENDERER,
+			target,
+			transported: true,
+			createPortalTargetHandle(id) {
+				let handle = portalHandles.get(id);
+				if (handle === undefined) {
+					handle = Object.freeze({
+						$$kind: 'octane.universal.portal-target',
+						renderer: LYNX_TRANSPORT_RENDERER,
+						root: context.root.transportRoot,
+						id,
+					});
+					portalHandles.set(id, handle);
+				}
+				return handle;
+			},
+		});
+
+	/** One isolated target-ownership ledger for the active Block render attempt. */
+	const draftPortalClaims = (
+		context: LynxBlockProgramContext,
+	): Map<string | number, RangeState> => {
+		if (portalDraftClaims !== null) return portalDraftClaims;
+		const draft = new Map(portalTargetClaims);
+		portalDraftClaims = draft;
+		context.afterAbort(() => {
+			if (portalDraftClaims === draft) portalDraftClaims = null;
+		});
+		context.afterCommit(() => {
+			portalTargetClaims.clear();
+			for (const [id, owner] of draft) portalTargetClaims.set(id, owner);
+			if (portalDraftClaims === draft) portalDraftClaims = null;
+		});
+		return draft;
+	};
 
 	/**
 	 * Stand in for every empty event hole before the values pass sees it.
@@ -2418,6 +2511,154 @@ export function lynxBlockProgramForComponent<Props>(
 		);
 	};
 
+	/** Render one compiler-proved portal into a renderer-owned parent range. */
+	const renderPortalRange = (
+		context: LynxBlockProgramContext,
+		state: RangeState,
+		portal: UniversalPortalValue | null,
+		contextValues: SemanticContexts,
+		parentVisible: boolean,
+	): RangeRender => {
+		const hadPortalState = state.portalState !== null;
+		if (state.branchTemplates === null) {
+			return refuse(
+				subject,
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT && 'a non-portal structural region later held a portal.',
+			);
+		}
+		let portalState = state.portalState;
+		if (portalState === null) {
+			if (state.branchTemplates.size !== 0 || (state.keys !== null && state.keys.length !== 0)) {
+				return refuse(
+					subject,
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'a structural region changed from an authored branch to a portal.',
+				);
+			}
+		}
+		if (portal === null) {
+			if (portalState === null) {
+				return renderBranchRange(context, state, null, contextValues, parentVisible);
+			}
+			const rendered = renderBranchRange(context, state, null, contextValues, parentVisible);
+			const previous = portalState.registration;
+			if (previous !== null) {
+				const claims = draftPortalClaims(context);
+				const priorClaims = new Map(claims);
+				let active = true;
+				if (claims.get(previous.handle.id) === state) claims.delete(previous.handle.id);
+				context.afterCommit(() => {
+					if (!active) return;
+					previous.release();
+					portalState!.target = null;
+					portalState!.registration = null;
+				});
+				return {
+					...rendered,
+					discard() {
+						if (!active) return;
+						active = false;
+						claims.clear();
+						for (const [id, owner] of priorClaims) claims.set(id, owner);
+					},
+				};
+			}
+			return rendered;
+		}
+
+		const previous = portalState?.registration ?? null;
+		let registration = previous;
+		let preparedRegistration = false;
+		if (previous === null || !Object.is(portalState!.target, portal.target)) {
+			registration = preparePortalTarget(context, portal.target);
+			preparedRegistration = true;
+		}
+		const target = registration!.handle;
+		const claims = draftPortalClaims(context);
+		const claimant = claims.get(target.id);
+		if (claimant !== undefined && claimant !== state) {
+			if (preparedRegistration) registration!.release();
+			return refuse(
+				subject,
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'Block currently supports one active portal boundary per Lynx target.',
+			);
+		}
+		const branch = {
+			$$kind: UNIVERSAL_IF,
+			condition: true,
+			then: () => portal.children,
+			else: null,
+		} as unknown as UniversalIfValue;
+		let rendered: RangeRender;
+		try {
+			rendered = renderBranchRange(context, state, branch, contextValues, parentVisible);
+		} catch (error) {
+			if (preparedRegistration) registration!.release();
+			throw error;
+		}
+
+		if (portalState === null) {
+			portalState = { target: null, registration: null, site: null };
+			state.portalState = portalState;
+		}
+		const createdPortalState = !hadPortalState;
+		const priorClaims = new Map(claims);
+		let active = true;
+		if (createdPortalState) {
+			context.afterAbort(() => {
+				if (active) state.portalState = null;
+			});
+		}
+		if (previous?.handle.id !== target.id) {
+			if (previous !== null && claims.get(previous.handle.id) === state) {
+				claims.delete(previous.handle.id);
+			}
+			claims.set(target.id, state);
+		}
+		let compilerSite: LynxBlockForSlot | null = null;
+		let createdSite = false;
+		if (portalState.site === null) {
+			compilerSite = state.site;
+			const site = context.core.openForParent(target);
+			portalState.site = site;
+			state.site = site;
+			createdSite = true;
+			context.afterAbort(() => {
+				if (!active) return;
+				portalState!.site = null;
+				state.site = compilerSite;
+			});
+		}
+		if (preparedRegistration) {
+			context.afterAbort(() => {
+				if (active) registration!.release();
+			});
+			context.afterCommit(() => {
+				if (!active) return;
+				previous?.release();
+				portalState!.target = portal.target;
+				portalState!.registration = registration;
+			});
+		}
+		return {
+			...rendered,
+			portalTarget: target,
+			discard() {
+				if (!active) return;
+				active = false;
+				if (preparedRegistration) registration!.release();
+				claims.clear();
+				for (const [id, owner] of priorClaims) claims.set(id, owner);
+				if (createdSite) {
+					portalState!.site = null;
+					state.site = compilerSite;
+				}
+				if (createdPortalState) state.portalState = null;
+			},
+		};
+	};
+
 	/** Render one retained error/Suspense boundary into its compiler range. */
 	const renderTryRange = (
 		context: LynxBlockProgramContext,
@@ -2570,9 +2811,27 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 	};
 
+	/** Release one portal's renderer-owned target only after its host removal is accepted. */
+	const disposeRangePortal = (context: LynxBlockProgramContext, range: RangeState): void => {
+		const portalState = range.portalState;
+		const registration = portalState?.registration ?? null;
+		if (registration === null) return;
+		context.afterCommit(() => {
+			if (portalTargetClaims.get(registration.handle.id) === range) {
+				portalTargetClaims.delete(registration.handle.id);
+			}
+			registration.release();
+			if (range.portalState === portalState) {
+				portalState!.target = null;
+				portalState!.registration = null;
+			}
+		});
+	};
+
 	/** Dispose semantic owners held below an outer member after its host leaves. */
 	const disposeNestedScopes = (context: LynxBlockProgramContext, state: NestedRangeState): void => {
 		for (const range of state.ranges) {
+			disposeRangePortal(context, range);
 			if (range.tryState !== null) {
 				context.afterCommit(() => {
 					range.tryState!.active = false;
@@ -2682,6 +2941,9 @@ export function lynxBlockProgramForComponent<Props>(
 	const applyRange = (context: LynxBlockProgramContext, render: RangeRender): void => {
 		const state = render.state;
 		const templateState = render.templateState;
+		if (render.portalTarget !== undefined && !Object.is(state.site!.parent, render.portalTarget)) {
+			context.core.retargetForSlot(state.site!, render.portalTarget);
+		}
 		if (render.hideNested !== undefined) hideNestedRanges(context, render.hideNested);
 		const releaseMember = (member: LynxBlock): void => {
 			const nested = state.nested?.get(member.key);
@@ -2898,8 +3160,24 @@ export function lynxBlockProgramForComponent<Props>(
 		visible: boolean,
 	): readonly RangeRender[] => {
 		if (states.length === 0) return EMPTY_RANGE_RENDERS;
-		return states.map((range) => {
+		const renderOne = (range: RangeState): RangeRender => {
 			const value = slotValues[range.slot];
+			if (range.portalState !== null) {
+				if (isPortalValue(value)) {
+					return renderPortalRange(context, range, value, contextValues, visible);
+				}
+				if (value === null || value === undefined || typeof value === 'boolean') {
+					return renderPortalRange(context, range, null, contextValues, visible);
+				}
+				return refuse(
+					subject,
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'a portal region later held a non-portal structural value.',
+				);
+			}
+			if (isPortalValue(value)) {
+				return renderPortalRange(context, range, value, contextValues, visible);
+			}
 			if (isRangeValue(value)) {
 				if (range.branchTemplates !== null) {
 					refuse(
@@ -2928,12 +3206,22 @@ export function lynxBlockProgramForComponent<Props>(
 			) {
 				return renderBranchRange(context, range, null, contextValues, visible);
 			}
-			refuse(
+			return refuse(
 				subject,
 				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
 					'a structural hole later held a non-structural value, and a block holds one region kind for its lifetime.',
 			);
-		});
+		};
+		const rendered: RangeRender[] = [];
+		try {
+			for (const range of states) {
+				rendered.push(renderOne(range));
+			}
+		} catch (error) {
+			for (let index = rendered.length - 1; index >= 0; index--) rendered[index]!.discard?.();
+			throw error;
+		}
+		return rendered;
 	};
 	const renderRanges = (
 		context: LynxBlockProgramContext,
@@ -3269,7 +3557,13 @@ export function lynxBlockProgramForComponent<Props>(
 				context.core.setVisibility(block, rendered.visible);
 				for (let index = 0; index < ranges.length; index++) {
 					const range = ranges[index]!;
-					range.site = context.core.openForSlot(block, range.node, range.slot, range.before);
+					// A portal that targets an already-acknowledged handle can have opened
+					// its renderer-owned site while the root render was being produced.
+					// Keep that sole owner instead of replacing it with an empty compiler
+					// site and retaining the first site only through `portalState`.
+					if (range.site === null) {
+						range.site = context.core.openForSlot(block, range.node, range.slot, range.before);
+					}
 					applyRange(context, rows[index]!);
 				}
 				context.afterCommit(() => {
@@ -3296,6 +3590,7 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 
 			for (const range of ranges) {
+				disposeRangePortal(context, range);
 				if (range.site === null) continue;
 				context.core.clearForSlot(
 					range.site,
@@ -3333,6 +3628,10 @@ export function lynxBlockProgramForComponent<Props>(
 				valueIndexesBySlot = EMPTY_SITE_INDEXES;
 				eventIndexesBySlot = EMPTY_SITE_INDEXES;
 				liveComputations = EMPTY_COMPUTATIONS;
+				portalTargetClaims.clear();
+				portalDraftClaims = null;
+				portalHandles.clear();
+				portalCapability = null;
 				// The cells outlive nothing: a setter captured by a handler this
 				// program bound can still be called after release, and a disposed
 				// scope answers it by doing nothing rather than scheduling a render

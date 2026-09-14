@@ -349,6 +349,7 @@ export interface OctaneLynxBlockTemplateFeatureRequirement {
 		| 'if'
 		| 'inline-render-prop'
 		| 'native-list'
+		| 'portal'
 		| 'program-root-event'
 		| 'renderable-hole'
 		| 'switch'
