@@ -173,6 +173,36 @@ hashes, source/manifests receipts, device/thermal metadata, lease-chain hashes,
 and exact runner arguments. They contain only the one-way serial digest, not the
 raw leased serial.
 
+## Post-decision owner investigation
+
+The first framework-owned hypothesis was that the compact program store's
+repeated `insertBefore(parent, root, null)` tail attachment made Native scan an
+ever-growing sibling run. Commit
+`b2a50ae0873b2b4be40fde4f5d4b9bdf18b137d6` selected the engine's native
+`__AppendElement` primitive for that exact case, retained anchored insertion,
+and passed the full Lynx project suite. A fresh production/automatic build on a
+new lease then measured create medians of 780 ms at 1k, 3,475 ms at 3k, and
+7,930 ms at 5k (five valid samples each). Relative to the qualifying candidate
+above, those ratios are 0.94x, 1.00x, and 1.04x. This is no repeatable
+end-to-end improvement and does not change the superlinear shape.
+
+The 10k cell was stopped rather than spending another five 240-second timeout
+windows after the three lower scales had already falsified the hypothesis. The
+experiment was reverted by `2c7bf2163`; it is not part of the candidate and no
+performance claim is attached to it. A second source-only diagnostic replaced
+per-handle `Map` ownership with a cached paged table and measured 815 ms at 1k,
+also ruling out the instance index as the leading owner. That uncommitted
+ablation is deliberately not retained as release evidence.
+
+[`android-native-tail-append-diagnostic.json`](evidence/android-native-tail-append-diagnostic.json)
+is the exact three-cell source checkpoint for the clean tail-append commit;
+SHA-256
+`5202c8b1fb244646ac103960c66d67add1d177ece61645bd2e5d38712358394b`.
+It is explicitly a partial diagnostic (`checkpointComplete=false`), not a
+publishable campaign. Together with the earlier #278 attribution, it narrows
+the remaining owner to the generated Native creation/application primitive
+sequence rather than transport, codec, root-tail selection, or handle lookup.
+
 ## Upstream alignment and remaining owner work
 
 Upstream issue octanejs/octane#1055 was still open at the final remote check.
