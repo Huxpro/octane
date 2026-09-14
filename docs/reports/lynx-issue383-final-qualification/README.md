@@ -203,6 +203,24 @@ publishable campaign. Together with the earlier #278 attribution, it narrows
 the remaining owner to the generated Native creation/application primitive
 sequence rather than transport, codec, root-tail selection, or handle lookup.
 
+A final source experiment tried replacing later fixed-shape run instances with
+Lynx's native deep `__CloneElement`, recovering descendants through
+`__GetChildren`, and overwriting every inherited dynamic value and event. The
+production rows-0 bundle reached the first 1k create action, then Explorer 4.1
+terminated with `SIGSEGV` before any timing or semantic sample could be
+recorded. Immediately before the fault, Lynx DevTool reported null inspector
+metadata for the cloned elements; the top two native frames were in
+`liblynxdevtool.so`. The run was stopped, the device was disconnected and
+released, and all six source/test edits were reverted. A passing fake-PAPI unit
+model is therefore insufficient evidence for this SDK primitive, and no clone
+path is retained.
+
+[`android-native-clone-diagnostic.json`](evidence/android-native-clone-diagnostic.json)
+records the exact candidate bundle, lane, thermal preflight, requested matrix,
+sanitized lease identity, crash signature, cleanup, and rejection decision. It
+contains no completed benchmark record and makes no performance claim; SHA-256
+`937195b92ac5fbfd10fe811edf961cd2f50d356fb69669608cfd0326bb8824be`.
+
 ## Upstream alignment and remaining owner work
 
 Upstream issue octanejs/octane#1055 was still open at the final remote check.
@@ -212,9 +230,11 @@ report remain suitable upstream seams. This branch additionally retains its
 resident compact program, native list/resource ownership, and fail-closed
 Universal fallback. No upstream acceptance or merge is claimed.
 
-The next framework-owned investigation is the candidate's superlinear Native
-creation path between 1k and 10k. It needs an uninstrumented reproduction plus a
-separate profile/phase ablation before another optimization is selected. In
+The remaining framework-owned investigation is the candidate's superlinear
+Native creation path between 1k and 10k. Tail append, handle lookup, and now
+runtime deep-cloning have been eliminated as safe leading owners. Any next
+optimization needs an uninstrumented reproduction plus a separate profile/phase
+ablation before implementation is selected. In
 parallel, the benchmark owner must restore stable list viewport/key observation
 and recover the DevTool connector between entries. Only a new exact-head
 Android no-JIT/low-end and iOS campaign satisfying the registered AB/BA,
