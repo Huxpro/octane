@@ -9,7 +9,7 @@ import type { LynxCompiledProgramWorkletStore } from './compiled-program-worklet
 import type { LynxMainThreadWorkletRegistry } from './worklets.js';
 import { LYNX_PROFILE, lynxWireProfile } from './profiling.js';
 import {
-	createLynxListItemDescriptor,
+	createLynxListItemDescriptorFromMetadata,
 	lynxListReuseKey,
 	planLynxListUpdate,
 	type LynxListItemDescriptor,
@@ -74,6 +74,19 @@ interface CompiledProgramListItem<Node extends LynxElementRef> {
 	readonly descriptor: LynxListItemDescriptor;
 	readonly handle: number;
 	readonly instance: CompiledProgramInstance<Node>;
+}
+
+interface CompiledProgramListDescriptorPlan {
+	readonly itemKey: unknown;
+	readonly itemKeySlot: number;
+	readonly reuseIdentifier: unknown;
+	readonly reuseIdentifierSlot: number;
+	readonly recyclable: unknown;
+	readonly recyclableSlot: number;
+	readonly defer: unknown;
+	readonly deferSlot: number;
+	readonly descriptorSlots: readonly boolean[];
+	readonly valueReads: number;
 }
 
 interface CompiledProgramListCell<Node extends LynxElementRef> {
@@ -464,7 +477,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	let workletStore: LynxCompiledProgramWorkletStore<Node> | null = null;
 	const noWorkletPlans = new WeakSet<UniversalProgramPlan>();
 	const listNodeIndexes = new WeakMap<UniversalProgramPlan, readonly number[]>();
-	const listDescriptorSlots = new WeakMap<UniversalProgramPlan, readonly boolean[]>();
+	const listDescriptorPlans = new WeakMap<
+		UniversalProgramPlan,
+		CompiledProgramListDescriptorPlan
+	>();
 	const retainedHostRefs = (plan: UniversalProgramPlan): number =>
 		plan.resident?.length ?? plan.nodes;
 	const publishInstance = (handle: number, instance: CompiledProgramInstance<Node>): void => {
@@ -583,6 +599,49 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		return wire;
 	};
+	const listDescriptorPlan = (plan: UniversalProgramPlan): CompiledProgramListDescriptorPlan => {
+		const cached = listDescriptorPlans.get(plan);
+		if (cached !== undefined) return cached;
+		const rootNode = planWire(plan).nodes[0]!;
+		if (rootNode.type !== 'list-item' || plan.ranges.length !== 0) {
+			fail(
+				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+					'requires a fixed-shape list-item root for a deferred native-list run',
+			);
+		}
+		const descriptorSlots = new Array<boolean>(plan.values.length).fill(false);
+		let itemKeySlot = -1;
+		let reuseIdentifierSlot = -1;
+		let recyclableSlot = -1;
+		let deferSlot = -1;
+		for (const binding of rootNode.bindings ?? []) {
+			if (binding.name === 'item-key') itemKeySlot = binding.valueIndex;
+			else if (binding.name === 'reuse-identifier') reuseIdentifierSlot = binding.valueIndex;
+			else if (binding.name === 'recyclable') recyclableSlot = binding.valueIndex;
+			else if (binding.name === 'defer') deferSlot = binding.valueIndex;
+			else continue;
+			descriptorSlots[binding.valueIndex] = true;
+		}
+		const built = Object.freeze({
+			itemKey: rootNode.props['item-key'],
+			itemKeySlot,
+			reuseIdentifier: rootNode.props['reuse-identifier'],
+			reuseIdentifierSlot,
+			recyclable: rootNode.props.recyclable,
+			recyclableSlot,
+			defer: rootNode.props.defer,
+			deferSlot,
+			descriptorSlots: Object.freeze(descriptorSlots),
+			valueReads:
+				Number(itemKeySlot >= 0) +
+				Number(reuseIdentifierSlot >= 0) +
+				Number(recyclableSlot >= 0) +
+				Number(deferSlot >= 0),
+		});
+		listDescriptorPlans.set(plan, built);
+		if (LYNX_PROFILE) lynxWireProfile().listProgramItemDescriptorPlanBuilds++;
+		return built;
+	};
 	const deferredItem = (
 		handle: number,
 		instance: CompiledProgramInstance<Node>,
@@ -590,47 +649,37 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const cached = instance.listItem;
 		if (cached !== undefined) return cached;
 		const run = instance.run;
-		const wire = planWire(run.plan);
-		const rootNode = wire.nodes[0]!;
-		if (rootNode.type !== 'list-item' || run.plan.ranges.length !== 0) {
-			fail(
-				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
-					'requires a fixed-shape list-item root for a deferred native-list run',
-			);
-		}
-		const props: Record<string, unknown> = { ...rootNode.props };
+		const descriptorPlan = listDescriptorPlan(run.plan);
 		const valueOffset = instance.index * run.plan.values.length;
-		for (const binding of rootNode.bindings ?? []) {
-			props[binding.name] = run.values[valueOffset + binding.valueIndex];
-		}
 		const item = {
-			descriptor: createLynxListItemDescriptor(handle, rootNode.type, props),
+			descriptor: createLynxListItemDescriptorFromMetadata(
+				handle,
+				descriptorPlan.itemKeySlot < 0
+					? descriptorPlan.itemKey
+					: run.values[valueOffset + descriptorPlan.itemKeySlot],
+				descriptorPlan.reuseIdentifierSlot < 0
+					? descriptorPlan.reuseIdentifier
+					: run.values[valueOffset + descriptorPlan.reuseIdentifierSlot],
+				descriptorPlan.recyclableSlot < 0
+					? descriptorPlan.recyclable
+					: run.values[valueOffset + descriptorPlan.recyclableSlot],
+				descriptorPlan.deferSlot < 0
+					? descriptorPlan.defer
+					: run.values[valueOffset + descriptorPlan.deferSlot],
+			),
 			handle,
 			instance,
 		};
 		instance.listItem = item;
-		if (LYNX_PROFILE) lynxWireProfile().listProgramItemDescriptorBuilds++;
+		if (LYNX_PROFILE) {
+			const profile = lynxWireProfile();
+			profile.listProgramItemDescriptorBuilds++;
+			profile.listProgramItemDescriptorValueReads += descriptorPlan.valueReads;
+		}
 		return item;
 	};
 	const isListDescriptorSlot = (plan: UniversalProgramPlan, slot: number): boolean => {
-		let slots = listDescriptorSlots.get(plan);
-		if (slots === undefined) {
-			const found = new Array<boolean>(plan.values.length).fill(false);
-			for (const binding of planWire(plan).nodes[0]!.bindings ?? []) {
-				const name = binding.name;
-				if (
-					name === 'item-key' ||
-					name === 'reuse-identifier' ||
-					name === 'recyclable' ||
-					name === 'defer'
-				) {
-					found[binding.valueIndex] = true;
-				}
-			}
-			slots = Object.freeze(found);
-			listDescriptorSlots.set(plan, slots);
-		}
-		return slots[slot] === true;
+		return listDescriptorPlan(plan).descriptorSlots[slot] === true;
 	};
 	const listItems = (
 		list: CompiledProgramListState<Node>,

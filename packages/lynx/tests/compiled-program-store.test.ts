@@ -73,6 +73,21 @@ const LIST_ROW: UniversalHostTemplateProgram = {
 	events: [],
 };
 
+const LIST_METADATA_ROW: UniversalHostTemplateProgram = {
+	...LIST_EVENT_ROW,
+	nodes: [
+		{
+			...LIST_EVENT_ROW.nodes[0]!,
+			props: { 'reuse-identifier': 'feed-row' },
+			bindings: [
+				{ name: 'item-key', valueIndex: 0 },
+				{ name: 'class', valueIndex: 2 },
+			],
+		},
+		...LIST_EVENT_ROW.nodes.slice(1),
+	],
+};
+
 function emittedPlan(
 	papi: LynxElementPAPI<FakeNode>,
 	resident?: readonly number[],
@@ -658,7 +673,7 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(profile.programRunLiveRetainedHostRefs).toBe(liveBefore);
 	});
 
-	it('caches native-list descriptors and rebuilds only changed metadata rows', () => {
+	it('caches native-list descriptor plans and rebuilds only changed metadata rows', () => {
 		const base = emittedHost(true);
 		const publications: unknown[] = [];
 		const papi: typeof base = {
@@ -672,9 +687,9 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
 		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }], [0, 1]);
 		const row = emittedListPlan(
-			LIST_EVENT_ROW,
-			['p:item-key', 'c', 'e:bindtap'],
-			[0, 1],
+			LIST_METADATA_ROW,
+			['p:item-key', 'c', 'p:class', 'e:bindtap'],
+			[0, 1, 2],
 			[],
 			[0, 2],
 		);
@@ -682,27 +697,42 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		const values = Array.from({ length: count }, (_, index) => [
 			'item-' + index,
 			'Row ' + index,
+			index % 2 === 0 ? 'even' : 'odd',
 		]).flat();
 		const profile = lynxWireProfile();
 		const buildsBefore = profile.listProgramItemDescriptorBuilds;
+		const plansBefore = profile.listProgramItemDescriptorPlanBuilds;
+		const readsBefore = profile.listProgramItemDescriptorValueReads;
 		store.begin();
 		store.mount({ firstHandle: 2, count: 1, parent: page, before: null, plan: shell, values: [] });
 		const listNode = store.range(2, 0);
 		store.mount({ firstHandle: 3, count, parent: listNode, before: null, plan: row, values });
 		store.commit();
 		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count);
+		expect(profile.listProgramItemDescriptorPlanBuilds - plansBefore).toBe(1);
+		expect(profile.listProgramItemDescriptorValueReads - readsBefore).toBe(count);
 		expect(publications).toHaveLength(1);
+		expect((publications[0] as { insertAction: readonly unknown[] }).insertAction[0]).toMatchObject(
+			{
+				position: 0,
+				'item-key': 'item-0',
+				'reuse-identifier': 'feed-row',
+			},
+		);
 
 		store.begin();
-		expect(store.set(502, 1, 'Row 499 updated')).toBe(true);
+		expect(store.set(502, 2, 'selected')).toBe(true);
 		store.commit();
 		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count);
+		expect(profile.listProgramItemDescriptorPlanBuilds - plansBefore).toBe(1);
+		expect(profile.listProgramItemDescriptorValueReads - readsBefore).toBe(count);
 		expect(publications).toHaveLength(1);
 
 		store.begin();
 		expect(store.set(502, 0, 'item-499-updated')).toBe(true);
 		store.commit();
 		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count + 1);
+		expect(profile.listProgramItemDescriptorValueReads - readsBefore).toBe(count + 1);
 		expect(publications).toHaveLength(2);
 		expect(publications.at(-1)).toMatchObject({
 			updateAction: [{ from: 499, to: 499, 'item-key': 'item-499-updated' }],
@@ -712,12 +742,14 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(store.set(502, 0, 'item-499-rejected')).toBe(true);
 		store.prepareCommit();
 		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count + 2);
+		expect(profile.listProgramItemDescriptorValueReads - readsBefore).toBe(count + 2);
 		store.rollback();
 
 		store.begin();
 		expect(store.set(502, 0, 'item-499-retry')).toBe(true);
 		store.commit();
 		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count + 3);
+		expect(profile.listProgramItemDescriptorValueReads - readsBefore).toBe(count + 3);
 		expect(publications.at(-1)).toMatchObject({
 			updateAction: [{ from: 499, to: 499, 'item-key': 'item-499-retry' }],
 		});
@@ -727,6 +759,8 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(store.move(3, listNode, null)).toBe(true);
 		store.commit();
 		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count + 3);
+		expect(profile.listProgramItemDescriptorPlanBuilds - plansBefore).toBe(1);
+		expect(profile.listProgramItemDescriptorValueReads - readsBefore).toBe(count + 3);
 		expect(publications).toHaveLength(publicationsBeforeMove + 1);
 		store.dispose();
 	});

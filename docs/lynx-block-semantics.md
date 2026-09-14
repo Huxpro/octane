@@ -269,6 +269,14 @@ receive the old copy. Reuse setters also read the retained table in place, and
 eventless fixed-shape rows share immutable empty event/range tables. The profile counter
 `listProgramCellValueCopies` records only the compatibility/worklet copies.
 
+Logical list descriptors likewise cache one immutable metadata plan per
+resident template. The plan selects only `item-key`, `reuse-identifier`,
+`recyclable`, and `defer`; each row reads only the selected dynamic values and
+does not copy the root props table or reinterpret unrelated root bindings.
+`listProgramItemDescriptorPlanBuilds` and
+`listProgramItemDescriptorValueReads` distinguish the template-constant work
+from the value-density work.
+
 A list may demand a physical cell while its logical row is retained but hidden.
 Fresh and recycled cells paint that hidden state without native event tokens,
 host-ref attachment publication, or main-thread worklet/ref activation. A later

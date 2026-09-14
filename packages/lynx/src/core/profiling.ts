@@ -213,6 +213,10 @@ export interface LynxWireProfile {
 	listProgramCellLiveRetainedHostRefs: number;
 	/** Main: logical native-list descriptors built after a per-instance cache miss. */
 	listProgramItemDescriptorBuilds: number;
+	/** Main: native-list descriptor plans built from immutable template metadata. */
+	listProgramItemDescriptorPlanBuilds: number;
+	/** Main: dynamic list metadata values read while building logical descriptors. */
+	listProgramItemDescriptorValueReads: number;
 	/** Main: cell-scoped values arrays copied for legacy drivers or worklet rewriting. */
 	listProgramCellValueCopies: number;
 	/** Main: addressed native-list cells that retained generic materialization. */
@@ -292,6 +296,8 @@ export function lynxWireProfile(): LynxWireProfile {
 		listProgramCellReleasedHostRefs: 0,
 		listProgramCellLiveRetainedHostRefs: 0,
 		listProgramItemDescriptorBuilds: 0,
+		listProgramItemDescriptorPlanBuilds: 0,
+		listProgramItemDescriptorValueReads: 0,
 		listProgramCellValueCopies: 0,
 		listProgramCellFallbacks: 0,
 		listProgramCellFallback: null,
