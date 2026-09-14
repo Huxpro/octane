@@ -26,7 +26,9 @@ preview. The repository proves graph specialization, bundle construction,
 decoding, dual-layer lazy-chunk emission, and one visible first paint in the
 official macOS Explorer 3.9 arm64 asset. It does not prove adopted-node
 identity, automated native interaction, dynamic chunk execution on Lynx Web,
-Android Explorer, or iOS Explorer, or state-preserving HMR on those targets.
+general Android Explorer or iOS Explorer behavior, or state-preserving HMR on
+those targets. The opt-in Element Template slice has separate, narrowly scoped
+Android table evidence described below.
 
 ## One-command repository demo
 
@@ -119,6 +121,39 @@ cannot reproduce stay on the command path. Use `programAddressing: false` to
 keep compiled programs while comparing descriptor transport, or
 `mainThreadProgramBackend: false` for a full command-path control. Pass another
 backend explicitly only when developing its renderer/compiler integration.
+
+Set `experimentalElementTemplate: true` to require the matching whole-root
+Element Template backend:
+
+```js
+pluginOctane({ experimentalElementTemplate: true });
+```
+
+The option is valid only for the two-layer application build. It keeps the
+ordinary Block/application eligibility proof, then additionally requires every
+selected main-thread plan to lower to the public Template Definition schema.
+The build fails when coverage is incomplete; it never emits a tree that mixes
+opaque template handles with ordinary Element refs. The selected native bundle
+uses target SDK `3.2`, while ordinary application bundles retain target `3.9`.
+The default remains the ordinary compiled-program Element owner.
+
+The current lowering admits static native host topology, scalar value/event
+slots, root visibility, and one element slot for each proved structural range.
+It rejects refs, native lists, `main-thread:*` bindings, text-polymorphic ranges,
+and unsupported native attribute composition. At runtime, pending template work
+is drained in 8,192-node chunks; synchronous first screens above 8,192 plan
+nodes defer to the background store; and live ownership is capped at 32,768
+template instances and 40,960 resident plan nodes. Oversized eager trees reject
+with `Octane Lynx OL512` before native creation and must use the virtualized
+native-list backend.
+
+One pinned Android Explorer 4.1.0 cohort accepted the final 10,000-row native
+create and startup samples and rejected a 30,000-row startup without a JNI/fatal
+marker or process death. This qualifies only that workload and those recorded
+boundaries. See
+[`docs/lynx-block-semantics.md`](../../docs/lynx-block-semantics.md#experimental-whole-root-element-template-backend)
+and
+[`android-element-template-evidence.json`](../lynx/audit/android-element-template-evidence.json).
 
 Compatible Rspack entry metadata is copied to both generated graphs so they see
 the same entry initialization inputs. Development-only CSS HMR setup runs after
@@ -270,42 +305,44 @@ interaction/performance evidence.
 
 
 R10 covers two exact, indivisible source/build graphs. Registry
-metadata was checked on 2026-07-23:
+metadata was checked on 2026-09-14:
 
 | Component | Minimum | Current |
 | --- | ---: | ---: |
-| Lynx SDK / target SDK | `3.9.0` / `3.9` | `3.9.0` / `3.9` |
-| `@lynx-js/rspeedy` | `0.16.0` | `0.16.0` |
-| `@lynx-js/cache-events-webpack-plugin` | `0.2.0` | `0.2.0` |
-| `@lynx-js/chunk-loading-webpack-plugin` | `0.4.1` | `0.4.1` |
-| `@lynx-js/debug-metadata-rsbuild-plugin` | `0.2.0` | `0.2.0` |
+| Lynx SDK / ordinary target / Element Template target | `3.9.0` / `3.9` / `3.2` | `3.9.0` / `3.9` / `3.2` |
+| `@lynx-js/rspeedy` | `0.17.1` | `0.17.1` |
+| `@lynx-js/rsbuild-plugin` | `0.1.1` | `0.1.1` |
+| `@lynx-js/cache-events-webpack-plugin` | `0.2.1` | `0.2.1` |
+| `@lynx-js/chunk-loading-webpack-plugin` | `0.4.2` | `0.4.2` |
+| `@lynx-js/debug-metadata-rsbuild-plugin` | `0.2.3` | `0.2.3` |
 | `@lynx-js/debug-metadata` | `0.1.0` | `0.1.0` |
-| `@lynx-js/web-rsbuild-server-middleware` | `0.22.2` | `0.22.2` |
+| `@lynx-js/web-rsbuild-server-middleware` | `0.26.0` | `0.26.0` |
 | `@lynx-js/websocket` | `0.0.4` | `0.0.4` |
-| `@rsbuild/core` | `2.1.4` | `2.1.4` |
-| `@rsbuild/plugin-css-minimizer` | `2.0.0` | `2.0.0` |
-| `@rsdoctor/rspack-plugin` | `1.5.18` | `1.5.18` |
-| `@rspack/core` | `2.1.3` | `2.1.5` |
-| `@lynx-js/template-webpack-plugin` | `0.13.0` | `0.13.0` |
-| `@lynx-js/css-extract-webpack-plugin` | `0.9.0` | `0.9.0` |
-| `@lynx-js/runtime-wrapper-webpack-plugin` | `0.2.2` | `0.2.2` |
-| `@lynx-js/webpack-dev-transport` | `0.3.0` | `0.3.0` |
-| `@lynx-js/webpack-runtime-globals` | `0.0.7` | `0.0.7` |
-| `@lynx-js/tasm` | `0.0.39` | `0.0.39` |
+| `@rsbuild/core` | `2.2.3` | `2.2.3` |
+| `@rsbuild/plugin-css-minimizer` | `2.0.1` | `2.0.1` |
+| `@rsdoctor/rspack-plugin` | `1.6.4` | `1.6.4` |
+| `@rspack/core` | `2.2.2` | `2.2.3` |
+| `@lynx-js/template-webpack-plugin` | `0.16.0` | `0.16.0` |
+| `@lynx-js/css-extract-webpack-plugin` | `0.11.0` | `0.11.0` |
+| `@lynx-js/runtime-wrapper-webpack-plugin` | `0.2.4` | `0.2.4` |
+| `@lynx-js/webpack-dev-transport` | `0.4.0` | `0.4.0` |
+| `@lynx-js/webpack-runtime-globals` | `0.0.8` | `0.0.8` |
+| `@lynx-js/tasm` | `0.0.49` | `0.0.49` |
 | `@lynx-js/testing-environment` | `0.3.0` | `0.3.0` |
 | `@lynx-js/types` | `4.1.0` | `4.1.0` |
-| `@lynx-js/web-core` | `0.22.2` | `0.22.2` |
+| `@lynx-js/web-core` | `0.26.0` | `0.26.0` |
 | TypeScript | `5.9.3` | `5.9.3` |
 | Webpack (tooling peer only) | `5.108.4` | `5.108.4` |
 
-Rspeedy `0.16.0` requires Rsbuild `2.1.4` exactly. That Rsbuild release accepts
-Rspack `~2.1.2`, so the current lane advances only Rspack to the newest allowed
-patch. It does not mix in Rsbuild `2.1.7`. Likewise, template plugin `0.13.0`
-requires tasm `0.0.39` exactly, so the standalone tasm `0.0.48` release is not
-part of this graph. `@octanejs/lynx` also remains pinned to its audited
-`@lynx-js/types@4.0.0` compatibility slice; newer standalone types releases are
-reported by the registry check but are not accepted into either lane without a
-new compatibility audit. The lane also pins every direct Rspeedy dependency
+Rspeedy `0.17.1` requires Rsbuild `2.2.3` and its framework-neutral
+`@lynx-js/rsbuild-plugin@0.1.1` exactly. Rsbuild accepts Rspack `~2.2.2`, so the
+current lane advances only that declared-compatible patch edge. Element Template
+encoding requires the matching template `0.16.0`, tasm `0.0.49`, CSS extract
+`0.11.0`, runtime wrapper `0.2.4`, runtime globals `0.0.8`, and web-core `0.26.0`
+graph; the compatibility smoke rejects a cross-generation encoder graph. The
+Element Template application targets SDK `3.2`, matching the public encoder's
+native compatibility lane, while ordinary applications retain target `3.9`.
+`@octanejs/lynx` is pinned to `@lynx-js/types@4.1.0`. The lane also pins every direct Rspeedy dependency
 selected through a caret or tilde range, the debug-metadata payload, runtime
 globals, and the required Webpack 5 tooling peer. Webpack remains an audited
 tooling pin rather than a moving current-lane edge; the strict external install
@@ -318,7 +355,9 @@ then installs each lane into an external temporary consumer without creating a
 lockfile. It checks exact versions and dependency edges, one physical core
 graph, strict build-tool peer satisfaction, the absence of DOM and
 React/Preact/ReactLynx code in decoded programs, deterministic repeated
-production builds, and a decoded engine target of `3.9`. CI also checks registry
+production builds, and a decoded ordinary-application engine target of `3.9`.
+The Element Template build tests separately decode and validate target `3.2`.
+CI also checks registry
 drift for the current lane. These remain source/build checks, not Android or iOS
 runtime evidence.
 

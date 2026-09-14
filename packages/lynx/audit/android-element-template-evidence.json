@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-14",
+  "scope": "One leased Android cohort running the experimental compiler-proved whole-root Element Template backend in official Lynx Explorer 4.1.0. The accepted samples prove this table workload and the recorded native boundaries only; they are not a general Android, iOS, parity, memory, or comparative-performance claim.",
+  "explorer": {
+    "release": "4.1.0",
+    "asset": "LynxExplorer-noasan-release.apk",
+    "assetUrl": "https://github.com/lynx-family/lynx/releases/download/4.1.0/LynxExplorer-noasan-release.apk",
+    "sha256": "6ae29787a2166974c29c2f23d87f3b20a137abcf9a8c17903ad19f3fb7f00cb6"
+  },
+  "runner": {
+    "commit": "429c9f958ed32157078c2297300a1911df796589",
+    "adapter": "packages/runner/adapters/lynx-sandbox-android.mjs",
+    "adapterSha256": "8ce8f67de053283402e12b11ff50ff352de036fd552ea1029c73c23eb8234ed4",
+    "adapterModification": "The table-action measurement disables DevTool DOM events around the native tap and timing-marker wait, then restores them. This prevents observer backpressure from dominating a 10,000-row mutation; startup samples do not use that measured-tap suppression.",
+    "port": "isolated non-default port",
+    "deviceIdentity": "redacted; immutable result names retain only the runner's hashed cohort identity"
+  },
+  "candidate": {
+    "branch": "feat/optimal-lynx-app-adoption",
+    "baseCommit": "0bb818b1a302",
+    "configuration": "production automatic Block core plus experimental whole-root Element Template backend",
+    "bundles": {
+      "rows0Sha256": "a7579ff9dea071266e623fb15a001ec9685b21393b01bb02b3c2a4c93f9ec8f4",
+      "rows10000Sha256": "2862b080120d7899c20d172ec7c46829692c60407660129f5888a3f5dc1922de",
+      "rows30000Sha256": "71c8d9148c4b7dcb79d9e72fca872b57ecc5e8e94c8b015c482629ef79e0901b"
+    },
+    "nativeBudgets": {
+      "pendingPaintingCost": 8192,
+      "synchronousFirstScreenPlanNodes": 8192,
+      "residentTemplateInstances": 32768,
+      "residentPlanNodes": 40960,
+      "overflowDiagnostic": "Octane Lynx OL512"
+    }
+  },
+  "qualification": {
+    "tableCreate10000": {
+      "result": "2026-09-14T10-28-18-lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216-4639855e916d-9259d7bcd26d-native-native-issue383-et-final2-final2-table10k.json",
+      "resultSha256": "8f4b777dad7d95b64cb47761db21c43e10e82c8bcc67f6273498701b5c7b9c58",
+      "protocol": "lynx-native-bench-v2",
+      "source": "native-tap",
+      "boundary": "native-input-handler-to-second-native-frame",
+      "latencyMs": 4966,
+      "attempted": 1,
+      "accepted": 1,
+      "dnf": 0,
+      "preRowCount": 0,
+      "postRowCount": 10000,
+      "explorerAliveAfterSample": true,
+      "freshLogcatCrashMarkers": false
+    },
+    "startup10000": {
+      "result": "2026-09-14T10-28-36-lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216-4639855e916d-18fc0dc2094d-native-native-issue383-et-final2-final2-startup10k.json",
+      "resultSha256": "c81d0894ec9c279f445696991069ef4786766f9efda3b322b9b3a96b70d2c3d8",
+      "protocol": "lynx-native-startup-v1",
+      "commitBoundary": "native-open-request-to-octane-transport-ack",
+      "secondFrameBoundary": "native-open-request-to-second-frame-after-octane-transport-ack",
+      "commitMs": 5024,
+      "secondFrameMs": 5056,
+      "attempted": 1,
+      "accepted": 1,
+      "dnf": 0,
+      "postRowCount": 10000,
+      "explorerAliveAfterSample": true,
+      "freshLogcatCrashMarkers": false
+    },
+    "startup30000FailClosed": {
+      "result": "2026-09-14T10-28-54-lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216-4639855e916d-b4c55f4bdf99-native-native-issue383-et-final2-final2-startup30k.json",
+      "resultSha256": "666ca522dfa39be8ca5a3b0652666a8a3b6b221943db05e1d5b00beac3ee621b",
+      "runnerCategory": "producer-runtime-error",
+      "attempted": 1,
+      "accepted": 0,
+      "dnf": 1,
+      "expectedSourceDiagnostic": "Octane Lynx OL512",
+      "explorerAliveAfterSample": true,
+      "freshLogcatCrashMarkers": false,
+      "interpretation": "The eager 30,000-row table exceeds the resident native-node budget and is rejected before Android's weak-global-reference table. A virtualized native list is the supported architecture for this scale."
+    }
+  },
+  "rejectedCandidates": [
+    {
+      "finding": "A synchronous first-screen plan-node limit of 40,960 was unsafe because one template node can enqueue multiple PaintingContext callbacks inside renderPage's coalesced flush scope.",
+      "bundleSha256": "ab47bed8406d6f65a995b16bc4422a20902c2fb4c33030fc0d59a3b3b1a3bafe",
+      "result": "2026-09-14T09-26-17-lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216-186bd37815f8-72e4d7dc243c-native-native-issue383-et-native-budget-startup10k-final.json",
+      "resultSha256": "57b07760ff78c54c03ada4a556589ff5ab96049b2feed03347545764d09236cd",
+      "observed": "PaintingContext global-reference overflow and Explorer process death",
+      "resolution": "Use the independently qualified 8,192 single-batch budget for synchronous first-screen admission and defer larger trees intact to the background store."
+    },
+    {
+      "finding": "Draining queued PaintingContext work alone did not bound live shadow-node ownership.",
+      "result": "2026-09-14T09-11-39-lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216-186bd37815f8-68af4355dfb9-native-issue383-et-native-budget-startup30k-v3.json",
+      "resultSha256": "7a2820dd583b36b7755ccc36f5f6e9f1725e0abfaab2320862e52a50ae9267b2",
+      "observed": "TextShadowNode weak-global-reference overflow and Explorer process death",
+      "resolution": "Track compiler-proved resident native-node cost separately and reject above 40,960 before native creation."
+    }
+  ],
+  "gates": {
+    "wholeRootElementTemplateEncoding": "passed",
+    "nativeTapCreate10000": "passed",
+    "startup10000": "passed",
+    "startup30000": "fail-closed as designed",
+    "nativeProcessSurvivesSupportedAndRejectedFinalSamples": "passed",
+    "androidGeneralRendererMatrix": "not-run",
+    "ios": "not-run",
+    "comparativePerformance": "not-measured"
+  }
+}

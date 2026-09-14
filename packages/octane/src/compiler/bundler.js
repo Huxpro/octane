@@ -1251,6 +1251,12 @@ class OctaneBundlerCompiler {
 				...(out.mainThreadProgramCoverage === undefined
 					? null
 					: { mainThreadProgramCoverage: out.mainThreadProgramCoverage }),
+				...(out.lynxElementTemplates === undefined
+					? null
+					: { lynxElementTemplates: out.lynxElementTemplates }),
+				...(out.lynxElementTemplateCoverage === undefined
+					? null
+					: { lynxElementTemplateCoverage: out.lynxElementTemplateCoverage }),
 				...(out.lynxBlockSemanticRequirements === undefined
 					? null
 					: { lynxBlockSemanticRequirements: out.lynxBlockSemanticRequirements }),

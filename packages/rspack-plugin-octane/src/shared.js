@@ -534,6 +534,28 @@ export function getOctaneRspackBuildInfo(module) {
 		Number.isSafeInteger(value.mainThreadProgramCoverage.addressed) &&
 		value.mainThreadProgramCoverage.addressed >= 0 &&
 		value.mainThreadProgramCoverage.addressed <= value.mainThreadProgramCoverage.total;
+	const lynxElementTemplateCoverageValid =
+		value?.lynxElementTemplateCoverage !== null &&
+		typeof value?.lynxElementTemplateCoverage === 'object' &&
+		Number.isSafeInteger(value.lynxElementTemplateCoverage.total) &&
+		value.lynxElementTemplateCoverage.total >= 0 &&
+		Number.isSafeInteger(value.lynxElementTemplateCoverage.lowered) &&
+		value.lynxElementTemplateCoverage.lowered >= 0 &&
+		value.lynxElementTemplateCoverage.lowered <= value.lynxElementTemplateCoverage.total;
+	const lynxElementTemplatesValid =
+		Array.isArray(value?.lynxElementTemplates) &&
+		value.lynxElementTemplates.every(
+			(template) =>
+				template !== null &&
+				typeof template === 'object' &&
+				typeof template.templateId === 'string' &&
+				template.templateId.length > 0 &&
+				template.compiledTemplate !== null &&
+				typeof template.compiledTemplate === 'object' &&
+				!Array.isArray(template.compiledTemplate) &&
+				typeof template.sourceFile === 'string' &&
+				template.sourceFile.length > 0,
+		);
 	if (
 		value &&
 		typeof value === 'object' &&
@@ -548,6 +570,20 @@ export function getOctaneRspackBuildInfo(module) {
 			(value.transformKind === 'compile' &&
 				universalRuntimeValid &&
 				mainThreadProgramCoverageValid)) &&
+		(value.lynxElementTemplateCoverage === undefined ||
+			(value.transformKind === 'compile' &&
+				universalRuntimeValid &&
+				value.universalRuntime.runtime === 'lynx' &&
+				value.universalRuntime.thread === 'main-thread' &&
+				lynxElementTemplateCoverageValid)) &&
+		(value.lynxElementTemplates === undefined ||
+			(value.transformKind === 'compile' &&
+				universalRuntimeValid &&
+				value.universalRuntime.runtime === 'lynx' &&
+				value.universalRuntime.thread === 'main-thread' &&
+				lynxElementTemplatesValid)) &&
+		(value.lynxElementTemplateCoverage === undefined) ===
+			(value.lynxElementTemplates === undefined) &&
 		(value.lynxBlockSemanticRequirements === undefined ||
 			(value.transformKind === 'compile' &&
 				universalRuntimeValid &&

@@ -5,9 +5,15 @@ import type {
 	UniversalTransportIdentity,
 } from 'octane/universal/native';
 import { JSDOM } from 'jsdom';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock(
+	'../src/main-renderer-product.js',
+	() => import('../src/main-renderer.compiled-program.js'),
+);
 
 import { installLynxCompiledProgramApplicationMainThread } from '../src/compiled-program-application.js';
+import { installLynxElementTemplateCompiledProgramApplicationMainThread } from '../src/compiled-program-application.element-template.js';
 import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
 import { createLynxCompiledProgramTransport } from '../src/core/compiled-program-transport.js';
 import { encodeLynxDeltaMessage } from '../src/core/delta-protocol.js';
@@ -23,9 +29,16 @@ import {
 	universalPlan,
 	universalValue,
 } from '../src/main-renderer-product.js';
+import {
+	defineUniversalComponent as defineCompiledUniversalComponent,
+	universalPlan as compiledUniversalPlan,
+	universalValue as compiledUniversalValue,
+} from '../src/main-renderer.compiled-program.js';
 
 const MODULE = 'tests/CompiledProgramApplication.lynx.tsrx';
 const ADOPTION_MODULE = 'tests/CompiledProgramApplicationAdoption.lynx.tsrx';
+const ELEMENT_TEMPLATE_ADOPTION_MODULE =
+	'tests/CompiledProgramApplicationElementTemplateAdoption.lynx.tsrx';
 const ROW: UniversalHostTemplateProgram = {
 	nodes: [
 		{
@@ -149,6 +162,17 @@ function installEnvironment(): typeof globalThis.lynxTestingEnv {
 }
 
 afterEach(() => {
+	for (const name of [
+		'__CreateElementTemplate',
+		'__CreateTypedElementTemplate',
+		'__SetAttributeOfElementTemplate',
+		'__InsertNodeToElementTemplate',
+		'__RemoveNodeFromElementTemplate',
+		'__SerializeElementTemplate',
+		'__FlushElementTree',
+	]) {
+		delete (globalThis as unknown as Record<string, unknown>)[name];
+	}
 	if (dom !== null) {
 		globalThis.lynxTestingEnv.clearGlobal();
 		uninstallLynxTestingEnv(globalThis);
@@ -287,6 +311,118 @@ describe.sequential('@octanejs/lynx compiled-program application bootstrap', () 
 		expect(dom!.window.document.querySelector('#later-row')?.textContent).toBe('later');
 
 		await transport.dispose(identity(2), true);
+		transport.close();
+		application.close();
+	});
+
+	it('hands a whole-root Element Template first screen to the same compact frame', async () => {
+		const env = installEnvironment();
+		env.switchToMainThread();
+		type Handle = {
+			uid: number;
+			attributes: unknown[];
+			parent: Handle | null;
+			parentSlot: number | null;
+			children: Map<number, Handle[]>;
+		};
+		const created: Handle[] = [];
+		const make = (uid: number, attributes: readonly unknown[] = []): Handle => ({
+			uid,
+			attributes: [...attributes],
+			parent: null,
+			parentSlot: null,
+			children: new Map(),
+		});
+		const page = make(0);
+		const globals = globalThis as unknown as Record<string, unknown>;
+		globals.__CreateTypedElementTemplate = () => page;
+		globals.__CreateElementTemplate = (
+			_key: string,
+			_bundle: null,
+			attributes: readonly unknown[],
+			_slots: null,
+			uid: number,
+		) => {
+			const value = make(uid, attributes);
+			created.push(value);
+			return value;
+		};
+		globals.__SetAttributeOfElementTemplate = (value: Handle, slot: number, next: unknown) => {
+			value.attributes[slot] = next;
+		};
+		globals.__InsertNodeToElementTemplate = (
+			parent: Handle,
+			slot: number,
+			child: Handle,
+			before: Handle | null = null,
+		) => {
+			if (child.parent !== null) {
+				const prior = child.parent.children.get(child.parentSlot!)!;
+				prior.splice(prior.indexOf(child), 1);
+			}
+			const children = parent.children.get(slot) ?? [];
+			if (!parent.children.has(slot)) parent.children.set(slot, children);
+			const index = before === null ? children.length : children.indexOf(before);
+			children.splice(index, 0, child);
+			child.parent = parent;
+			child.parentSlot = slot;
+		};
+		globals.__RemoveNodeFromElementTemplate = (parent: Handle, slot: number, child: Handle) => {
+			const children = parent.children.get(slot)!;
+			children.splice(children.indexOf(child), 1);
+			child.parent = null;
+			child.parentSlot = null;
+		};
+		globals.__SerializeElementTemplate = (value: Handle) => ({ uid: value.uid });
+		globals.__FlushElementTree = () => {};
+
+		const plan = compiledUniversalPlan(
+			'lynx',
+			{
+				...emittedPlan(),
+				elementTemplate: {
+					templateId: '_octane_et_application_row',
+					attributeSlots: 3,
+					childSlots: 0,
+					visibilitySlot: 2,
+				},
+			},
+			{
+				module: ELEMENT_TEMPLATE_ADOPTION_MODULE,
+				index: 0,
+				digest: 'element-template-application-test',
+			},
+		);
+		const App = defineCompiledUniversalComponent('lynx', () =>
+			compiledUniversalValue(plan, ['compact-row', 'ready']),
+		);
+		const application = installLynxElementTemplateCompiledProgramApplicationMainThread({
+			firstScreen: true,
+			pageReady: true,
+		});
+		firstScreenRoot.render(App);
+		markFirstScreenSyncReady();
+		expect(created.map((value) => value.uid)).toEqual([-1]);
+		expect(page.children.get(0)?.map((value) => value.uid)).toEqual([-1]);
+
+		env.switchToBackgroundThread();
+		const lynx = (
+			globalThis as typeof globalThis & { lynx: { getCoreContext(): LynxContextProxy } }
+		).lynx;
+		const transport = createLynxCompiledProgramTransport(lynx.getCoreContext());
+		await transport.ready;
+		await transport.commit(
+			{ ...identity(1), root: 1 },
+			mountFrame(ELEMENT_TEMPLATE_ADOPTION_MODULE),
+			() => {},
+		).promise;
+		expect(created.map((value) => value.uid)).toEqual([-1]);
+
+		await transport.commit({ ...identity(2), root: 1 }, appendFrame(3, 'later', 'row'), () => {})
+			.promise;
+		expect(created.map((value) => value.uid)).toEqual([-1, 3]);
+		await transport.dispose({ ...identity(2), root: 1 }, true);
+		expect(page.children.get(0)).toEqual([]);
 		transport.close();
 		application.close();
 	});

@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 
 import { compile } from '../../src/compiler/compile.js';
 import { lynxMainThreadRenderer } from '../../../lynx/src/config.js';
+import * as ElementTemplateBackend from '../../../lynx/src/compiler-element-template.js';
 import * as Backend from '../../../lynx/src/compiler/index.js';
 import {
 	compileLynxBlockTemplate,
@@ -104,6 +105,12 @@ function compileCard(
 	code: string;
 	map: any;
 	mainThreadProgramCoverage?: { total: number; addressed: number };
+	lynxElementTemplates?: readonly {
+		templateId: string;
+		compiledTemplate: Readonly<Record<string, unknown>>;
+		sourceFile: string;
+	}[];
+	lynxElementTemplateCoverage?: { total: number; lowered: number };
 	lynxBlockSemanticRequirements?: {
 		version: number;
 		runtimeUses: readonly { name: string; line: number; column: number }[];
@@ -164,6 +171,12 @@ function compileCard(
 		code: string;
 		map: any;
 		mainThreadProgramCoverage?: { total: number; addressed: number };
+		lynxElementTemplates?: readonly {
+			templateId: string;
+			compiledTemplate: Readonly<Record<string, unknown>>;
+			sourceFile: string;
+		}[];
+		lynxElementTemplateCoverage?: { total: number; lowered: number };
 		lynxBlockSemanticRequirements?: {
 			version: number;
 			runtimeUses: readonly { name: string; line: number; column: number }[];
@@ -387,6 +400,35 @@ function throughApplier(planRoot: unknown, values: readonly unknown[]): unknown 
 	return shape(papi.pages[0]!);
 }
 describe('emitting a compiled create function from the lynx main-thread compile', () => {
+	it('emits Element Template metadata out of band from the same shared IR', () => {
+		const result = compileCard(ADDRESSABLE_CARD, {
+			backend: ElementTemplateBackend,
+			module: 'src/Card.lynx.tsrx',
+		});
+		const { roots } = evaluate(result.code);
+		expect(result.lynxElementTemplateCoverage).toEqual({ total: 1, lowered: 1 });
+		expect(result.lynxElementTemplates).toEqual([
+			{
+				templateId: expect.stringMatching(/^_et_[0-9a-f]{12}$/),
+				compiledTemplate: expect.objectContaining({
+					kind: 'element',
+					type: 'view',
+					attributesArray: expect.any(Array),
+					children: expect.any(Array),
+				}),
+				sourceFile: '/src/Card.lynx.tsrx',
+			},
+		]);
+		expect(roots[0]).toMatchObject({
+			elementTemplate: {
+				templateId: result.lynxElementTemplates![0]!.templateId,
+				attributeSlots: 6,
+				childSlots: 0,
+				visibilitySlot: 5,
+			},
+		});
+	});
+
 	it('emits an independent versioned background program for the Block core', () => {
 		const code = compiled(ADDRESSABLE_CARD, {
 			target: 'universal',

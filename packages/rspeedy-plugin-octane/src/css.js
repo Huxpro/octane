@@ -9,7 +9,7 @@ function removeLightningCSS(rule, useName) {
 }
 
 /** Install the framework-neutral Lynx CSS extractor over Rsbuild's web extractor. */
-export function configureLynxCSS(api, environments) {
+export function configureLynxCSS(api, environments, targetSdkVersion = LYNX_TARGET_SDK_VERSION) {
 	api.modifyEnvironmentConfig?.((config, { name, mergeEnvironmentConfig }) => {
 		if (
 			(environments !== undefined && !environments.includes(name)) ||
@@ -59,7 +59,7 @@ export function configureLynxCSS(api, environments) {
 					enableCSSInvalidation: true,
 					enableCSSSelector: true,
 					enableRemoveCSSScope: true,
-					targetSdkVersion: LYNX_TARGET_SDK_VERSION,
+					targetSdkVersion,
 				},
 			])
 			.init((_, args) => new CssExtractRspackPlugin(...args));

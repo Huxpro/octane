@@ -11,6 +11,7 @@ const BUILD_PACKAGES = Object.freeze([
 	'@lynx-js/debug-metadata',
 	'@lynx-js/debug-metadata-rsbuild-plugin',
 	'@lynx-js/rspeedy',
+	'@lynx-js/rsbuild-plugin',
 	'@lynx-js/runtime-wrapper-webpack-plugin',
 	'@lynx-js/template-webpack-plugin',
 	'@lynx-js/types',
@@ -23,7 +24,7 @@ const BUILD_PACKAGES = Object.freeze([
 	'@rspack/core',
 ]);
 
-const RSPEEDY_BUILD_PACKAGES = Object.freeze([
+const RSBUILD_PLUGIN_PACKAGES = Object.freeze([
 	'@lynx-js/cache-events-webpack-plugin',
 	'@lynx-js/chunk-loading-webpack-plugin',
 	'@lynx-js/debug-metadata-rsbuild-plugin',
@@ -35,15 +36,21 @@ const RSPEEDY_BUILD_PACKAGES = Object.freeze([
 ]);
 
 const EXPECTED_RSPEEDY_DEPENDENCIES = Object.freeze({
-	'@lynx-js/cache-events-webpack-plugin': '^0.2.0',
-	'@lynx-js/chunk-loading-webpack-plugin': '^0.4.1',
-	'@lynx-js/debug-metadata-rsbuild-plugin': '^0.2.0',
-	'@lynx-js/web-rsbuild-server-middleware': '0.22.2',
-	'@lynx-js/webpack-dev-transport': '^0.3.0',
+	'@lynx-js/rsbuild-plugin': '0.1.1',
+	'@rsbuild/core': '2.2.3',
+	'@rsdoctor/rspack-plugin': '~1.6.1',
+});
+
+const EXPECTED_RSBUILD_PLUGIN_DEPENDENCIES = Object.freeze({
+	'@lynx-js/cache-events-webpack-plugin': '^0.2.1',
+	'@lynx-js/chunk-loading-webpack-plugin': '^0.4.2',
+	'@lynx-js/debug-metadata-rsbuild-plugin': '^0.2.2',
+	'@lynx-js/runtime-wrapper-webpack-plugin': '^0.2.4',
+	'@lynx-js/template-webpack-plugin': '^0.16.0',
+	'@lynx-js/web-rsbuild-server-middleware': '0.26.0',
+	'@lynx-js/webpack-dev-transport': '^0.4.0',
 	'@lynx-js/websocket': '^0.0.4',
-	'@rsbuild/core': '2.1.4',
-	'@rsbuild/plugin-css-minimizer': '2.0.0',
-	'@rsdoctor/rspack-plugin': '~1.5.6',
+	'@rsbuild/plugin-css-minimizer': '2.0.1',
 });
 
 const PLUGIN_PACKAGES = Object.freeze([
@@ -54,9 +61,9 @@ const PLUGIN_PACKAGES = Object.freeze([
 ]);
 
 const EXPECTED_TEMPLATE_DEPENDENCIES = Object.freeze({
-	'@lynx-js/tasm': '0.0.39',
-	'@lynx-js/web-core': '0.22.2',
-	'@lynx-js/webpack-runtime-globals': '^0.0.7',
+	'@lynx-js/tasm': '0.0.49',
+	'@lynx-js/web-core': '0.26.0',
+	'@lynx-js/webpack-runtime-globals': '^0.0.8',
 });
 
 const pluginRequire = createRequire(import.meta.url);
@@ -131,14 +138,17 @@ export function assertLynxToolchain(root, requestedLane) {
 	const appRequire = createRequire(join(root, 'package.json'));
 	const rspeedy = readPackage(appRequire, '@lynx-js/rspeedy');
 	const rspeedyRequire = createRequire(rspeedy.filename);
+	const rsbuildPlugin = readPackage(rspeedyRequire, '@lynx-js/rsbuild-plugin');
+	const rsbuildPluginRequire = createRequire(rsbuildPlugin.filename);
 	const lynxPackage = readPackage(pluginRequire, '@octanejs/lynx');
 	const packages = {
 		'@lynx-js/rspeedy': rspeedy,
+		'@lynx-js/rsbuild-plugin': rsbuildPlugin,
 		'@lynx-js/types': readPackage(createRequire(lynxPackage.filename), '@lynx-js/types'),
 		'@rsbuild/core': readPackage(appRequire, '@rsbuild/core'),
 		'@rspack/core': readPackage(appRequire, '@rspack/core'),
 		...Object.fromEntries(
-			RSPEEDY_BUILD_PACKAGES.map((name) => [name, readPackage(rspeedyRequire, name)]),
+			RSBUILD_PLUGIN_PACKAGES.map((name) => [name, readPackage(rsbuildPluginRequire, name)]),
 		),
 		...Object.fromEntries(PLUGIN_PACKAGES.map((name) => [name, readPackage(pluginRequire, name)])),
 	};
@@ -157,6 +167,14 @@ export function assertLynxToolchain(root, requestedLane) {
 		if (request !== expectedRequest) {
 			throw new Error(
 				`@octanejs/rspeedy-plugin: @lynx-js/rspeedy requests ${name}@${String(request)}; the supported lanes require ${name}@${expectedRequest}.`,
+			);
+		}
+	}
+	for (const [name, expectedRequest] of Object.entries(EXPECTED_RSBUILD_PLUGIN_DEPENDENCIES)) {
+		const request = rsbuildPlugin.dependencies[name];
+		if (request !== expectedRequest) {
+			throw new Error(
+				`@octanejs/rspeedy-plugin: @lynx-js/rsbuild-plugin requests ${name}@${String(request)}; the supported lanes require ${name}@${expectedRequest}.`,
 			);
 		}
 	}
@@ -182,11 +200,18 @@ export function assertLynxToolchain(root, requestedLane) {
 		);
 	}
 	const [, selectedLane] = matches[0];
-	for (const name of ['@rsbuild/core', '@rspack/core', '@lynx-js/webpack-dev-transport']) {
-		const fromRspeedy = readPackage(rspeedyRequire, name);
-		if (fromRspeedy.filename !== packages[name].filename) {
+	for (const [name, request] of [
+		['@rsbuild/core', rspeedyRequire],
+		['@rsbuild/core', rsbuildPluginRequire],
+		['@rspack/core', createRequire(packages['@rsbuild/core'].filename)],
+		['@lynx-js/runtime-wrapper-webpack-plugin', rsbuildPluginRequire],
+		['@lynx-js/template-webpack-plugin', rsbuildPluginRequire],
+		['@lynx-js/webpack-dev-transport', rsbuildPluginRequire],
+	]) {
+		const fromOwner = readPackage(request, name);
+		if (fromOwner.filename !== packages[name].filename) {
 			throw new Error(
-				`@octanejs/rspeedy-plugin: duplicate ${name} instances detected (${packages[name].filename} and ${fromRspeedy.filename}). Install the exact compatibility set in one physical dependency graph.`,
+				`@octanejs/rspeedy-plugin: duplicate ${name} instances detected (${packages[name].filename} and ${fromOwner.filename}). Install the exact compatibility set in one physical dependency graph.`,
 			);
 		}
 	}

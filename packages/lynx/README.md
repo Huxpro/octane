@@ -1,6 +1,6 @@
 # Octane Lynx
 
-This directory now contains nine deliberately separate pieces of the
+This directory now contains deliberately separate tranches of the
 ReactLynx-to-Octane migration:
 
 - the immutable Milestone 0 audit and React-free framework probe;
@@ -22,12 +22,49 @@ ReactLynx-to-Octane migration:
 - the private Milestone 10 one-command Explorer demo, authored-component type
   contract, and decoded dual-thread bundle gate; and
 - the Milestone 11 pinned macOS Explorer runner, real-wrapper compatibility
-  fixes, and qualified native first-paint evidence.
+  fixes, and qualified native first-paint evidence; and
+- the roadmap #383 opt-in, compiler-proved whole-root Element Template backend,
+  with bounded native ownership and narrow Android Explorer 4.1 table evidence.
 
 The current Block-core authoring boundary, automatic-selection status, and
 transactional publication rules are documented in
 [`docs/lynx-block-semantics.md`](../../docs/lynx-block-semantics.md). The
 matrix distinguishes focused kernel evidence from production selection.
+
+## Experimental whole-root Element Templates
+
+`@octanejs/rspeedy-plugin` accepts `experimentalElementTemplate: true` only in
+its two-layer application mode. For an otherwise eligible compiled-program
+application, the main compiler lowers every shared program plan to the public
+Lynx Template Definition schema, the encoder emits the complete metadata at
+Element Template target SDK `3.2`, and the selected main-thread owner creates,
+updates, moves, adopts, and removes opaque template handles. Value, event,
+visibility, and structural child slots retain the existing compact background
+protocol's positional ABI.
+
+This is a whole-root, fail-closed option rather than a subtree optimization.
+Incomplete lowering fails the build. Refs, native lists, `main-thread:*`
+bindings, text-polymorphic ranges, and unsupported attribute composition stay
+outside this first slice; the runtime never combines template handles with
+ordinary Element refs. The default compiled-program application remains on the
+ordinary Element owner.
+
+The Android-qualified runtime budget drains pending template work after 8,192
+compiler-counted nodes with a layout-triggering flush, defers synchronous first
+screens above the same limit to the background store, and caps live ownership
+at 32,768 template instances and 40,960 resident plan nodes. A larger eager tree
+fails before native creation with production diagnostic `Octane Lynx OL512` and
+rolls back; use the callback-materialized native `list` backend for collections
+at that scale.
+
+On one checksum-pinned Android Explorer 4.1.0 cohort, the final candidate
+accepted a native-tap 10,000-row create and a 10,000-row startup, while a
+30,000-row startup failed closed without killing Explorer or producing a fresh
+JNI/fatal log marker. These are scoped correctness/safety samples, not general
+Android, iOS, memory, parity, or comparative-performance evidence. See the
+[semantic contract](../../docs/lynx-block-semantics.md#experimental-whole-root-element-template-backend)
+and the immutable
+[Android evidence record](./audit/android-element-template-evidence.json).
 
 The package is `0.0.0`, marked `private`, and is not a native renderer release.
 Milestone 9's API/package review keeps the subpaths below unchanged and the
@@ -379,13 +416,14 @@ but omits the recursive command/property walk. Development still selects the
 public checked bootstrap, and `createLynxRoot()` remains checked by default.
 
 Milestone 9 CI covers two exact, atomic source/build lanes. Both use Lynx SDK
-`3.9.0` with target SDK `3.9`, Rspeedy `0.16.0`, Rsbuild `2.1.4`, template
-plugin `0.13.0`, CSS extract plugin `0.9.0`, runtime wrapper `0.2.2`, dev
-transport `0.3.0`, tasm `0.0.39`, testing environment `0.3.0`, Lynx types
-`4.1.0`, TypeScript `5.9.3`, and the blocked Web control
-`@lynx-js/web-core@0.22.2`. The minimum lane uses Rspack `2.1.3`; the current
-lane uses Rspack `2.1.5`, the newest patch allowed by Rsbuild `2.1.4`, and
-verifies registry drift for that upstream build graph. Both lanes retain the
+`3.9.0`, ordinary target SDK `3.9`, Element Template target SDK `3.2`, Rspeedy
+`0.17.1`, its framework-neutral Rsbuild plugin `0.1.1`, Rsbuild `2.2.3`,
+template plugin `0.16.0`, CSS extract plugin `0.11.0`, runtime wrapper `0.2.4`,
+dev transport `0.4.0`, runtime globals `0.0.8`, tasm `0.0.49`, testing
+environment `0.3.0`, Lynx types `4.1.0`, TypeScript `5.9.3`, and web-core
+`0.26.0`. The minimum lane uses Rspack `2.2.2`; the current lane uses Rspack
+`2.2.3`, within Rsbuild's declared `~2.2.2` edge, and verifies registry drift
+for that upstream build graph. Both lanes retain the
 audited Webpack `5.108.4` tooling peer; the strict external install and builds
 prove its compatibility without requiring every new Webpack 5 release. Newer
 standalone Lynx types releases remain excluded until their renderer-owned

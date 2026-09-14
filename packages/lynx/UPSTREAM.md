@@ -111,19 +111,60 @@ Milestone 5's additional CSS, template, encoding, and development-transport
 pins and integrities are recorded in [`audit/toolchain.json`](./audit/toolchain.json)
 and the repository `pnpm-lock.yaml`.
 
-Milestone 9 keeps the audited Rspack `2.1.3` edge in its atomic minimum
-source/build lane and adds a current lane with Rspack `2.1.5`, the newest patch
-allowed by the same Rspeedy `0.16.0` / Rsbuild `2.1.4` graph. Both live lanes
-install the registry-verified `@lynx-js/types@4.1.0`; the renderer-local
+Milestone 9's live compatibility graph uses Rspeedy `0.17.1`, the
+framework-neutral Rsbuild plugin `0.1.1`, and Rsbuild `2.2.3`. Its atomic
+minimum lane uses Rspack `2.2.2`; the current lane uses Rspack `2.2.3`, within
+Rsbuild's declared `~2.2.2` edge. Both live lanes install the registry-verified
+`@lynx-js/types@4.1.0`; the renderer-local
 declarations remain adapted from the audited `4.0.0` artifact. The complete
 exact lane maps live in
 [`toolchain-lanes.js`](../rspeedy-plugin-octane/src/toolchain-lanes.js).
 Required CI jobs pack and install both graphs into external consumers, build
 each twice, and check live registry drift for the current lane. The lane source
 map and registry check do not add committed tarball-integrity provenance to
-`audit/toolchain.json`; in particular, that audit does not record the current
-Rspack `2.1.5` or Lynx types `4.1.0` artifacts. This also does not establish
+`audit/toolchain.json`; in particular, that historical audit does not record
+the current Rspack `2.2.3` or Lynx types `4.1.0` artifacts. This also does not establish
 minimum/current execution on a Lynx native engine or device.
+
+## Roadmap #383 Element Template alignment
+
+The whole-root experimental backend was checked against
+`lynx-family/lynx-stack@2b837edbf640587be59211ad146a764a1703851b` and its
+public Element Template compiler/runtime surface. Octane follows the compatible
+SDK boundaries: compiler-emitted Template Definitions, stable indexed attribute
+and child slots, collision-checked `encodeData.elementTemplate` metadata,
+`enableUnifyFixedBehavior`, a typed template page, opaque template handles, and
+the public create/set/insert/remove/serialize/flush functions. The Element
+Template encoder envelope stays at target SDK `3.2`; the ordinary application
+target remains `3.9`.
+
+No ReactLynx transform, renderer, Preact runtime, host config, or private native
+call is copied. Octane lowers its own shared immutable program IR, preserves its
+existing compact background delta and acceptance protocol, and swaps the native
+owner only after whole-entry paired proof. Because upstream types deliberately
+separate template handles from ordinary Element refs, incomplete lowering fails
+the explicit build instead of creating a mixed tree. Refs, native lists,
+`main-thread:*` bindings, text-polymorphic ranges, and unsupported native
+attribute composition remain outside the first slice.
+
+At the 2026-09-14 09:40 UTC read-only refresh, `Huxpro/octane:new-lynx` remained
+at `7a523bf20d04578c39fe0b5fe532cdef6dab3e9e`, `octanejs/octane:main` remained at
+`8e5ca22a6e17582b4293232406a2c0420509f4a4`, and
+[octanejs/octane#1055](https://github.com/octanejs/octane/issues/1055) remained
+open. This implementation agrees with #1055's shared-IR, independent dual-thread
+lowering, versioned paired ABI, hybrid generated/resident representation, reuse
+of native integration, and atomic experimental-root selection. It is narrower:
+it does not add the proposed public `target: 'lynx'` dispatch, signal-read
+ownership, Strong-mode projection caches, full semantic coverage, default
+migration, or old-path retirement. No upstream acceptance or merge is claimed.
+
+The pinned Android evidence qualifies only the experimental 10,000-row table
+create/startup boundary and a safe 30,000-row rejection. It also records why
+pending PaintingContext work, synchronous-first-screen work, live instance
+count, and resident native-node cost require separate caps. See
+[`audit/android-element-template-evidence.json`](./audit/android-element-template-evidence.json).
+It does not replace the broader Android/iOS, parity, memory, list, and
+comparative-performance gates.
 
 ## Milestone 9 runner inventory
 

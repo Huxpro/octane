@@ -270,6 +270,12 @@ export default function octaneLoader(source, inputSourceMap) {
 					...(result.mainThreadProgramCoverage === undefined
 						? null
 						: { mainThreadProgramCoverage: result.mainThreadProgramCoverage }),
+					...(result.lynxElementTemplates === undefined
+						? null
+						: { lynxElementTemplates: result.lynxElementTemplates }),
+					...(result.lynxElementTemplateCoverage === undefined
+						? null
+						: { lynxElementTemplateCoverage: result.lynxElementTemplateCoverage }),
 					...(result.lynxBlockSemanticRequirements === undefined
 						? null
 						: { lynxBlockSemanticRequirements: result.lynxBlockSemanticRequirements }),

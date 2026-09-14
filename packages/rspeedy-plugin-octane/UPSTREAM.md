@@ -1,8 +1,10 @@
 # Upstream boundary
 
-The Milestone 5 integration targets `@lynx-js/rspeedy@0.16.0` and the exact
-framework-neutral compatibility evidence in
-`packages/lynx/audit/toolchain.json`.
+The historical Milestone 5 integration targeted `@lynx-js/rspeedy@0.16.0`; its
+exact framework-neutral evidence remains immutable in
+`packages/lynx/audit/toolchain.json`. The live Element Template-capable graph
+uses `@lynx-js/rspeedy@0.17.1` and `@lynx-js/rsbuild-plugin@0.1.1`; the canonical
+minimum/current maps live in `src/toolchain-lanes.js`.
 
 The plugin uses Rspeedy's public Rsbuild plugin API, Octane's existing
 `@octanejs/rspack-plugin`, and the published template, CSS extraction, runtime

@@ -9,8 +9,10 @@ import {
 	LynxTemplatePlugin,
 	WebEncodePlugin,
 } from '@lynx-js/template-webpack-plugin';
+import { getOctaneRspackBuildInfo } from '@octanejs/rspack-plugin';
 
 import { installLynxBackgroundCoreReplacement } from './background-core.js';
+import { selectedLynxApplication } from './application-selection.js';
 import { LYNX_BACKGROUND_LAYER, LYNX_MAIN_THREAD_LAYER } from './layers.js';
 import { LynxProgramCoveragePlugin } from './program-coverage.js';
 
@@ -27,6 +29,13 @@ const FIRST_SCREEN_RENDER_DEFINE = '__OCTANE_LYNX_FIRST_SCREEN_RENDER__';
 // Build-time branch used by @octanejs/lynx to keep descriptive diagnostics in
 // development while shipping compact, stable error identifiers in production.
 const DIAGNOSTIC_MODE_DEFINE = '__OCTANE_LYNX_DEVELOPMENT__';
+const BUILTIN_RAW_TEXT_TEMPLATE_ID = '_et_builtin_raw_text';
+const BUILTIN_RAW_TEXT_TEMPLATE = Object.freeze({
+	kind: 'element',
+	type: 'raw-text',
+	attributesArray: Object.freeze([Object.freeze({ kind: 'slot', key: 'text', attrSlotIndex: 0 })]),
+	children: Object.freeze([]),
+});
 const ENTRY_METADATA_KEYS = new Set([
 	'asyncChunks',
 	'baseUri',
@@ -47,6 +56,11 @@ const mainThreadCSSHMR = pluginRequire.resolve(
 );
 
 export const LYNX_TARGET_SDK_VERSION = '3.9';
+// The native Element Template section emitted by tasm 0.0.49 uses the Lynx
+// 3.2 compatibility envelope, matching the upstream ReactLynx backend. Raising
+// this envelope to 3.9 makes Explorer 4.1 reject the bundle in DecodeHeader,
+// before either application thread can run.
+export const LYNX_ELEMENT_TEMPLATE_TARGET_SDK_VERSION = '3.2';
 
 /** Let Rspeedy's framework-neutral diagnostics observe encoded template hooks. */
 export function exposeLynxTemplatePlugin(api) {
@@ -76,6 +90,88 @@ class MarkMainThreadAssetPlugin {
 					}
 				},
 			);
+		});
+	}
+}
+
+/** Collect one entry's compiler-proved Template Definitions in stable order. */
+export function collectLynxElementTemplates(compilation, chunkGroups) {
+	const modules = new Set();
+	const visit = (module) => {
+		if (modules.has(module)) return;
+		modules.add(module);
+		for (const child of module.modules ?? []) visit(child);
+		if (module.rootModule != null) visit(module.rootModule);
+	};
+	for (const group of chunkGroups) {
+		for (const chunk of group.chunks) {
+			for (const module of compilation.chunkGraph.getChunkModules(chunk)) visit(module);
+		}
+	}
+	const records = [];
+	let observed = 0;
+	let total = 0;
+	let lowered = 0;
+	for (const module of modules) {
+		const info = getOctaneRspackBuildInfo(module);
+		if (
+			info?.transformKind !== 'compile' ||
+			info.universalRuntime?.runtime !== 'lynx' ||
+			info.universalRuntime.thread !== 'main-thread'
+		) {
+			continue;
+		}
+		observed++;
+		if (info.lynxElementTemplateCoverage === undefined || info.lynxElementTemplates === undefined) {
+			throw new Error(
+				`${PLUGIN_NAME}: Element Template metadata is missing for ${info.canonicalId}.`,
+			);
+		}
+		total += info.lynxElementTemplateCoverage.total;
+		lowered += info.lynxElementTemplateCoverage.lowered;
+		records.push(...info.lynxElementTemplates);
+	}
+	if (observed === 0) {
+		throw new Error(
+			`${PLUGIN_NAME}: Element Template build found no main-thread compiler modules.`,
+		);
+	}
+	if (lowered !== total) {
+		throw new Error(
+			`${PLUGIN_NAME}: Element Template lowering covered ${lowered} of ${total} main-thread plans.`,
+		);
+	}
+	records.sort(
+		(left, right) =>
+			left.templateId.localeCompare(right.templateId) ||
+			left.sourceFile.localeCompare(right.sourceFile),
+	);
+	const templates = {};
+	templates[BUILTIN_RAW_TEXT_TEMPLATE_ID] = BUILTIN_RAW_TEXT_TEMPLATE;
+	for (const record of records) {
+		const previous = templates[record.templateId];
+		if (previous !== undefined && !isDeepStrictEqual(previous, record.compiledTemplate)) {
+			throw new Error(`${PLUGIN_NAME}: Element Template id collision for ${record.templateId}.`);
+		}
+		templates[record.templateId] ??= record.compiledTemplate;
+	}
+	return Object.freeze(templates);
+}
+
+/** Attach compiler-owned Template Definitions at the official encoder hook. */
+class LynxElementTemplateMetadataPlugin {
+	apply(compiler) {
+		compiler.hooks.thisCompilation.tap(this.constructor.name, (compilation) => {
+			const hooks = LynxTemplatePlugin.getLynxTemplatePluginHooks(compilation);
+			hooks.beforeEncode.tap(this.constructor.name, (args) => {
+				if (selectedLynxApplication(compiler) !== 'compiled-program-element-template') {
+					return args;
+				}
+				const templates = collectLynxElementTemplates(compilation, args.chunkGroups);
+				args.encodeData.sourceContent.config.enableUnifyFixedBehavior = true;
+				args.encodeData.elementTemplate = templates;
+				return args;
+			});
 		});
 	}
 }
@@ -326,6 +422,10 @@ function prefixFilename(prefix, filename) {
 export function applyLynxApplication(chain, context, rspeedyConfig, options) {
 	const kind = environmentKind(context.environment.name);
 	if (kind === null) return false;
+	const targetSdkVersion =
+		options.experimentalElementTemplate === true
+			? LYNX_ELEMENT_TEMPLATE_TARGET_SDK_VERSION
+			: LYNX_TARGET_SDK_VERSION;
 
 	const entries = Object.entries(chain.entryPoints.entries() ?? {});
 	const names = new Set(entries.map(([name]) => name));
@@ -413,7 +513,7 @@ export function applyLynxApplication(chain, context, rspeedyConfig, options) {
 				filename: resolveBundleFilename(rspeedyConfig, entryName, context.environment.name),
 				intermediate,
 				removeDescendantSelectorScope: true,
-				targetSdkVersion: LYNX_TARGET_SDK_VERSION,
+				targetSdkVersion,
 			},
 		]);
 	}
@@ -427,12 +527,18 @@ export function applyLynxApplication(chain, context, rspeedyConfig, options) {
 			programCoverageEntries,
 			options.programAddressing === true,
 			options.core,
+			options.experimentalElementTemplate === true,
 		]);
 	chain.plugin(`${PLUGIN_NAME}:mark-main-thread`).use(MarkMainThreadAssetPlugin);
 	if (kind === 'lynx') {
+		if (options.experimentalElementTemplate === true) {
+			chain
+				.plugin(`${PLUGIN_NAME}:element-template-metadata`)
+				.use(LynxElementTemplateMetadataPlugin);
+		}
 		chain.plugin(`${PLUGIN_NAME}:runtime-wrapper`).use(RuntimeWrapperWebpackPlugin, [
 			{
-				targetSdkVersion: LYNX_TARGET_SDK_VERSION,
+				targetSdkVersion,
 				test: /^(?!.*main-thread(?:\.[A-Fa-f0-9]*)?\.js$).*\.js$/,
 			},
 		]);

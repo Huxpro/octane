@@ -1,9 +1,9 @@
 # Lynx Block semantic support
 
-Status: implementation contract through roadmap issue #382 (R10 release
-candidate). This document describes the current source/build state; it is not a
-claim that R11 native qualification, the default switch, or the full Lynx
-roadmap is complete.
+Status: implementation contract through roadmap issue #383 (R11 experimental
+Element Template candidate). This document describes the current source/build
+state and the narrowly qualified Android table samples; it is not a claim that
+the default switch or the full Lynx roadmap is complete.
 
 ## Reading the matrix
 
@@ -21,6 +21,10 @@ The implementation has three distinct outcomes:
   admitted invariant receives a source-attributed build reason or a stable
   runtime diagnostic. The core never renders an unsupported region as empty and
   never publishes half of it.
+- **Experimental Element Template selected**: an explicit application-build
+  option requires every selected whole root to lower to the public Template
+  Definition schema, replaces the ordinary Element owner atomically, and fails
+  the build when coverage is incomplete. It is not the default Block backend.
 
 Automatic selection is atomic per application entry. There is no hidden
 mid-tree switch to the Universal reconciler. The conservative first compilation
@@ -45,6 +49,7 @@ must satisfy the runtime invariants below.
 | `memo()` | Block selected | Stateful keyed rows honor custom prop comparators without swallowing local updates; context reads pierce the memo bailout, the compact first screen treats the wrapper as identity, and the production selector admits the runtime export. |
 | Compiler-proved dirty hook slots and binding groups | Block selected | Owner-local invalidation reaches only dependent computations and program slots; structural changes retain the full reconcile path. |
 | Fixed-shape keyed `list-item` rows under native `list` | Block selected | The compact store retains logical rows, publishes `update-list-info` before the accepting flush, materializes only requested cells, rebinds scalar/event identity across the established reuse pools, rejects stale enqueue callbacks, and reports accepted async callback faults. Native-list IFR is explicitly deferred to the first compact frame; it neither paints generic list hosts nor switches to Universal. Rows with nested structural ranges still fail closed. |
+| Compiler-proved whole-root Template Definitions | Experimental Element Template selected | `experimentalElementTemplate: true` requires complete paired Block/application proof plus complete template lowering. Static hosts, scalar/event slots, and one structural slot per range use opaque template handles; refs, native lists, main-thread props, text-polymorphic ranges, and non-scalar native composition fail closed instead of mixing ordinary Element refs into the tree. |
 | Main-thread props and thread functions | General Block application only | The Block transport can carry them, but the compact compiled-program product fails closed and keeps the general application product. |
 | Ordered host spreads with unknown property names | Whole-entry Universal compatibility | `UniversalHostPlan.propsSlot` has no resident Block prop-name table. Static named props remain Block-native. |
 | Generic renderable holes (primitive/array/fragment shape changes) | Whole-entry Universal compatibility | The compiler cannot yet prove a stable structural region kind, and Block does not infer one from the first value. |
@@ -54,6 +59,54 @@ must satisfy the runtime invariants below.
 | Insertion effects | Rejected by Block | The Block transaction has no pre-mutation publication phase. |
 | A row whose root is non-host, has a root event, or is not compile-time host structure | Rejected by Block | The row program cannot currently name the parent-inserted root and its own root event independently. |
 | Unknown compiler/runtime proof version or graph mismatch | Whole-entry Universal compatibility | The selector fails closed and records structured reasons in the build asset. |
+
+## Experimental whole-root Element Template backend
+
+The explicit `experimentalElementTemplate: true` Rspeedy option changes both
+halves of an otherwise eligible compiled-program application. The main-thread
+compiler lowers the shared immutable Lynx program IR into the public SDK
+Template Definition shape; the encoder attaches the complete definitions with
+target SDK `3.2`; and the application selector installs a whole-root native
+owner built only on opaque Element Template handles. Attribute slots preserve
+the compact plan's value order, then event order, then one root-visibility slot;
+child slots preserve structural-range order. The background delta protocol and
+program identity therefore stay unchanged.
+
+Selection is atomic. If any main-thread program cannot lower, the production
+build fails instead of silently mixing Template handles with ordinary Element
+PAPI refs or switching a subtree to Universal. The first slice rejects refs,
+`list`/`list-item`, `main-thread:*` bindings, text-polymorphic structural ranges,
+duplicate/native-composed attributes, and any plan outside the existing
+whole-entry compiled-program proof. The default remains the ordinary compiled
+Element owner.
+
+Android 4.1 qualification found two independent finite JNI resources, so the
+runtime enforces independent budgets before calling the public Template PAPI:
+
+- at most 8,192 compiler-counted nodes may remain as pending PaintingContext
+  work before a real `{ triggerLayout: true }` flush;
+- synchronous `renderPage` first-screen painting admits at most the same 8,192
+  plan nodes, because nested flushes are coalesced there and one node may enqueue
+  multiple callbacks; larger first screens defer intact to the first background
+  frame, where the store can drain between chunks;
+- at most 32,768 live template instances and 40,960 compiler-counted resident
+  native nodes may be owned. Exceeding either resident limit throws production
+  diagnostic `Octane Lynx OL512` before native creation, then rolls back the
+  frame. Large collections beyond that bound must use the callback-materialized
+  native `list` backend rather than an eager host tree.
+
+The pinned Android Explorer 4.1.0 evidence records one accepted native-tap
+10,000-row create sample (4,966 ms to the second native frame), one accepted
+10,000-row startup (5,024 ms to transport acknowledgement and 5,056 ms to the
+second frame), and one expected fail-closed 30,000-row startup. Fresh device
+logs after all three final samples contained no JNI overflow or fatal marker,
+and Explorer remained alive. The table-action observer disabled DevTool DOM
+events only around the measured tap to avoid instrumentation backpressure;
+startup did not use that suppression. These are single-sample correctness and
+safety qualifications, not comparative performance, general Android coverage,
+or an iOS claim. The immutable inputs, result hashes, rejected-candidate
+findings, and scope are recorded in
+[`android-element-template-evidence.json`](../packages/lynx/audit/android-element-template-evidence.json).
 
 ## Context boundary cost
 

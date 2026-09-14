@@ -41,12 +41,16 @@ describe('Element Template program lowering', () => {
 		);
 
 		expect(result).toEqual({
-			attributeSlots: 3,
+			attributeSlots: 4,
 			childSlots: 1,
+			visibilitySlot: 3,
 			template: {
 				kind: 'element',
 				type: 'view',
-				attributesArray: [{ kind: 'slot', key: 'class', attrSlotIndex: 0 }],
+				attributesArray: [
+					{ kind: 'slot', key: 'class', attrSlotIndex: 0 },
+					{ kind: 'slot', key: 'hidden', attrSlotIndex: 3 },
+				],
 				children: [
 					{
 						kind: 'element',
@@ -64,7 +68,7 @@ describe('Element Template program lowering', () => {
 							},
 						],
 					},
-					{ kind: 'childSlot', type: 'slot', elementSlotIndex: 0 },
+					{ kind: 'elementSlot', type: 'slot', elementSlotIndex: 0 },
 					{
 						kind: 'element',
 						type: 'view',

@@ -17,8 +17,8 @@ export interface LynxElementTemplateSlotAttribute {
 export type LynxElementTemplateAttribute =
 	LynxElementTemplateStaticAttribute | LynxElementTemplateSlotAttribute;
 
-export interface LynxElementTemplateChildSlot {
-	readonly kind: 'childSlot';
+export interface LynxElementTemplateElementSlot {
+	readonly kind: 'elementSlot';
 	readonly type: 'slot';
 	readonly elementSlotIndex: number;
 }
@@ -27,7 +27,7 @@ export interface LynxElementTemplateNode {
 	readonly kind: 'element';
 	readonly type: string;
 	readonly attributesArray: readonly LynxElementTemplateAttribute[];
-	readonly children: readonly (LynxElementTemplateNode | LynxElementTemplateChildSlot)[];
+	readonly children: readonly (LynxElementTemplateNode | LynxElementTemplateElementSlot)[];
 }
 
 /**
@@ -42,6 +42,7 @@ export interface LynxElementTemplateProgram {
 	readonly template: LynxElementTemplateNode;
 	readonly attributeSlots: number;
 	readonly childSlots: number;
+	readonly visibilitySlot: number;
 }
 
 function templateType(type: string): string {
@@ -77,7 +78,6 @@ export function deriveLynxElementTemplateProgram(
 	if (nodes.length === 0 || nodes[0]?.parent !== -1) return null;
 	if (ir.refs !== undefined || ir.addressable !== true) return null;
 	if (ir.wire.events.length !== ir.events.length) return null;
-
 	const children = Array.from({ length: nodes.length }, () => [] as number[]);
 	for (let index = 1; index < nodes.length; index++) {
 		const parent = nodes[index]!.parent;
@@ -163,14 +163,17 @@ export function deriveLynxElementTemplateProgram(
 			attrSlotIndex: ir.values.length + index,
 		});
 	}
+	const visibilitySlot = ir.values.length + ir.events.length;
+	if (attributeNames[0]!.has('hidden')) return null;
+	attributes[0]!.push({ kind: 'slot', key: 'hidden', attrSlotIndex: visibilitySlot });
 
 	const lower = (index: number): LynxElementTemplateNode => {
 		const range = ranges.get(index);
-		const loweredChildren: (LynxElementTemplateNode | LynxElementTemplateChildSlot)[] = [];
+		const loweredChildren: (LynxElementTemplateNode | LynxElementTemplateElementSlot)[] = [];
 		for (const child of children[index]!) {
 			if (range?.before === child) {
 				loweredChildren.push({
-					kind: 'childSlot',
+					kind: 'elementSlot',
 					type: 'slot',
 					elementSlotIndex: range.index,
 				});
@@ -179,7 +182,7 @@ export function deriveLynxElementTemplateProgram(
 		}
 		if (range !== undefined && range.before === null) {
 			loweredChildren.push({
-				kind: 'childSlot',
+				kind: 'elementSlot',
 				type: 'slot',
 				elementSlotIndex: range.index,
 			});
@@ -194,7 +197,8 @@ export function deriveLynxElementTemplateProgram(
 
 	return Object.freeze({
 		template: lower(0),
-		attributeSlots: ir.values.length + ir.events.length,
+		attributeSlots: visibilitySlot + 1,
 		childSlots: ir.ranges.length,
+		visibilitySlot,
 	});
 }

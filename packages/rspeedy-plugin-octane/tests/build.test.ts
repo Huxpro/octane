@@ -9,7 +9,7 @@ import {
 	supportNapi,
 } from '@lynx-js/tasm';
 import { getOctaneRspackBuildInfo } from '@octanejs/rspack-plugin';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import * as lynxMainThreadProgramBackend from '../../lynx/src/compiler/index.js';
 import { pluginOctane } from '../src/index.js';
@@ -27,6 +27,10 @@ const APPLICATION_FIXTURE = resolve(import.meta.dirname, '_fixtures/application'
 const BACKGROUND_ONLY_MARKER = 'octane-milestone-six-background-only-callback';
 const FORBIDDEN_MODULE =
 	/(?:^|[\\/])(?:runtime(?:\.server)?|universal-dom-boundary|dom-tables)\.[cm]?[jt]sx?$|(?:^|[\\/])hydration(?:[\\/]|\.[cm]?[jt]sx?$)|(?:^|[\\/])(?:react|react-dom|preact)(?:[\\/]|$)|@lynx-js[\\/]react/i;
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 const BUILD_CASES = [
 	{
@@ -399,7 +403,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 		]);
 		expect(await collectCoreSelections('production', entry, 'application')).toEqual([
 			{
-				version: 1,
+				version: 2,
 				selected: 'general',
 				reasons: [
 					{
@@ -541,7 +545,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					eligible: true,
 					reasons: [],
 				},
-				application: { version: 1, selected: 'compiled-program', reasons: [] },
+				application: { version: 2, selected: 'compiled-program', reasons: [] },
 			});
 			const retained = retainedModuleIdentifiers.map((identifier) =>
 				identifier
@@ -642,6 +646,119 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 		}
 	}, 120_000);
 
+	it('encodes and selects the explicit whole-root Element Template application', async () => {
+		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-element-template-'));
+		const reports: unknown[] = [];
+		const retainedModuleIdentifiers: string[] = [];
+		const rspeedy = await createRspeedy({
+			cwd: APPLICATION_FIXTURE,
+			loadEnv: false,
+			environment: ['lynx'],
+			rspeedyConfig: {
+				mode: 'production',
+				environments: { lynx: {} },
+				dev: { hmr: false, liveReload: false },
+				output: {
+					cleanDistPath: true,
+					distPath: { root: join(temporaryRoot, 'dist') },
+					filenameHash: false,
+					sourceMap: false,
+				},
+				source: { entry: { main: './src/block-eligible.ts' } },
+				splitChunks: false,
+				plugins: [
+					pluginOctane({ dev: false, hmr: false, experimentalElementTemplate: true }),
+					programCoverageProbe(reports),
+					metadataProbe([], [], [], retainedModuleIdentifiers),
+				],
+			},
+		});
+		let result: Awaited<ReturnType<typeof rspeedy.build>> | undefined;
+		try {
+			result = await rspeedy.build();
+			expect(reports).toHaveLength(1);
+			expect(reports[0]).toMatchObject({
+				program: { version: 1, complete: true, reasons: [] },
+				selection: { version: 1, eligible: true, reasons: [] },
+				core: { version: 1, selected: 'block', reasons: [] },
+				application: {
+					version: 2,
+					selected: 'compiled-program-element-template',
+					reasons: [],
+				},
+			});
+			const retained = retainedModuleIdentifiers.map((identifier) =>
+				identifier
+					.split('!')
+					.at(-1)!
+					.replace(/\|octane:(?:background|main-thread).*$/, '')
+					.split('?', 1)[0]
+					.replaceAll('\\', '/'),
+			);
+			for (const module of [
+				'core/main-thread-application-selection.element-template.ts',
+				'core/element-template-first-screen.ts',
+				'core/element-template-papi.ts',
+				'core/element-template-program-store.ts',
+			]) {
+				expect(
+					retained.some((identifier) => identifier.endsWith(`/packages/lynx/src/${module}`)),
+					retained.join('\n'),
+				).toBe(true);
+			}
+			expect(
+				retained.some((identifier) =>
+					identifier.endsWith(
+						'/packages/lynx/src/core/main-thread-application-selection.compiled-program.ts',
+					),
+				),
+			).toBe(false);
+			const product = readFileSync(join(temporaryRoot, 'dist/main.lynx.bundle'));
+			const decoded = await decodeNativeBundle(product);
+			expect(JSON.parse(decoded['page-config'] as string)).toMatchObject({
+				enableUnifyFixedBehavior: true,
+			});
+			expect(decoded['engine-version']).toBe('3.2');
+			expect(decoded.compilerOptions).toMatchObject({ target_sdk_version_: '3.2' });
+			const mainThreadScript = nativeScriptText(decoded['main-thread-script']);
+			expect(mainThreadScript).toContain('__CreateTypedElementTemplate');
+			expect(mainThreadScript).not.toMatch(/__CreateElement(?!Template)/);
+			expect(mainThreadScript).not.toContain('__CreatePage');
+			expect(mainThreadScript).toMatch(/_et_[a-f0-9]{12}/);
+		} finally {
+			await result?.close();
+			rmSync(temporaryRoot, { recursive: true, force: true });
+		}
+	}, 120_000);
+
+	it('fails the explicit Element Template build before encoding an unsupported native list', async () => {
+		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-element-template-refusal-'));
+		const rspeedy = await createRspeedy({
+			cwd: APPLICATION_FIXTURE,
+			loadEnv: false,
+			environment: ['lynx'],
+			rspeedyConfig: {
+				mode: 'production',
+				environments: { lynx: {} },
+				dev: { hmr: false, liveReload: false },
+				output: {
+					cleanDistPath: true,
+					distPath: { root: join(temporaryRoot, 'dist') },
+					filenameHash: false,
+					sourceMap: false,
+				},
+				source: { entry: { main: './src/native-list.ts' } },
+				splitChunks: false,
+				plugins: [pluginOctane({ dev: false, hmr: false, experimentalElementTemplate: true })],
+			},
+		});
+		try {
+			await expect(rspeedy.build()).rejects.toThrow('Rspack build failed.');
+		} finally {
+			rmSync(temporaryRoot, { recursive: true, force: true });
+		}
+	}, 120_000);
+
 	it('builds a fixed-shape native list as the compact production application', async () => {
 		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-native-list-'));
 		const reports: unknown[] = [];
@@ -708,7 +825,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				},
 				selection: { version: 1, eligible: true, reasons: [] },
 				core: { version: 1, mode: 'automatic', selected: 'block', reasons: [] },
-				application: { version: 1, selected: 'compiled-program', reasons: [] },
+				application: { version: 2, selected: 'compiled-program', reasons: [] },
 			});
 
 			const retained = retainedModuleIdentifiers.map((identifier) =>
@@ -965,7 +1082,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						reasons: [{ code: 'entry-ineligible', entry: 'main__octane_main_thread' }],
 					},
 					application: {
-						version: 1,
+						version: 2,
 						selected: 'general',
 						reasons: [
 							{ code: 'compiled-program-requires-block-core' },
@@ -1090,6 +1207,10 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 	);
 
 	it('assembles self-contained native bundles for every authored application entry', async () => {
+		// Rspeedy 0.17 intentionally omits debug metadata from local production
+		// builds. Exercise the automated-build contract that CI and release
+		// qualification use so the probe can observe metadata before it is stripped.
+		vi.stubEnv('BUILD_VERSION', 'octane-rspeedy-build-test');
 		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-application-'));
 		const outputRoot = join(temporaryRoot, 'dist');
 		const observed: unknown[] = [];
@@ -1142,6 +1263,8 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 			const secondaryBackground = nativeScriptText(secondaryBundle['background-thread-script']);
 
 			expect(decoded['engine-version']).toBe('3.9');
+			expect(mainThread).toMatch(/\b__CreateElement\b/);
+			expect(mainThread).not.toMatch(/\b__Create(?:Typed)?ElementTemplate\b/);
 			expect(mainThread).toMatch(/getJSContext/);
 			expect(mainThread).not.toMatch(/getCoreContext/);
 			expect(background).toMatch(/getCoreContext/);
@@ -1341,6 +1464,7 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 	}, 120_000);
 
 	it('emits a production lazy bundle specialized for both native threads', async () => {
+		vi.stubEnv('BUILD_VERSION', 'octane-rspeedy-build-test');
 		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-lazy-'));
 		const outputRoot = join(temporaryRoot, 'dist');
 		const moduleIdentifiers: string[] = [];
@@ -1390,7 +1514,7 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 			});
 
 			const lazyBundlePath = outputFiles(outputRoot).find((filename) =>
-				/[\\/]async[\\/]src[\\/]LazyCard\.tsrx\.[A-Fa-f0-9]+\.bundle$/.test(filename),
+				/[\\/]lazy-bundle[\\/]src_LazyCard\.tsrx\.[A-Fa-f0-9]+\.bundle$/.test(filename),
 			);
 			expect(lazyBundlePath).toBeDefined();
 			const lazyBundle = readFileSync(lazyBundlePath!);
@@ -1433,11 +1557,15 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 				expect.arrayContaining([
 					expect.objectContaining({
 						kind: 'background',
-						path: expect.stringMatching(/^\.rspeedy\/async\/src\/LazyCard\.tsrx\/background\.js$/),
+						path: expect.stringMatching(
+							/^\.rspeedy\/lazy-bundle\/src_LazyCard\.tsrx\/background\.js$/,
+						),
 					}),
 					expect.objectContaining({
 						kind: 'main-thread',
-						path: expect.stringMatching(/^\.rspeedy\/async\/src\/LazyCard\.tsrx\/main-thread\.js$/),
+						path: expect.stringMatching(
+							/^\.rspeedy\/lazy-bundle\/src_LazyCard\.tsrx\/main-thread\.js$/,
+						),
 					}),
 				]),
 			);

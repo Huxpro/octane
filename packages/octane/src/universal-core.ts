@@ -334,6 +334,16 @@ export interface UniversalProgramPlan {
 	/** Resident host-node indexes that carry authored background refs. */
 	readonly refs?: readonly number[];
 	/**
+	 * Whole-root Lynx Element Template identity emitted only by an explicitly
+	 * selected SDK Template Definition backend.
+	 */
+	readonly elementTemplate?: {
+		readonly templateId: string;
+		readonly attributeSlots: number;
+		readonly childSlots: number;
+		readonly visibilitySlot: number;
+	};
+	/**
 	 * Take the host once; return the per-instance create.
 	 *
 	 * The create takes the page, then one argument per `values` entry, one per

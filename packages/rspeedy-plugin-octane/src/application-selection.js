@@ -6,8 +6,13 @@ const MAIN_RENDERER_SELECTION_REQUEST = /(^|[\\/])main-renderer-selection\.js(?=
 const applicationSelectors = new WeakMap();
 
 function replaceSelectedRequest(resource, source, selected) {
-	if (selected !== 'compiled-program') return;
-	resource.request = resource.request.replace(source, `${source.slice(0, -3)}.compiled-program.js`);
+	if (selected === 'general') return;
+	const suffix =
+		selected === 'compiled-program-element-template' &&
+		source === 'main-thread-application-selection.js'
+			? 'element-template'
+			: 'compiled-program';
+	resource.request = resource.request.replace(source, `${source.slice(0, -3)}.${suffix}.js`);
 }
 
 /** Consulted lazily by the package-root facade plugin during make and rebuild. */
@@ -31,7 +36,7 @@ export function installLynxApplicationSelectionReplacement(compiler, selectedApp
 		replaceSelectedRequest(resource, source, selectedApplication());
 	}).apply(compiler);
 	new NormalModuleReplacementPlugin(FIRST_SCREEN_FACADE_REQUEST, (resource) => {
-		if (selectedApplication() === 'compiled-program') {
+		if (selectedApplication() !== 'general') {
 			resource.request = '@octanejs/lynx/first-screen-compiled-program';
 		}
 	}).apply(compiler);

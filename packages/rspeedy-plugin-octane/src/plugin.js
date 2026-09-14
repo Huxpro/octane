@@ -13,6 +13,8 @@ import {
 	applyLynxBackgroundCore,
 	applyLynxDiagnosticMode,
 	exposeLynxTemplatePlugin,
+	LYNX_ELEMENT_TEMPLATE_TARGET_SDK_VERSION,
+	LYNX_TARGET_SDK_VERSION,
 } from './application.js';
 import { configureLynxCSS } from './css.js';
 import {
@@ -44,7 +46,11 @@ const lynxProductMainThreadRenderers = Object.freeze({
 // and the backend signature test forces both constants to move together.
 const DEFAULT_MAIN_THREAD_PROGRAM_BACKEND = Object.freeze({
 	request: fileURLToPath(import.meta.resolve('@octanejs/lynx/compiler')),
-	signature: 'lynx-main-thread-program/29',
+	signature: 'lynx-main-thread-program/31',
+});
+const ELEMENT_TEMPLATE_MAIN_THREAD_PROGRAM_BACKEND = Object.freeze({
+	request: fileURLToPath(import.meta.resolve('@octanejs/lynx/compiler/element-template')),
+	signature: 'lynx-main-thread-program/31+element-template/5',
 });
 /**
  * What the main-thread layer compiles differently from the background one.
@@ -75,7 +81,7 @@ class LynxMainThreadFacadePlugin {
 		new NormalModuleReplacementPlugin(LYNX_PACKAGE_ROOT, (resource) => {
 			if (resource.contextInfo?.issuerLayer === LYNX_MAIN_THREAD_LAYER) {
 				resource.request =
-					selectedLynxApplication(compiler) === 'compiled-program'
+					selectedLynxApplication(compiler) !== 'general'
 						? '@octanejs/lynx/first-screen-compiled-program'
 						: '@octanejs/lynx/first-screen';
 			}
@@ -101,6 +107,7 @@ function normalizeOptions(value) {
 		'dev',
 		'environments',
 		'exclude',
+		'experimentalElementTemplate',
 		'hmr',
 		'mainThreadProgramBackend',
 		'parallel',
@@ -115,7 +122,14 @@ function normalizeOptions(value) {
 	if (options.core !== undefined && options.core !== 'universal' && options.core !== 'block') {
 		throw new TypeError(`${PLUGIN_NAME}: \`core\` must be 'universal' or 'block'.`);
 	}
-	for (const key of ['dev', 'hmr', 'profile', 'programAddressing', 'requireDirective']) {
+	for (const key of [
+		'dev',
+		'experimentalElementTemplate',
+		'hmr',
+		'profile',
+		'programAddressing',
+		'requireDirective',
+	]) {
 		if (options[key] !== undefined && typeof options[key] !== 'boolean') {
 			throw new TypeError(`${PLUGIN_NAME}: \`${key}\` must be a boolean.`);
 		}
@@ -127,7 +141,24 @@ function normalizeOptions(value) {
 		options.mainThreadProgramBackend === false
 			? undefined
 			: (options.mainThreadProgramBackend ??
-				(application ? DEFAULT_MAIN_THREAD_PROGRAM_BACKEND : undefined));
+				(application
+					? options.experimentalElementTemplate === true
+						? ELEMENT_TEMPLATE_MAIN_THREAD_PROGRAM_BACKEND
+						: DEFAULT_MAIN_THREAD_PROGRAM_BACKEND
+					: undefined));
+	if (options.experimentalElementTemplate === true && !application) {
+		throw new TypeError(
+			`${PLUGIN_NAME}: \`experimentalElementTemplate\` requires the two-layer application build.`,
+		);
+	}
+	if (
+		options.experimentalElementTemplate === true &&
+		options.mainThreadProgramBackend !== undefined
+	) {
+		throw new TypeError(
+			`${PLUGIN_NAME}: \`experimentalElementTemplate\` owns its main-thread program backend.`,
+		);
+	}
 	// Issue #246 §6.3. An address is positional, so it is only sound when one
 	// configuration sees both compiles of a module and can fail the build when
 	// they disagree about its plan order. An isolated `thread` graph is one
@@ -193,6 +224,9 @@ function normalizeOptions(value) {
 			: null),
 		...(options.dev === undefined ? null : { dev: options.dev }),
 		...(options.hmr === undefined ? null : { hmr: options.hmr }),
+		...(options.experimentalElementTemplate === undefined
+			? null
+			: { experimentalElementTemplate: options.experimentalElementTemplate }),
 		...(options.profile === undefined ? null : { profile: options.profile }),
 		...(options.requireDirective === undefined
 			? null
@@ -229,7 +263,13 @@ export function pluginOctane(value) {
 				(!options.application || /^(?:lynx|web)(?:-|$)/.test(environment.name));
 			if (options.application) {
 				exposeLynxTemplatePlugin(api);
-				configureLynxCSS(api, options.environments);
+				configureLynxCSS(
+					api,
+					options.environments,
+					options.experimentalElementTemplate === true
+						? LYNX_ELEMENT_TEMPLATE_TARGET_SDK_VERSION
+						: LYNX_TARGET_SDK_VERSION,
+				);
 				api.modifyEnvironmentConfig?.((config, { name, mergeEnvironmentConfig }) => {
 					if (!appliesToEnvironment({ name })) return;
 					return mergeEnvironmentConfig(config, {

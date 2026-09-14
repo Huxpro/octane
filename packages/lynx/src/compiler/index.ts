@@ -23,7 +23,7 @@ export {
 export {
 	deriveLynxElementTemplateProgram,
 	type LynxElementTemplateAttribute,
-	type LynxElementTemplateChildSlot,
+	type LynxElementTemplateElementSlot,
 	type LynxElementTemplateNode,
 	type LynxElementTemplateProgram,
 	type LynxElementTemplateSlotAttribute,
@@ -52,4 +52,4 @@ export {
  * rather than a comment. Over-invalidating a cache is the safe direction; a
  * comment-only edit bumping it costs one cold build and nothing else.
  */
-export const signature = 'lynx-main-thread-program/29';
+export const signature = 'lynx-main-thread-program/31';

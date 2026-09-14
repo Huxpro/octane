@@ -18,6 +18,10 @@ const listSuffix = listRows > 0 ? `-list-rows${listRows}` : '';
 // (globalThis.__OCTANE_LYNX_PROF on both threads). Off by default so the
 // default bundle measures the shipping configuration.
 const profile = process.env.OCTANE_LYNX_PROFILE === '1';
+// BENCH_ELEMENT_TEMPLATE=1 selects the explicit, whole-root Template Definition
+// backend. It fails the build when any reachable main-thread plan cannot lower.
+const elementTemplate = process.env.BENCH_ELEMENT_TEMPLATE === '1';
+const elementTemplateSuffix = elementTemplate ? '-element-template' : '';
 
 /** The Block core's drive modes, spelled once. `scoped` carries no suffix. */
 const BLOCK_MODES = new Set(['scoped', 'reconcile', 'derived']);
@@ -52,6 +56,9 @@ const BLOCK_MODES = new Set(['scoped', 'reconcile', 'derived']);
 const mtsProgram = process.env.BENCH_MTS_PROGRAM === '1';
 const programSuffix = mtsProgram ? '-mtsprogram' : '';
 const mainThreadProgramBackend = mtsProgram ? await loadMainThreadProgramBackend() : undefined;
+if (elementTemplate && mainThreadProgramBackend !== undefined) {
+	throw new Error('BENCH_ELEMENT_TEMPLATE and BENCH_MTS_PROGRAM are mutually exclusive.');
+}
 
 async function loadMainThreadProgramBackend() {
 	const repo = process.env.BENCH_REPO_ROOT;
@@ -120,6 +127,7 @@ export default defineConfig(({ command }) => {
 					'dist' +
 					coreSuffix +
 					programSuffix +
+					elementTemplateSuffix +
 					tagSuffix +
 					autoSuffix +
 					listSuffix +
@@ -148,6 +156,7 @@ export default defineConfig(({ command }) => {
 				dev: development || profile,
 				hmr: command === 'dev',
 				...(mainThreadProgramBackend === undefined ? null : { mainThreadProgramBackend }),
+				...(elementTemplate ? { experimentalElementTemplate: true } : null),
 			}),
 		],
 	};

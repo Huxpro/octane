@@ -494,7 +494,7 @@ describe('octane Rspack loader', () => {
 			options: {
 				mainThreadProgramBackend: {
 					request,
-					signature: 'lynx-main-thread-program/28',
+					signature: 'lynx-main-thread-program/31',
 				},
 			},
 		});
@@ -502,7 +502,7 @@ describe('octane Rspack loader', () => {
 		expect(mocks.createOctaneCompiler).toHaveBeenLastCalledWith(
 			expect.objectContaining({
 				mainThreadProgramBackend: expect.objectContaining({
-					signature: 'lynx-main-thread-program/28',
+					signature: 'lynx-main-thread-program/31',
 					deriveLynxProgramIR: expect.any(Function),
 					deriveLynxMainThreadProgram: expect.any(Function),
 					emitLynxMainThreadProgram: expect.any(Function),

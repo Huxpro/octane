@@ -106,7 +106,8 @@
     "context:budget:check": "node scripts/check-context-budget.mjs",
     "bindings:status": "node scripts/generate-bindings-status.mjs",
     "bindings:status:check": "node scripts/generate-bindings-status.mjs --check",
-    "prebindings:typecheck": "pnpm --filter @octanejs/dropzone typecheck"
+    "prebindings:typecheck": "pnpm --filter @octanejs/dropzone typecheck",
+    "dev": "vite"
   },
   "devDependencies": {
     "@babel/core": "catalog:default",

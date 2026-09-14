@@ -10,6 +10,10 @@ import {
 	LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT,
 } from './compiled-program-wire.js';
 import { createLynxCompiledProgramStore } from './compiled-program-store.js';
+import type {
+	LynxCompiledProgramAdoptionSource,
+	LynxCompiledProgramStore,
+} from './compiled-program-store.js';
 import type { LynxElementRef } from './papi.js';
 import {
 	createReplaceableLynxMainThreadWorkletRegistry,
@@ -53,11 +57,36 @@ interface RunningMainCall {
 	cancelled: boolean;
 }
 
+/** Native-owner seam for compact stores that do not operate on ordinary ElementRefs. */
+export interface InstallLynxCompiledProgramProductHostOptions<Node extends object> {
+	readonly context: InstallLynxCompiledProgramReceiverOptions<object>['context'];
+	readonly page: Node;
+	readonly resolveProgram: InstallLynxCompiledProgramReceiverOptions<object>['resolveProgram'];
+	readonly adoption?: Pick<
+		LynxCompiledProgramAdoptionSource<Node>,
+		'firstListener' | 'verify' | 'finish' | 'dispose'
+	>;
+	readonly pageReady?: boolean;
+	readonly onReady?: () => void;
+	readonly onDiagnostic?: (error: Error) => void;
+	createStore(
+		root: number,
+		onCallbackFault: (error: unknown) => void,
+		worklets: LynxMainThreadWorkletRegistry,
+	): LynxCompiledProgramStore<Node>;
+	flush(): void;
+}
+
 /** Generated-build receiver with framing, settlement, and page ownership in one closure. */
-export function installLynxCompiledProgramProductReceiver<Node extends LynxElementRef>(
-	options: InstallLynxCompiledProgramReceiverOptions<Node>,
+export function installLynxCompiledProgramProductReceiver<Node extends object>(
+	options:
+		| InstallLynxCompiledProgramReceiverOptions<Node>
+		| InstallLynxCompiledProgramProductHostOptions<Node>,
 ): LynxCompiledProgramReceiver {
-	const { context, page, papi } = options;
+	const { context, page } = options;
+	const ordinaryPapi = 'papi' in options ? options.papi : null;
+	const flush =
+		'flush' in options ? options.flush : () => ordinaryPapi!.flush(page as Node & LynxElementRef);
 	if (
 		context === null ||
 		typeof context !== 'object' ||
@@ -67,12 +96,11 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 	) {
 		throw new TypeError(DEVELOPMENT ? 'Invalid compact ContextProxy.' : CODE);
 	}
-
 	const inbound = createLynxTransportFrameState();
 	let sequence = 1;
 	let readiness = options.pageReady === true ? 1 : 0;
 	let readyRequest: number | null = null;
-	let store = null as ReturnType<typeof createLynxCompiledProgramStore<Node>> | null;
+	let store = null as LynxCompiledProgramStore<Node> | null;
 	let active: UniversalTransportIdentity | null = null;
 	let aborted: UniversalTransportIdentity | null = null;
 	let disposed: UniversalTransportIdentity | null = null;
@@ -109,7 +137,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		for (let attempt = 0; attempt < MAX_CLOSE_CLEANUP_ATTEMPTS; attempt++) {
 			try {
 				candidate.dispose();
-				papi.flush(page);
+				flush();
 				return;
 			} catch (error) {
 				report(error);
@@ -450,7 +478,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			try {
 				if (store !== null) {
 					store.dispose();
-					papi.flush(page);
+					flush();
 				}
 			} catch (error) {
 				busy = false;
@@ -490,16 +518,18 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		}
 		const candidate =
 			store ??
-			createLynxCompiledProgramStore(
-				papi,
-				papi.getUniqueId(page),
-				message.root,
-				pendingAdoption?.firstListener,
-				pendingAdoption?.resolveSeed,
-				onStoreCallbackFault,
-				undefined,
-				hostWorklets,
-			);
+			('createStore' in options
+				? options.createStore(message.root, onStoreCallbackFault, hostWorklets)
+				: createLynxCompiledProgramStore(
+						ordinaryPapi!,
+						ordinaryPapi!.getUniqueId(page),
+						message.root,
+						pendingAdoption?.firstListener,
+						options.adoption?.resolveSeed,
+						onStoreCallbackFault,
+						undefined,
+						hostWorklets,
+					));
 		busy = true;
 		try {
 			applyLynxCompiledProgramFrame(candidate, page, options.resolveProgram, message.frame, () => {
@@ -511,7 +541,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 				pendingAdoption?.verify();
 				// ContextProxy delivery does not publish Element PAPI writes. Flush
 				// before committing so a failed publication remains retryable.
-				papi.flush(page);
+				flush();
 				if (closed) throw new Error(CODE);
 				if (aborted !== null && same(aborted, message)) {
 					aborted = null;
@@ -522,7 +552,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			busy = false;
 			let rollbackFlushError: unknown = null;
 			try {
-				papi.flush(page);
+				flush();
 			} catch (flushError) {
 				rollbackFlushError = flushError;
 			}
@@ -604,7 +634,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			if (closed || busy) return;
 			if (store !== null) {
 				store.dispose();
-				papi.flush(page);
+				flush();
 			}
 			pendingAdoption?.dispose();
 			pendingAdoption = undefined;

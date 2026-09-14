@@ -19,7 +19,7 @@ export const LYNX_BLOCK_SELECTION_VERSION = 1;
 export const LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO = 'octane:lynx-background-core-selection';
 export const LYNX_BACKGROUND_CORE_SELECTION_VERSION = 1;
 export const LYNX_APPLICATION_SELECTION_ASSET_INFO = 'octane:lynx-application-selection';
-export const LYNX_APPLICATION_SELECTION_VERSION = 1;
+export const LYNX_APPLICATION_SELECTION_VERSION = 2;
 export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 13;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
@@ -109,6 +109,15 @@ function isLynxApplicationSelectionOwner(module) {
 function isApplicationSelection(module, selected) {
 	const resource = moduleResource(module);
 	if (resource === null) return false;
+	if (selected === 'compiled-program-element-template') {
+		return (
+			resource.endsWith('/application-selection.compiled-program.ts') ||
+			resource.endsWith('/main-thread-application-selection.element-template.ts') ||
+			resource.endsWith('/first-screen.compiled-program.ts') ||
+			resource.endsWith('/client-driver.compiled-program.ts') ||
+			resource.endsWith('/main-renderer-selection.compiled-program.ts')
+		);
+	}
 	return selected === 'compiled-program'
 		? resource.endsWith('/application-selection.compiled-program.ts') ||
 				resource.endsWith('/main-thread-application-selection.compiled-program.ts') ||
@@ -241,7 +250,7 @@ function collectExplicitRootReasons(compilation, backgroundRoots) {
 }
 
 function verifyApplicationSelection(compilation, owners, selected) {
-	if (selected === 'compiled-program' && owners.length === 0) {
+	if (selected !== 'general' && owners.length === 0) {
 		throw new Error(
 			'@octanejs/rspeedy-plugin: compiled-program application owners disappeared during specialization.',
 		);
@@ -1121,6 +1130,7 @@ function decideApplication(
 	coreDecision,
 	ownersAvailable,
 	explicitRootReasons,
+	elementTemplate,
 ) {
 	const reasons = [];
 	if (!oneShotProduction(compiler)) {
@@ -1140,7 +1150,12 @@ function decideApplication(
 	}
 	return Object.freeze({
 		version: LYNX_APPLICATION_SELECTION_VERSION,
-		selected: reasons.length === 0 && entries.length !== 0 ? 'compiled-program' : 'general',
+		selected:
+			reasons.length === 0 && entries.length !== 0
+				? elementTemplate
+					? 'compiled-program-element-template'
+					: 'compiled-program'
+				: 'general',
 		reasons: Object.freeze(reasons),
 	});
 }
@@ -1182,10 +1197,11 @@ function decideBackgroundCore(compiler, entries, reports, configuredCore, backgr
 
 /** Attach versioned proofs and specialize the one-core production graph. */
 export class LynxProgramCoveragePlugin {
-	constructor(entries, enabled, configuredCore) {
+	constructor(entries, enabled, configuredCore, elementTemplate = false) {
 		this.entries = entries;
 		this.enabled = enabled;
 		this.configuredCore = configuredCore;
+		this.elementTemplate = elementTemplate;
 	}
 
 	apply(compiler) {
@@ -1271,6 +1287,7 @@ export class LynxProgramCoveragePlugin {
 				state.decision,
 				applicationOwners.length !== 0,
 				explicitRootReasons,
+				this.elementTemplate,
 			);
 			activeState = state;
 			const rebuild = new Set();
@@ -1290,7 +1307,7 @@ export class LynxProgramCoveragePlugin {
 					}
 				}
 			}
-			if (state.applicationDecision.selected === 'compiled-program') {
+			if (state.applicationDecision.selected !== 'general') {
 				for (const owner of applicationOwners) rebuild.add(owner);
 			}
 			if (rebuild.size !== 0) await rebuildLynxModules(compilation, [...rebuild]);

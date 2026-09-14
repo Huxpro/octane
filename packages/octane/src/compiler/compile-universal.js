@@ -5865,6 +5865,70 @@ function universalProgramAddressAst(state, plan, index, origin) {
 	return jsonValueToAst(address, origin);
 }
 
+/**
+ * Collect one SDK Template Definition and emit only its fixed runtime identity.
+ *
+ * The compiled tree stays out of JavaScript and reaches Lynx through the
+ * template encoder metadata. The runtime descriptor carries only the stable
+ * key and positional arities needed to verify that the main-thread store and
+ * the independently compiled background program still consume the shared IR in
+ * the same order.
+ */
+function lynxElementTemplateObjectAst(state, derived, origin) {
+	const backend = state.mainThreadProgramBackend;
+	if (backend?.elementTemplate !== true || state.universalRuntime?.thread !== 'main-thread') {
+		return null;
+	}
+	if (typeof backend.deriveLynxElementTemplateProgram !== 'function') {
+		throw new TypeError(
+			'Octane Lynx Element Template backend deriveLynxElementTemplateProgram must be a function.',
+		);
+	}
+	const lowered = backend.deriveLynxElementTemplateProgram(derived);
+	if (lowered === null) return null;
+	if (
+		lowered === undefined ||
+		typeof lowered !== 'object' ||
+		lowered.template === null ||
+		typeof lowered.template !== 'object' ||
+		!Number.isSafeInteger(lowered.attributeSlots) ||
+		lowered.attributeSlots !== derived.values.length + derived.events.length + 1 ||
+		!Number.isSafeInteger(lowered.childSlots) ||
+		lowered.childSlots !== derived.ranges.length ||
+		lowered.visibilitySlot !== lowered.attributeSlots - 1
+	) {
+		throw new TypeError('Octane Lynx Element Template backend returned an invalid program.');
+	}
+	// Lynx reserves the `_et_<12 hex>` identity envelope for content-addressed
+	// user Template Definitions. Keep the native identifier in that envelope;
+	// the full resident-program digest remains on the independent program address.
+	const templateId = `_et_${programDigest(derived).slice(0, 12)}`;
+	const record = Object.freeze({
+		templateId,
+		compiledTemplate: lowered.template,
+		sourceFile: state.filename,
+	});
+	const templates = (state.lynxElementTemplates ??= new Map());
+	const existing = templates.get(templateId);
+	if (
+		existing !== undefined &&
+		JSON.stringify(existing.compiledTemplate) !== JSON.stringify(record.compiledTemplate)
+	) {
+		throw new Error(`Octane Lynx Element Template id collision for ${templateId}.`);
+	}
+	templates.set(templateId, existing ?? record);
+	state.lynxElementTemplateLowered = (state.lynxElementTemplateLowered ?? 0) + 1;
+	return jsonValueToAst(
+		{
+			templateId,
+			attributeSlots: lowered.attributeSlots,
+			childSlots: lowered.childSlots,
+			visibilitySlot: lowered.visibilitySlot,
+		},
+		origin,
+	);
+}
+
 function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	const backend = state.mainThreadProgramBackend;
 	if (backend === undefined) return null;
@@ -5906,6 +5970,7 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 		);
 	}
 	const rangeOrder = lynxProgramRangeOrder(derived.wire, derived.ranges);
+	const elementTemplate = lynxElementTemplateObjectAst(state, derived, origin);
 	return inheritGeneratedOrigin(
 		b.object([
 			b.prop('init', b.literal('kind', '"kind"'), b.literal('program', '"program"')),
@@ -5993,6 +6058,9 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 							),
 						),
 					]),
+			...(elementTemplate === null
+				? []
+				: [b.prop('init', b.literal('elementTemplate', '"elementTemplate"'), elementTemplate)]),
 			// The descriptor the background would otherwise have sent with every
 			// mount, resident here instead (issue #246 E1).
 			//
@@ -6830,6 +6898,16 @@ export function compileUniversal(
 			? null
 			: { lynxBlockFeatureRequirements: blockFeatureRequirements }),
 		...(state.programAddresses === undefined ? null : { programAddresses: state.programAddresses }),
+		...(state.mainThreadProgramBackend?.elementTemplate !== true ||
+		state.universalRuntime?.thread !== 'main-thread'
+			? null
+			: {
+					lynxElementTemplates: Object.freeze([...(state.lynxElementTemplates?.values() ?? [])]),
+					lynxElementTemplateCoverage: Object.freeze({
+						total: state.plans.length,
+						lowered: state.lynxElementTemplateLowered ?? 0,
+					}),
+				}),
 		// A graph-level selector cannot infer complete resident-program coverage
 		// from the addresses alone: an empty list means either "no plans" or "every
 		// plan declined". Preserve both sides of that proof whenever addressing was

@@ -12,6 +12,12 @@ The existing whole-entry product selection and fail-closed Universal fallback
 therefore remain unchanged. No post-switch build or old-path retirement was run
 because the pre-switch gate failed.
 
+Post-decision work implemented the only SDK-supported architecture identified
+below as an explicit experimental option: a compiler-proved **whole-root**
+Element Template owner. It does not change the NO-GO decision or the default,
+but it replaces the earlier unbounded ordinary-Element creation path for the
+eligible opt-in slice and adds a narrowly qualified Android safety boundary.
+
 ## Frozen cohort
 
 The cohort was last checked against the live remotes at 2026-09-14 02:55:01
@@ -290,52 +296,72 @@ actual contract used for this architecture decision:
   `insertBefore` store path. A partial emitter swap would cross an explicit SDK
   ownership boundary rather than provide a safe batch primitive.
 
-Octane's Rspeedy application already owns one `LynxTemplatePlugin` instance per
-authored entry, so it has a suitable future encoder hook. The missing work is
-not access to that hook; it is a separately selectable **whole-root Element
-Template backend**. Such a backend must keep every parent, root, and structural
-child in the template-handle domain; lower compiled-program values, delegated
-event tokens, refs, and ranges to stable attribute/child slots; use a typed
-template page; and define independent adoption, rollback, removal, native-list,
-serialization, and first-screen behavior. The current positive compact-program
-handle space also cannot be reused as the native template UID until collision,
-page ownership, and lifecycle rules are proven on device.
+Octane's application build now uses that existing `LynxTemplatePlugin` hook for
+an explicit `experimentalElementTemplate: true` mode. The shared immutable
+program IR lowers to collision-checked Template Definitions; the encoder writes
+them to `encodeData.elementTemplate` with target SDK `3.2`; and the application
+selector atomically installs a typed template page and opaque template-handle
+owner. Value slots, delegated background-event slots, the root visibility slot,
+and structural child slots retain the compact background protocol's positional
+ABI. Adoption, update, move, removal, rollback, disposal, and serialization stay
+inside that handle domain.
 
-No partial Element Template code is retained from this investigation. Before a
-whole-root backend can enter another device A/B, it must satisfy all of these
-fail-closed preconditions:
+The implementation deliberately does not claim the unsupported part of the
+earlier precondition list. Refs, native lists, `main-thread:*` bindings,
+text-polymorphic ranges, portals, and unsupported native attribute composition
+reject complete template lowering at build time. They do not enter a partial
+backend or get converted to ordinary Element refs. Ordinary builds retain the
+existing owner, and the whole-entry Universal compatibility path remains.
 
-1. Production encoding contains the expected template metadata and the decoded
-   source/encoder receipt pins the SDK/toolchain contract.
-2. Static trees, dynamic values, delegated native events, refs, keyed ranges,
-   fragments, portals, native typed elements/lists, and teardown/rollback each
-   pass main/background semantic tests without converting template handles to
-   ordinary element refs.
-3. First-screen serialization or hydration has an explicit template-native
-   implementation; unsupported entries reject specialization before build
-   selection and retain the Universal fallback.
-4. A real Android semantic smoke test proves page/root insertion, updates,
-   event dispatch, stable identity, and cleanup before any timing sample is
-   accepted. The full Android/iOS qualification gates below still apply.
+Device qualification exposed two independent Android 4.1 JNI ceilings. Pending
+PaintingContext work is drained with a real `{ triggerLayout: true }` flush at
+8,192 compiler-counted nodes. Synchronous `renderPage` admits no more than that
+same bound because its nested flushes coalesce; larger first screens defer intact
+to the background store. Live ownership is separately capped at 32,768 template
+instances and 40,960 resident plan nodes. Exceeding a live limit produces
+`Octane Lynx OL512` before native creation and rolls the frame back; an eager
+30,000-row table must use the virtualized native-list architecture instead.
+
+The final pinned Android Explorer 4.1.0 candidate accepted one native-tap
+10,000-row create and one 10,000-row startup, and rejected one 30,000-row startup
+without a fresh JNI/fatal marker or Explorer process death. An earlier 40,960
+synchronous-first-screen threshold crashed at 10,000 rows with a PaintingContext
+global-reference overflow, and an earlier queue-only budget crashed at 30,000
+rows with a TextShadowNode weak-global-reference overflow; both candidates were
+rejected. The immutable hashes and exact scope are recorded in
+[`packages/lynx/audit/android-element-template-evidence.json`](../../../packages/lynx/audit/android-element-template-evidence.json).
+These single-sample checks qualify a correctness and fail-closed boundary, not a
+cross-framework A/B, general Android support, memory result, or iOS release gate.
 
 ## Upstream alignment and remaining owner work
 
-Upstream issue octanejs/octane#1055 was still open at the final remote check.
-The shared compiler IR, independent two-thread lowering, versioned paired ABI,
-attempt/acceptance boundary, and whole-root selection described in the R10
-report remain suitable upstream seams. This branch additionally retains its
-resident compact program, native list/resource ownership, and fail-closed
-Universal fallback. No upstream acceptance or merge is claimed.
+At the 2026-09-14 09:40 UTC read-only refresh, published `new-lynx` still pointed
+to `7a523bf20d04578c39fe0b5fe532cdef6dab3e9e`, upstream `main` still pointed to
+`8e5ca22a6e17582b4293232406a2c0420509f4a4`, and
+[octanejs/octane#1055](https://github.com/octanejs/octane/issues/1055) remained
+open. The shared compiler IR, independent two-thread lowering, versioned paired
+ABI, attempt/acceptance boundary, hybrid generated/resident representation, and
+whole-root selection described in that issue are the seams used here. The
+Element Template backend adds a distinct native-owner specialization without
+reconstructing universal plans or host records at runtime.
+
+This increment does **not** close #1055. It does not add the proposed public
+`target: 'lynx'` compiler dispatch, Lynx signal-read ownership, Strong-mode
+projection caching, the remaining semantic surface, or default migration and
+retirement. It retains the resident compact program where code size warrants,
+the existing PAPI/transport/list/resource boundaries, and the fail-closed
+Universal compatibility path. No upstream acceptance or merge is claimed.
 
 The remaining framework-owned investigation is no longer an undifferentiated
 PAPI sequence. Tail append, handle lookup, detached host creation, and runtime
 deep-cloning have been eliminated as safe leading owners; controlled ablation
-places the dominant cost at native subtree integration/materialization. A
-credible next architecture must reduce the number of individually attached,
-fully materialized row trees through an SDK-supported compile-time template or
-batch boundary while preserving dynamic values, delegated native events,
-identity, refs, and updates. Inventing private template calls or reusing the
-crashing clone primitive would not meet that bar.
+places the dominant cost at native subtree integration/materialization. The
+implemented architecture reduces repeated host construction through the
+SDK-supported compile-time Template Definition boundary while preserving the
+currently admitted dynamic values, delegated native events, identity, and
+updates. Refs and the other rejected surfaces still require explicit
+template-native designs; inventing private calls or reusing the crashing clone
+primitive would not meet that bar.
 
 In parallel, the benchmark owner must restore stable list viewport/key
 observation and recover the DevTool connector between entries. Only a new

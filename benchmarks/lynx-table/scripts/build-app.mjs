@@ -130,6 +130,7 @@ export function buildTableApp({
 		throw new TypeError('BENCH_AUTOROWS and BENCH_LIST_ROWS are mutually exclusive.');
 	}
 	const profile = process.env.OCTANE_LYNX_PROFILE === '1';
+	const elementTemplate = process.env.BENCH_ELEMENT_TEMPLATE === '1';
 	const issue278Attribution = process.env.BENCH_ISSUE278_ATTRIBUTION === '1';
 	const issue278Counts = process.env.BENCH_ISSUE278_COUNTS === '1';
 	const issue278Scalar = process.env.BENCH_ISSUE278_SCALAR === '1';
@@ -306,6 +307,7 @@ export function buildTableApp({
 	// and leaves the background one byte-identical. A second suffix rather than a
 	// second core, for the same reason: one bundle, one setting of each switch.
 	const programSuffix = mtsProgram ? '-mtsprogram' : '';
+	const elementTemplateSuffix = elementTemplate ? '-element-template' : '';
 	// Issue-#163 C8: a tag that changes nothing about what is built and only
 	// where it lands, so one configuration can be built twice from two revisions
 	// of the compiler and both bundles exist in one measurement window. That is
@@ -322,7 +324,9 @@ export function buildTableApp({
 				? `octane table app (${core}/${blockMode})`
 				: core === 'automatic'
 					? 'octane table app (automatic product core)'
-					: 'octane table app') + (mtsProgram ? ' +mts-program' : '');
+					: 'octane table app') +
+		(mtsProgram ? ' +mts-program' : '') +
+		(elementTemplate ? ' +element-template' : '');
 	if (!silent) console.log(`[lynx-table] building ${label} (production)…`);
 	try {
 		execFileSync('npx', ['rspeedy', 'build', '--root', `examples/${STAGE_NAME}`], {
@@ -348,6 +352,7 @@ export function buildTableApp({
 	const suffix =
 		coreSuffix +
 		programSuffix +
+		elementTemplateSuffix +
 		distTag +
 		(autoRows > 0 ? `-rows${autoRows}` : '') +
 		(listRows > 0 ? `-list-rows${listRows}` : '') +

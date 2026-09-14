@@ -489,7 +489,7 @@ describe('Lynx compiled-program application eligibility', () => {
 			blockSelection,
 			featureRequirements,
 		});
-		expect(report).toEqual({ version: 1, eligible: true, reasons: [] });
+		expect(report).toEqual({ version: 2, eligible: true, reasons: [] });
 		expect(Object.isFrozen(report)).toBe(true);
 		expect(Object.isFrozen(report.reasons)).toBe(true);
 	});
@@ -540,7 +540,7 @@ describe('Lynx compiled-program application eligibility', () => {
 				blockSelection,
 				featureRequirements: requirements,
 			}),
-		).toEqual({ version: 1, eligible: true, reasons: [] });
+		).toEqual({ version: 2, eligible: true, reasons: [] });
 	});
 
 	it('fails closed for selection or feature proof skew and unpaired facts', () => {
@@ -892,7 +892,7 @@ describe('Lynx application resident-program coverage', () => {
 				reasons: [],
 			},
 			[LYNX_APPLICATION_SELECTION_ASSET_INFO]: {
-				version: 1,
+				version: 2,
 				selected: 'compiled-program',
 				reasons: [],
 			},
