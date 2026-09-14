@@ -24,6 +24,7 @@ const UNIVERSAL_PROPS = Symbol.for('octane.universal.props');
 const UNIVERSAL_IF = Symbol.for('octane.universal.if');
 const UNIVERSAL_SWITCH = Symbol.for('octane.universal.switch');
 const UNIVERSAL_FOR = Symbol.for('octane.universal.for');
+const UNIVERSAL_TRY = Symbol.for('octane.universal.try');
 const UNIVERSAL_CONTEXT = Symbol.for('octane.universal.context');
 const UNIVERSAL_ACTIVITY = Symbol.for('octane.universal.activity');
 const CONTEXT_TAG = Symbol.for('octane.context');
@@ -83,6 +84,12 @@ interface ForValue {
 	readonly render: (item: unknown, index: number) => UniversalRenderable;
 	readonly empty: (() => UniversalRenderable) | null;
 }
+interface TryValue {
+	readonly $$kind: symbol;
+	readonly body: () => UniversalRenderable;
+	readonly pending: (() => UniversalRenderable) | null;
+	readonly catch: ((error: unknown, reset: () => void) => UniversalRenderable) | null;
+}
 interface ContextValue {
 	readonly $$kind: symbol;
 	readonly context: UniversalContext<any>;
@@ -93,6 +100,16 @@ interface ActivityValue {
 	readonly $$kind: symbol;
 	readonly mode: 'visible' | 'hidden';
 	readonly body: () => UniversalRenderable;
+}
+
+interface TrackedThenable<T = unknown> extends PromiseLike<T> {
+	status?: 'pending' | 'fulfilled' | 'rejected';
+	value?: T;
+	reason?: unknown;
+}
+
+class FirstScreenSuspense {
+	constructor(readonly thenable: PromiseLike<unknown>) {}
 }
 
 export interface NativeUniversalContext<T> extends UniversalContext<T> {
@@ -321,6 +338,19 @@ export function universalFor<T>(
 	empty: (() => UniversalRenderable) | null = null,
 ): UniversalRenderable {
 	return { $$kind: UNIVERSAL_FOR, items, key, render, empty } as unknown as UniversalRenderable;
+}
+
+export function universalTry(
+	body: () => UniversalRenderable,
+	pending: (() => UniversalRenderable) | null = null,
+	catchBody: ((error: unknown, reset: () => void) => UniversalRenderable) | null = null,
+): UniversalRenderable {
+	return {
+		$$kind: UNIVERSAL_TRY,
+		body,
+		pending,
+		catch: catchBody,
+	} as unknown as UniversalRenderable;
 }
 
 export function memo<P>(
@@ -556,6 +586,19 @@ function materialize(value: unknown, visibility: 'visible' | 'hidden' = 'visible
 		}
 		if (index === 0 && loop.empty !== null) return [range(materialize(loop.empty(), visibility))];
 		return output;
+	}
+	if (record?.$$kind === UNIVERSAL_TRY) {
+		const boundary = value as unknown as TryValue;
+		try {
+			return [range(materialize(boundary.body(), visibility))];
+		} catch (error) {
+			if (error instanceof FirstScreenSuspense) {
+				if (boundary.pending === null) throw error;
+				return [range(materialize(boundary.pending(), visibility))];
+			}
+			if (boundary.catch === null) throw error;
+			return [range(materialize(boundary.catch(error, NOOP_UPDATE), visibility))];
+		}
 	}
 	if (record?.$$kind === UNIVERSAL_CONTEXT) {
 		const provider = value as unknown as ContextValue;
@@ -797,6 +840,53 @@ export function useEffect(): void {
 export function useContext<T>(context: UniversalContext<T>): T {
 	requireRender();
 	return readContext(context);
+}
+
+function trackThenable<T>(thenable: TrackedThenable<T>): void {
+	if (
+		thenable.status === 'pending' ||
+		thenable.status === 'fulfilled' ||
+		thenable.status === 'rejected'
+	) {
+		return;
+	}
+	thenable.status = 'pending';
+	thenable.then(
+		(value) => {
+			thenable.status = 'fulfilled';
+			thenable.value = value;
+		},
+		(error) => {
+			thenable.status = 'rejected';
+			thenable.reason = error;
+		},
+	);
+}
+
+export function use<T>(usable: UniversalContext<T> | PromiseLike<T>): T {
+	requireRender();
+	if ((usable as UniversalContext<T>).$$kind === CONTEXT_TAG) {
+		return useContext(usable as UniversalContext<T>);
+	}
+	const thenable = usable as TrackedThenable<T>;
+	if (thenable.status === 'fulfilled') return thenable.value as T;
+	if (thenable.status === 'rejected') throw thenable.reason;
+	trackThenable(thenable);
+	throw new FirstScreenSuspense(thenable);
+}
+
+export function useBatch(items: readonly unknown[]): void {
+	requireRender();
+	let pending: TrackedThenable[] | null = null;
+	for (const item of items) {
+		if (item == null || typeof (item as { then?: unknown }).then !== 'function') continue;
+		const thenable = item as TrackedThenable;
+		trackThenable(thenable);
+		if (thenable.status === 'rejected') break;
+		if (thenable.status === 'pending') (pending ??= []).push(thenable);
+	}
+	if (pending === null) return;
+	throw new FirstScreenSuspense(pending.length === 1 ? pending[0]! : Promise.all(pending));
 }
 
 export function useSyncExternalStore<T>(

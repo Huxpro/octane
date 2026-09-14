@@ -24,9 +24,9 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  * Component-local hook scopes sit above these scoped entry points and publish at
  * the same render-attempt boundary. Native lists reuse these instance and range
  * identities while the main-thread store alone materializes physical cells. De-opt
- * regions, Suspense, and portals remain selected out until their slices. Activity
- * visibility is retained by the component layer and lowered here to transactional
- * VIS operations over the same resident instance identities.
+ * regions and portals remain selected out until their slices. Activity and retained
+ * Suspense visibility are owned by the component layer and lowered here to
+ * transactional VIS operations over the same resident instance identities.
  */
 
 import { sameLynxUniversalHostPropValue } from './host-props.js';

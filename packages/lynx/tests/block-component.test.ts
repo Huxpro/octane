@@ -46,8 +46,10 @@ import {
 	universalIf,
 	universalProgramRangeCommandSlot,
 	universalProps,
+	universalTry,
 	universalValue,
 	universalSwitch,
+	use,
 	useCallback,
 	useContext,
 	useEffect,
@@ -265,6 +267,47 @@ function subscribedCard(lifecycle: string[]): LynxComponent<CardProps> {
 
 const noop = () => undefined;
 
+interface Deferred<Value> {
+	readonly promise: Promise<Value>;
+	resolve(value: Value): void;
+	reject(error: Error): void;
+}
+
+function deferred<Value>(): Deferred<Value> {
+	let resolve!: (value: Value) => void;
+	let reject!: (error: Error) => void;
+	const promise = new Promise<Value>((done, fail) => {
+		resolve = done;
+		reject = fail;
+	});
+	return { promise, resolve, reject };
+}
+
+function unorderedHandleLifecycle(journal: string): string {
+	const entries: string[] = [];
+	let start = -1;
+	let depth = 0;
+	let quoted = false;
+	let escaped = false;
+	for (let index = 0; index < journal.length; index++) {
+		const character = journal[index]!;
+		if (quoted) {
+			if (escaped) escaped = false;
+			else if (character === '\\') escaped = true;
+			else if (character === '"') quoted = false;
+			continue;
+		}
+		if (character === '"') {
+			quoted = true;
+		} else if (character === '{') {
+			if (depth++ === 0) start = index;
+		} else if (character === '}' && --depth === 0) {
+			entries.push(journal.slice(start, index + 1));
+		}
+	}
+	return entries.sort().join('\n');
+}
+
 interface TableRow {
 	readonly id: number;
 	readonly label: string;
@@ -457,6 +500,21 @@ function rowListener(
 	return resolved;
 }
 
+/** The tap site on a CARD_PLAN member inside TABLE_PLAN's structural range. */
+function cardRangeListener(
+	commits: readonly LynxTransportCommitMessage[],
+	row: number,
+): LynxResolvedNativeEvent {
+	const papi = createFakePAPI();
+	const host = createLynxHostContainer(papi, { root: 1 });
+	for (const commit of commits) prepareLynxHostBatch(host, commit.batch).apply();
+	const rows = papi.pages[0]!.children[0]!.children[1]!;
+	const label = rows.children[row]!.children[0]!;
+	const resolved = resolveLynxHostNativeEvent(host, [...label.events.values()][0]);
+	if (resolved === null) throw new Error(`card ${row} bound no event site`);
+	return resolved;
+}
+
 /** Send one delivery back, as the main thread would. */
 function deliverTo(
 	block: { readonly main: { readonly commits: readonly LynxTransportCommitMessage[] } },
@@ -491,10 +549,19 @@ function universalColumn<Props>(component: LynxComponent<Props>) {
 	return {
 		main,
 		async render(props: Props): Promise<void> {
-			const rendering = root.renderAsync(component as never, props as never);
 			await flushMicrotasks();
 			while (acknowledged < main.commits.length) {
 				main.acknowledge(main.commits[acknowledged++]!);
+			}
+			let settled = false;
+			const rendering = root.renderAsync(component as never, props as never).finally(() => {
+				settled = true;
+			});
+			for (let guard = 0; guard < 20 && !settled; guard++) {
+				await flushMicrotasks();
+				while (acknowledged < main.commits.length) {
+					main.acknowledge(main.commits[acknowledged++]!);
+				}
 			}
 			await rendering;
 			await flushMicrotasks();
@@ -1920,6 +1987,391 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 			await flushMicrotasks();
 			expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
 		}
+	});
+
+	it('matches Universal host observations through pending and Suspense reveal', async () => {
+		const pending = deferred<string>();
+		const Primary = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			({ value }: { readonly value: Promise<string> }) =>
+				universalValue(CARD_PLAN, ['body', use(value), 'body-meta', noop, 'body']),
+		);
+		const Boundary = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			({ value }: { readonly value: Promise<string> }) =>
+				universalValue(TABLE_PLAN, [
+					universalTry(
+						() => universalComponent(LYNX_TRANSPORT_RENDERER, Primary, { value } as never),
+						() =>
+							universalValue(CARD_PLAN, ['pending', 'loading', 'pending-meta', noop, 'pending']),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const universal = universalColumn(Boundary as never);
+		const block = blockColumn<{ readonly value: Promise<string> }>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
+		const props = { value: pending.promise };
+
+		await universal.render(props);
+		await block.render(Boundary as never, props);
+		expect(paint(block.main.commits)).toEqual(paint(universal.main.commits));
+
+		pending.resolve('ready');
+		await pending.promise;
+		await block.settle(Promise.resolve());
+		await universal.render(props);
+		const blockPaint = paint(block.main.commits);
+		const universalPaint = paint(universal.main.commits);
+		expect(blockPaint.tree).toBe(universalPaint.tree);
+		expect(blockPaint.events).toBe(universalPaint.events);
+		// The accepted reveal frame is atomic. Whether its new body handles are
+		// listed before or after the removed fallback handles is not observable;
+		// the complete create/destroy lifecycle still has to be identical.
+		expect(unorderedHandleLifecycle(blockPaint.handles)).toBe(
+			unorderedHandleLifecycle(universalPaint.handles),
+		);
+		expect(blockPaint.tree).toContain('ready');
+	});
+
+	it('retains a committed Suspense body while pending and reconnects its stateful owner', async () => {
+		interface SuspenseProps {
+			readonly pending: Promise<string> | null;
+			readonly label: string;
+		}
+		const lifecycle: string[] = [];
+		const counts = ['none', 'once', 'twice', 'thrice'] as const;
+		const primaryRef: { current: unknown } = { current: null };
+		const primaryProgram = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+			...CARD_PROGRAM_IR,
+			address: {
+				module: 'tests/RetainedSuspensePrimary.lynx.tsrx',
+				index: 0,
+				digest: 'retained-suspense-primary',
+			},
+			refs: [{ node: 0, slot: 5 }],
+		});
+		const Primary = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Primary({ pending, label }: SuspenseProps) {
+				const [count, updateCount] = useState(0, 'primary-count');
+				useLayoutEffect(
+					() => {
+						lifecycle.push(`layout:${label}:${count}`);
+						return () => lifecycle.push(`layout-cleanup:${label}:${count}`);
+					},
+					[label, count],
+					'primary-layout',
+				);
+				useEffect(
+					() => {
+						lifecycle.push(`passive:${label}:${count}`);
+						return () => lifecycle.push(`passive-cleanup:${label}:${count}`);
+					},
+					[label, count],
+					'primary-passive',
+				);
+				const value = pending === null ? label : use(pending);
+				return lynxProgramValue(primaryProgram, [
+					'primary',
+					`${value}:${counts[count] ?? 'many'}`,
+					'primary-meta',
+					() => updateCount((previous) => previous + 1),
+					'body',
+					primaryRef,
+				]) as never;
+			},
+		);
+		const Boundary = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			(props: SuspenseProps) =>
+				universalValue(TABLE_PLAN, [
+					universalTry(
+						() => universalComponent(LYNX_TRANSPORT_RENDERER, Primary, props as never),
+						() =>
+							universalValue(CARD_PLAN, [
+								'pending',
+								'pending',
+								'pending-meta',
+								() => lifecycle.push('pending-tap'),
+								'fallback',
+							]),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const block = blockColumn<SuspenseProps>(createLynxBlockCore({ templateRuns: () => false }));
+
+		await block.render(Boundary as never, { pending: null, label: 'ready' });
+		await flushMicrotasks();
+		const handle = primaryRef.current;
+		expect(handle).toMatchObject({ active: true, attached: true });
+		const primaryListener = cardRangeListener(block.main.commits, 0);
+		deliverTo(block, primaryListener);
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('ready:once');
+
+		const pending = deferred<string>();
+		await block.render(Boundary as never, { pending: pending.promise, label: 'ready' });
+		await flushMicrotasks();
+		expect(primaryRef.current).toBeNull();
+		expect(lifecycle.slice(-2)).toEqual(['layout-cleanup:ready:1', 'passive-cleanup:ready:1']);
+		expect(() => deliverTo(block, primaryListener)).toThrow(/listener/i);
+		deliverTo(block, cardRangeListener(block.main.commits, 1));
+		expect(lifecycle.at(-1)).toBe('pending-tap');
+
+		pending.resolve('settled');
+		await pending.promise;
+		await block.settle(Promise.resolve());
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('settled:once');
+		expect(primaryRef.current).toBe(handle);
+		expect(lifecycle.slice(-2)).toEqual(['layout:ready:1', 'passive:ready:1']);
+		deliverTo(block, cardRangeListener(block.main.commits, 0));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('settled:twice');
+
+		const abandoned = deferred<string>();
+		await block.render(Boundary as never, { pending: abandoned.promise, label: 'ready' });
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		const commitsAfterUnmount = block.main.commits.length;
+		expect(primaryRef.current).toBeNull();
+		expect(handle).toMatchObject({ active: false });
+		abandoned.resolve('too late');
+		await abandoned.promise;
+		await flushMicrotasks();
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(commitsAfterUnmount);
+	});
+
+	it('publishes no suspended attempt before fallback acknowledgement or after rejection', async () => {
+		const pending = deferred<string>();
+		const lifecycle: string[] = [];
+		const primaryRef: { current: unknown } = { current: null };
+		const primaryProgram = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+			...CARD_PROGRAM_IR,
+			address: {
+				module: 'tests/RejectedSuspensePrimary.lynx.tsrx',
+				index: 0,
+				digest: 'rejected-suspense-primary',
+			},
+			refs: [{ node: 0, slot: 5 }],
+		});
+		const Primary = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, () => {
+			useEffect(
+				() => {
+					lifecycle.push('effect');
+					return () => lifecycle.push('cleanup');
+				},
+				[],
+				'rejected-suspense-effect',
+			);
+			const value = use(pending.promise);
+			return lynxProgramValue(primaryProgram, [
+				'primary',
+				value,
+				'primary-meta',
+				() => lifecycle.push('primary-tap'),
+				'body',
+				primaryRef,
+			]) as never;
+		});
+		const Boundary = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			() =>
+				universalValue(TABLE_PLAN, [
+					universalTry(
+						() => universalComponent(LYNX_TRANSPORT_RENDERER, Primary, {}),
+						() =>
+							universalValue(CARD_PLAN, [
+								'pending',
+								'pending',
+								'pending-meta',
+								() => lifecycle.push('pending-tap'),
+								'fallback',
+							]),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
+
+		const rejected = block.background.renderAsync(Boundary as never, {});
+		rejected.catch(() => undefined);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(1);
+		expect(lifecycle).toEqual([]);
+		expect(primaryRef.current).toBeNull();
+		const early = cardRangeListener(block.main.commits, 0);
+		expect(() => deliverTo(block, early)).toThrow(/version|listener/i);
+
+		pending.resolve('accepted later');
+		await pending.promise;
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(1);
+		block.main.reject(block.main.commits[0]!, 'injected Suspense fallback rejection');
+		await expect(rejected).rejects.toThrow('injected Suspense fallback rejection');
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(1);
+		expect(lifecycle).toEqual([]);
+		expect(primaryRef.current).toBeNull();
+
+		await block.render(Boundary as never, {});
+		await flushMicrotasks();
+		expect(paint(block.main.commits.slice(1)).tree).toContain('accepted later');
+		expect(lifecycle).toEqual(['effect']);
+		expect(primaryRef.current).toMatchObject({ active: true, attached: true });
+	});
+
+	it('pierces a retained keyed parent when a nested Suspense boundary settles', async () => {
+		const pending = deferred<string>();
+		const rows = Object.freeze([{ id: 1 }]);
+		const NestedBoundary = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			({ promise }: { readonly promise: Promise<string> }) =>
+				universalValue(TABLE_PLAN, [
+					universalTry(
+						() => universalValue(CARD_PLAN, ['body', use(promise), 'meta', noop, 'body']),
+						() => universalValue(CARD_PLAN, ['pending', 'nested pending', 'meta', noop, 'pending']),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const Page = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			() =>
+				universalValue(TABLE_PLAN, [
+					universalFor(
+						rows,
+						(row) => row.id,
+						() =>
+							universalComponent(LYNX_TRANSPORT_RENDERER, NestedBoundary, {
+								promise: pending.promise,
+							}),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
+
+		await block.render(Page as never, {});
+		expect(paint(block.main.commits).tree).toContain('nested pending');
+		pending.resolve('nested ready');
+		await pending.promise;
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('nested ready');
+		expect(paint(block.main.commits).tree).not.toContain('nested pending');
+	});
+
+	it('routes a rejected suspension from pending to catch', async () => {
+		const pending = deferred<string>();
+		const Boundary = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			() =>
+				universalValue(TABLE_PLAN, [
+					universalTry(
+						() => universalValue(CARD_PLAN, ['body', use(pending.promise), 'meta', noop, 'body']),
+						() => universalValue(CARD_PLAN, ['pending', 'loading', 'meta', noop, 'pending']),
+						(error) =>
+							universalValue(CARD_PLAN, ['catch', (error as Error).message, 'meta', noop, 'catch']),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
+
+		await block.render(Boundary as never, {});
+		expect(paint(block.main.commits).tree).toContain('loading');
+		pending.reject(new Error('asset failed'));
+		await pending.promise.catch(() => undefined);
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('asset failed');
+		expect(paint(block.main.commits).tree).not.toContain('loading');
+	});
+
+	it('commits a synchronous catch arm and retries it only after reset', async () => {
+		let reset!: () => void;
+		let fail = true;
+		let bodyRuns = 0;
+		const Boundary = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			() =>
+				universalValue(TABLE_PLAN, [
+					universalTry(
+						() => {
+							bodyRuns++;
+							if (fail) throw new Error('expected failure');
+							return universalValue(ROW_PLAN, ['body', 'recovered', noop, 'body']);
+						},
+						null,
+						(error, retry) => {
+							reset = retry;
+							return universalValue(ROW_PLAN, ['catch', (error as Error).message, noop, 'catch']);
+						},
+					),
+				]),
+			{ hookScope: false },
+		);
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
+
+		await block.render(Boundary as never, {});
+		expect(paint(block.main.commits).tree).toContain('expected failure');
+		expect(bodyRuns).toBe(1);
+		await block.render(Boundary as never, {});
+		expect(bodyRuns).toBe(1);
+
+		fail = false;
+		reset();
+		await block.settle(Promise.resolve());
+		expect(bodyRuns).toBe(2);
+		expect(paint(block.main.commits).tree).toContain('recovered');
+	});
+
+	it('does not publish a caught error from a rejected host frame', async () => {
+		let fail = true;
+		let bodyRuns = 0;
+		const Boundary = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			() =>
+				universalValue(TABLE_PLAN, [
+					universalTry(
+						() => {
+							bodyRuns++;
+							if (fail) throw new Error('abandoned error');
+							return universalValue(ROW_PLAN, ['body', 'healthy', noop, 'body']);
+						},
+						null,
+						(error) => universalValue(ROW_PLAN, ['catch', (error as Error).message, noop, 'catch']),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
+
+		const rejected = block.background.renderAsync(Boundary as never, {});
+		rejected.catch(() => undefined);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(1);
+		block.main.reject(block.main.commits[0]!, 'injected catch rejection');
+		await expect(rejected).rejects.toThrow('injected catch rejection');
+
+		fail = false;
+		await block.render(Boundary as never, {});
+		expect(bodyRuns).toBe(2);
+		expect(paint(block.main.commits.slice(1)).tree).toContain('healthy');
+		expect(paint(block.main.commits.slice(1)).tree).not.toContain('abandoned error');
 	});
 
 	it('publishes no Activity effect, ref, or listener from a rejected mount', async () => {

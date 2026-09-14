@@ -1190,7 +1190,7 @@ in §3 and the extraction-first decision in §5.
   empty. First-screen paint now consumes same-anchor ranges forwards, and the
   experimental Element Template derivation emits every child slot in source
   order. The ordinary production fixture selects the compiled-program product
-  with **15/15 paired plans addressed**; the explicit whole-root Element
+  with **18/18 paired plans addressed**; the explicit whole-root Element
   Template build also accepts the same graph. These are deterministic semantic
   and build proofs, not native-device performance evidence.
 

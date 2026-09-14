@@ -134,6 +134,21 @@ function BlockShell(props: {
 				</view>
 			</Activity>
 		</view>
+		<view class="boundary-shell">
+			@try {
+				<view class="boundary-ready">
+					<text>{'Ready: ' + props.selected as string}</text>
+				</view>
+			} @pending {
+				<view class="boundary-pending">
+					<text>Pending</text>
+				</view>
+			} @catch (error, reset) {
+				<view class="boundary-error">
+					<text bindtap={() => reset()}>{String(error) as string}</text>
+				</view>
+			}
+		</view>
 	</view>
 }
 

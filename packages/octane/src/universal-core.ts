@@ -1917,6 +1917,18 @@ class UniversalSuspense {
 	constructor(readonly thenable: PromiseLike<unknown>) {}
 }
 
+/**
+ * Read the thenable carried by the universal suspension sentinel.
+ *
+ * Renderer cores that adopt the shared hook scope need to route suspensions to
+ * their own retained-boundary transaction without importing or reproducing the
+ * private sentinel class. Ordinary thrown thenables are still ordinary errors;
+ * only `use()`/`useBatch()` create this value.
+ */
+export function universalSuspensionThenable(value: unknown): PromiseLike<unknown> | null {
+	return value instanceof UniversalSuspense ? value.thenable : null;
+}
+
 class UniversalSuspendedAttemptImpl implements UniversalSuspendedAttempt {
 	private state: 'suspended' | 'aborted' = 'suspended';
 

@@ -51,11 +51,12 @@ must satisfy the runtime invariants below.
 | Compiler-proved dirty hook slots and binding groups | Block selected | Owner-local invalidation reaches only dependent computations and program slots; structural changes retain the full reconcile path. |
 | Fixed-shape keyed `list-item` rows under native `list` | Block selected | The compact store retains logical rows, publishes `update-list-info` before the accepting flush, materializes only requested cells, rebinds scalar/event identity across the established reuse pools, rejects stale enqueue callbacks, and reports accepted async callback faults. Native-list IFR is explicitly deferred to the first compact frame; it neither paints generic list hosts nor switches to Universal. Rows with nested structural ranges still fail closed. |
 | Compiler-proved `Activity` / retained visibility | Block selected | A structural Activity region keeps its component and hook cells across hidden/visible transitions, disconnects effects, refs, and listeners while hidden, and lowers visibility to ordered general-host commands or one compact `VIS`. Hidden compiled first-screen programs are hidden before insertion and reserve—but do not announce—their deterministic listener identities. |
+| Compiler-proved `@try` / Suspense | Block selected | Body, pending, and catch arms have independent compiler-owned semantic scopes. A retained body stays physically mounted but hidden while pending, disconnects effects/refs/listeners after ACK, and reconnects the same host and hook identity on reveal. Thenable retry subscription, caught-error state, and reset publish only after an accepted fallback/catch frame; rejected attempts and completions after deletion or unmount publish nothing. The compact first screen handles synchronous throw plus `use`/`useBatch` suspension without loading the Universal reconciler. |
 | Compiler-proved whole-root Template Definitions | Experimental Element Template selected | `experimentalElementTemplate: true` requires complete paired Block/application proof plus complete template lowering. Static hosts, scalar/event slots, and compiler-ordered structural slots use opaque template handles; refs, native lists, main-thread props, text-polymorphic ranges, and non-scalar native composition fail closed instead of mixing ordinary Element refs into the tree. |
 | Main-thread props and thread functions | General Block application only | The Block transport can carry them, but the compact compiled-program product fails closed and keeps the general application product. |
 | Ordered host spreads with unknown property names | Whole-entry Universal compatibility | `UniversalHostPlan.propsSlot` has no resident Block prop-name table. Static named props remain Block-native. |
 | Generic renderable holes (primitive/array/fragment shape changes) | Whole-entry Universal compatibility | The compiler cannot yet prove a stable structural region kind, and Block does not infer one from the first value. |
-| `@try`/Suspense and portals | Whole-entry Universal compatibility | These retain the existing Universal lifecycle until separate Block transaction and identity proofs land. |
+| Portals | Whole-entry Universal compatibility | Cross-container physical ownership still requires a separate Block transaction and identity proof. |
 | Nested keyed ranges | Block selected | Every outer key retains independent recursive range state; nested RUN/MOVE/CLEAR stays compiler-addressed, including `@empty`, visibility, rollback, and recursive resource cleanup. |
 | Multiple independently owned keyed ranges under one host | Block selected | Every range keeps its compiler `(owner, slot)` identity even when several slots resolve to the same native parent and static anchor. General and compact RUN/MOVE/CLEAR, rollback, first-screen paint, and Element Template child slots preserve authored order; an empty middle range does not hide the next live sibling anchor. |
 | Insertion effects | Rejected by Block | The Block transaction has no pre-mutation publication phase. |
@@ -151,8 +152,34 @@ static anchor. Range-free programs retain neither structure.
 The compiler emits the same ordered range facts to background and main-thread
 plans. First-screen painting consumes them forwards, and experimental Element
 Template lowering emits every same-host child slot in that order. The production
-application fixture contains two adjacent nested ranges and proves all 15 paired
+application fixture contains two adjacent nested ranges and proves all 18 paired
 plans are addressed before selecting the compact compiled-program product.
+
+## Error and Suspense boundary cost
+
+Each compiler-proved boundary retains one constant-size state record for its
+accepted error, active thenable, retry bit, and committed body key, plus one
+template record for each body/pending/catch arm that has been observed. An arm
+gets one hook scope when it is first observed, whether or not its authored
+callback ultimately uses semantic cells. The ordinary state has one live range
+member. A retained suspension has at most two: the committed body, hidden in
+place, followed by the visible pending arm. Reveal removes the pending member
+and reuses the body member; it does not remount or re-run the body template
+merely to restore visibility.
+
+A render evaluates only the selected arm and performs constant-size boundary
+selection around the normal work of that arm. `useBatch` necessarily scans its
+declared thenables once; multiple pending entries share one aggregate
+first-screen suspension. The background registers the retry callback only in
+the fallback frame's post-ACK journal, so an abandoned frame retains no
+subscription or published error state. A settled callback marks the owning
+range dirty and may pierce retained parent-row memoization, but it still enters
+the serialized Block attempt/ACK queue.
+
+The arm wrappers reuse the Block keyed-row hook kernel. Their host output is an
+addressed compiler program, and their physical state is a normal template
+instance plus range member. No Universal host record, host-plan executor, or
+Universal reconciler is added to the selected production graph.
 
 ## Resident host retention
 

@@ -232,11 +232,13 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 17,
+				version: 18,
 				runtimeNames: [
 					'Activity',
 					'createContext',
 					'memo',
+					'use',
+					'useBatch',
 					'useCallback',
 					'useContext',
 					'useEffect',
@@ -258,6 +260,7 @@ describe('Lynx application Block eligibility', () => {
 					'local-component',
 					'native-list',
 					'switch',
+					'try',
 				],
 				keyedRanges: {
 					empty: true,
@@ -342,6 +345,34 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.reasons).toEqual([]);
 		expect(report.matrix.keyedRanges.nested).toBe(true);
 		expect(report.matrix.keyedRanges.siblings).toBe(true);
+	});
+
+	it('admits a paired compiler-proved error and Suspense boundary', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const featureModule = proofs.featureRequirements.modules[0]!;
+		const suspense = semanticRequirements({
+			runtimeUses: [site('use', 7, 3), site('useBatch', 7, 8)],
+		});
+		const boundary = featureRequirements({
+			templateFeatures: [{ kind: 'try', name: null, line: 8, column: 2 }],
+		});
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: suspense, mainThread: suspense }],
+			},
+			featureRequirements: {
+				...proofs.featureRequirements,
+				modules: [{ ...featureModule, background: boundary, mainThread: boundary }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.templateFeatures).toContain('try');
+		expect(report.matrix.runtimeNames).toEqual(expect.arrayContaining(['use', 'useBatch']));
 	});
 
 	it('fails closed when a proof is incomplete, unpaired, version-skewed, or covers another graph', () => {
@@ -953,7 +984,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 17 },
+				matrix: { version: 18 },
 				eligible: true,
 				reasons: [],
 			},

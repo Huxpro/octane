@@ -461,8 +461,8 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				program: {
 					version: 1,
 					complete: true,
-					pairedPlans: 15,
-					pairedAddressed: 15,
+					pairedPlans: 18,
+					pairedAddressed: 18,
 					reasons: [],
 				},
 				semantic: {
@@ -506,6 +506,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 									expect.objectContaining({ kind: 'component-hole' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockSelection' }),
 									expect.objectContaining({ kind: 'activity' }),
+									expect.objectContaining({ kind: 'try' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockFrame' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockRenderFrame' }),
 									expect.objectContaining({ kind: 'inline-render-prop', name: 'render' }),
@@ -554,6 +555,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 									expect.objectContaining({ kind: 'component-hole' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockSelection' }),
 									expect.objectContaining({ kind: 'activity' }),
+									expect.objectContaining({ kind: 'try' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockFrame' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockRenderFrame' }),
 									expect.objectContaining({ kind: 'inline-render-prop', name: 'render' }),
@@ -1090,11 +1092,13 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 17,
+							version: 18,
 							runtimeNames: [
 								'Activity',
 								'createContext',
 								'memo',
+								'use',
+								'useBatch',
 								'useCallback',
 								'useContext',
 								'useEffect',
@@ -1116,6 +1120,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'local-component',
 								'native-list',
 								'switch',
+								'try',
 							],
 							keyedRanges: {
 								empty: true,

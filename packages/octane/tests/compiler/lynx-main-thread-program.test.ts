@@ -1784,6 +1784,46 @@ export function Card(props: { readonly visible: boolean; readonly label: string 
 		]);
 	});
 
+	it('addresses every @try arm for both Lynx compiler threads', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { use } from 'octane';
+
+export function Card(props: { readonly value: Promise<string> }) @{
+	<view class="page">
+		@try {
+			<view class="ready"><text>{use(props.value) as string}</text></view>
+		} @pending {
+			<view class="pending"><text>pending</text></view>
+		} @catch (error, reset) {
+			<view class="caught"><text bindtap={() => reset()}>{String(error) as string}</text></view>
+		}
+	</view>
+}
+`;
+		const module = 'src/SuspenseCard.lynx.tsrx';
+		const main = compileCard(source, { backend: Backend, module });
+		const background = compileCard(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+
+		expect(main.mainThreadProgramCoverage).toEqual({ total: 4, addressed: 4 });
+		expect(background.mainThreadProgramCoverage).toEqual({ total: 4, addressed: 4 });
+		expect(main.programAddresses).toEqual(background.programAddresses);
+		expect(main.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			expect.objectContaining({ kind: 'try' }),
+		]);
+		expect(background.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			expect.objectContaining({ kind: 'try' }),
+		]);
+		expect(background.lynxBlockSemanticRequirements?.runtimeUses.map((site) => site.name)).toEqual([
+			'use',
+		]);
+	});
+
 	it('addresses an open structural range and hashes its topology', () => {
 		const module = 'src/StructuralCard.lynx.tsrx';
 		const main = evaluate(compiled(STRUCTURAL_ADDRESSABLE_CARD, { backend: Backend, module }));

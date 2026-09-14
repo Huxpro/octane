@@ -27,7 +27,10 @@ import {
 	universalIf,
 	universalPlan,
 	universalSwitch,
+	universalTry,
 	universalValue,
+	use,
+	useBatch,
 	useContext,
 	useLayoutEffect,
 	useMemo,
@@ -136,6 +139,46 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 		expect(fallback.nodes.map((node) => node.children[0]?.selectedValues)).toEqual([
 			['else', 'else', 'else'],
 			['default', 'default', 'default'],
+		]);
+	});
+
+	it('materializes synchronous catch and pending use() arms without a reconciler', () => {
+		const plan = universalPlan('lynx', PLAN);
+		const program = (label: string) => universalValue(plan, [label, label, label]);
+		const pending = new Promise<string>(() => {}) as Promise<string> & { status?: string };
+		const other = new Promise<string>(() => {}) as Promise<string> & { status?: string };
+		const Pending = defineUniversalComponent('lynx', () =>
+			universalTry(
+				() => {
+					useBatch([pending, other]);
+					return program(use(pending));
+				},
+				() => program('pending'),
+			),
+		);
+		const Caught = defineUniversalComponent('lynx', () =>
+			universalTry(
+				() => {
+					throw new Error('expected');
+				},
+				null,
+				(error) => program((error as Error).message),
+			),
+		);
+
+		const suspended = renderLynxFirstScreen(Pending, {});
+		expect(pending.status).toBe('pending');
+		expect(other.status).toBe('pending');
+		expect(suspended.nodes[0]?.children[0]?.selectedValues).toEqual([
+			'pending',
+			'pending',
+			'pending',
+		]);
+		const caught = renderLynxFirstScreen(Caught, {});
+		expect(caught.nodes[0]?.children[0]?.selectedValues).toEqual([
+			'expected',
+			'expected',
+			'expected',
 		]);
 	});
 

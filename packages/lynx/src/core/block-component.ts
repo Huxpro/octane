@@ -69,6 +69,7 @@ import type {
 	UniversalHostTemplateProgramValue,
 	UniversalPlan,
 	UniversalSwitchValue,
+	UniversalTryValue,
 	UniversalPlanValue,
 	UniversalPropsValue,
 	UniversalRenderContext,
@@ -81,7 +82,10 @@ import type {
 // two record constructors it uses — not the reconciler, not a root.
 import {
 	createUniversalHookScope,
+	defineUniversalComponent,
 	UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED,
+	universalComponent,
+	universalSuspensionThenable,
 	type UniversalHookScope,
 	type UniversalHookScopePrepared,
 	useEffect,
@@ -145,6 +149,7 @@ const UNIVERSAL_COMPONENT: symbol = Symbol.for('octane.universal.component');
 const UNIVERSAL_CHILDREN: symbol = Symbol.for('octane.universal.children');
 const UNIVERSAL_CONTEXT: symbol = Symbol.for('octane.universal.context');
 const UNIVERSAL_ACTIVITY: symbol = Symbol.for('octane.universal.activity');
+const UNIVERSAL_TRY: symbol = Symbol.for('octane.universal.try');
 
 // Guard the call-site arguments as well as the final message. A production
 const UNIVERSAL_IF: symbol = Symbol.for('octane.universal.if');
@@ -155,6 +160,23 @@ const IF_THEN_BRANCH = Object.freeze({});
 const IF_ELSE_BRANCH = Object.freeze({});
 const SWITCH_DEFAULT_BRANCH = Object.freeze({});
 const ACTIVITY_BRANCH = Object.freeze({});
+const TRY_BODY_BRANCH = Object.freeze({});
+const TRY_PENDING_BRANCH = Object.freeze({});
+const TRY_CATCH_BRANCH = Object.freeze({});
+const TRY_RETRY_SLOT = Object.freeze({});
+
+/**
+ * Give each boundary arm the same independent semantic owner the Universal
+ * reconciler claims for `try`/`pending`/`catch` materialization. The compiler
+ * leaves authored arm callbacks lazy, so invoking one directly after the page
+ * setup has returned would put `use()` outside a component attempt. Lowering
+ * it through this stable component lets the existing keyed-row scope own those
+ * hooks, effects, retries, and aborts without introducing an interpreter.
+ */
+const TRY_ARM_COMPONENT = defineUniversalComponent(
+	LYNX_TRANSPORT_RENDERER,
+	({ render }: { readonly render: () => unknown }) => render() as never,
+);
 const LYNX_BLOCK_COMPONENT_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 
@@ -362,15 +384,28 @@ function isActivityValue(value: unknown): value is UniversalActivityValue {
 	);
 }
 
+function isTryValue(value: unknown): value is UniversalTryValue {
+	return (
+		value !== null &&
+		typeof value === 'object' &&
+		(value as { $$kind?: unknown }).$$kind === UNIVERSAL_TRY
+	);
+}
+
 function isDynamicRegionValue(
 	value: unknown,
 ): value is
-	UniversalForValue | UniversalBranchValue | UniversalComponentValue | UniversalActivityValue {
+	| UniversalForValue
+	| UniversalBranchValue
+	| UniversalComponentValue
+	| UniversalActivityValue
+	| UniversalTryValue {
 	return (
 		isRangeValue(value) ||
 		isBranchValue(value) ||
 		isComponentRegionValue(value) ||
-		isActivityValue(value)
+		isActivityValue(value) ||
+		isTryValue(value)
 	);
 }
 
@@ -424,6 +459,18 @@ interface RangeBranchState {
 	readonly authoredKey?: unknown;
 }
 
+interface RangeTryState {
+	active: boolean;
+	hasError: boolean;
+	error: unknown;
+	thenable: PromiseLike<unknown> | null;
+	suspension: unknown;
+	/** Settled/reset work that must pierce a retained parent-row bailout. */
+	needsRetry: boolean;
+	/** Last accepted primary member, retained and hidden during re-suspension. */
+	bodyKey: unknown;
+}
+
 function createRangeTemplateState(): RangeTemplateState {
 	return { plan: null, compiled: null, prepared: null, template: null, ranges: null };
 }
@@ -448,6 +495,7 @@ interface RangeState {
 	readonly rowTemplate: RangeTemplateState;
 	readonly emptyTemplate: RangeTemplateState;
 	readonly branchTemplates: Map<unknown, RangeBranchState> | null;
+	readonly tryState: RangeTryState | null;
 	/**
 	 * What the last applied render produced, per key, for the rows it can be
 	 * asked about again.
@@ -494,6 +542,21 @@ interface NestedRangeState {
 	readonly ranges: readonly RangeState[];
 }
 
+function nestedStateNeedsRetry(state: NestedRangeState): boolean {
+	for (const range of state.ranges) {
+		if (range.tryState?.needsRetry === true || nestedStatesNeedRetry(range.nested)) return true;
+	}
+	return false;
+}
+
+function nestedStatesNeedRetry(states: ReadonlyMap<unknown, NestedRangeState> | null): boolean {
+	if (states === null) return false;
+	for (const state of states.values()) {
+		if (nestedStateNeedsRetry(state)) return true;
+	}
+	return false;
+}
+
 function createRangeState(definition: RangeDefinition, value: unknown): RangeState {
 	return {
 		slot: definition.slot,
@@ -503,9 +566,23 @@ function createRangeState(definition: RangeDefinition, value: unknown): RangeSta
 		rowTemplate: createRangeTemplateState(),
 		emptyTemplate: createRangeTemplateState(),
 		branchTemplates:
-			isBranchValue(value) || isComponentRegionValue(value) || isActivityValue(value)
+			isBranchValue(value) ||
+			isComponentRegionValue(value) ||
+			isActivityValue(value) ||
+			isTryValue(value)
 				? new Map()
 				: null,
+		tryState: isTryValue(value)
+			? {
+					active: true,
+					hasError: false,
+					error: undefined,
+					thenable: null,
+					suspension: null,
+					needsRetry: false,
+					bodyKey: null,
+				}
+			: null,
 		retained: null,
 		hasScopedRows: false,
 		keys: null,
@@ -554,6 +631,7 @@ const EMPTY_COMPUTATIONS: readonly LynxCompilerProgramComputation[] = Object.fre
 type ProgramSiteIndexes = readonly (readonly number[] | undefined)[];
 const EMPTY_SITE_INDEXES: ProgramSiteIndexes = Object.freeze([]);
 const EMPTY_INDEXES: readonly number[] = Object.freeze([]);
+const EMPTY_PROGRAM_VALUES: readonly UniversalHostTemplateProgramValue[] = Object.freeze([]);
 const EMPTY_PROGRAM_ROWS: readonly (readonly UniversalHostTemplateProgramValue[])[] = Object.freeze(
 	[],
 );
@@ -598,6 +676,12 @@ interface RangeRender {
 	readonly visible: boolean;
 	/** Indices of the rows this render actually called; the rest were retained. */
 	readonly templateState: RangeTemplateState | null;
+	/** Per-member templates for the retained-body + pending two-arm state. */
+	readonly templateStates?: readonly RangeTemplateState[];
+	/** Members whose visibility/resources change even though their body was not called. */
+	readonly visibilityChanged?: readonly number[];
+	/** Previously committed descendants hidden without re-running their setup. */
+	readonly hideNested?: NestedRangeState;
 	readonly rendered: readonly number[];
 	readonly source: Iterable<unknown>;
 	readonly keyedSelection: NonNullable<UniversalForValue['keyedSelection']> | null;
@@ -1222,7 +1306,17 @@ export function lynxBlockProgramForComponent<Props>(
 				cells.abort();
 				if (created) cells.dispose();
 			});
-			rendered = cells.render(() => renderPlanValue(component, props, contexts));
+			try {
+				rendered = cells.render(() => renderPlanValue(component, props, contexts));
+			} catch (error) {
+				// A surrounding Block boundary may accept its fallback, so the root
+				// attempt itself will not abort. Drop this arm's draft here; a fresh
+				// scope has no committed lifetime to retain, while an existing scope
+				// keeps its last accepted cells for Suspense reveal or error retry.
+				cells.abort();
+				if (created) cells.dispose();
+				throw error;
+			}
 			context.afterCommit(() => cells.commit(parentVisible && rendered.visible));
 		} else if (component !== null) {
 			rendered = renderPlanValue(component, props, contexts);
@@ -1564,6 +1658,7 @@ export function lynxBlockProgramForComponent<Props>(
 					(invocation?.component as unknown as LynxComponent<never> | undefined) ?? null;
 				const props = invocation === null ? null : forwardedProps(invocation);
 				const prior = previous?.get(EMPTY_RANGE_KEY) ?? null;
+				const priorNested = state.nested?.get(EMPTY_RANGE_KEY);
 				let values: readonly UniversalHostTemplateProgramValue[];
 				let listeners: readonly (LynxBlockListener | null)[];
 				let refValues: readonly unknown[];
@@ -1575,6 +1670,7 @@ export function lynxBlockProgramForComponent<Props>(
 					prior !== null &&
 					contextsStable &&
 					prior.component === component &&
+					(priorNested === undefined || !nestedStateNeedsRetry(priorNested)) &&
 					blockShallowEqual(prior.props, props)
 				) {
 					values = prior.values;
@@ -1583,7 +1679,6 @@ export function lynxBlockProgramForComponent<Props>(
 					retainedRow = prior;
 					rendered = EMPTY_INDEXES;
 					rowVisible = prior.visible;
-					const priorNested = state.nested?.get(EMPTY_RANGE_KEY);
 					if (priorNested !== undefined) {
 						(nestedStates ??= new Map()).set(EMPTY_RANGE_KEY, priorNested);
 					}
@@ -1678,6 +1773,7 @@ export function lynxBlockProgramForComponent<Props>(
 			state.source === list.items &&
 			previous !== null &&
 			previousKeys !== null &&
+			!nestedStatesNeedRetry(state.nested) &&
 			depsEqual(previousComponentRows, nextComponentRows)
 		) {
 			return {
@@ -1923,10 +2019,12 @@ export function lynxBlockProgramForComponent<Props>(
 			keys[index] = itemKey;
 			if (!structural && !Object.is(previousKeys![index], itemKey)) structural = true;
 			const prior = previous?.get(itemKey);
+			const priorNested = state.nested?.get(itemKey);
 			if (
 				selectionRowsStable &&
 				prior != null &&
 				prior.scope === null &&
+				(priorNested === undefined || !nestedStateNeedsRetry(priorNested)) &&
 				(nextSelection![3] === true || prior.index === index) &&
 				Object.is((prior.props as Record<string, unknown>)[nextSelection![2]], item) &&
 				Object.is(itemKey, previousSelection![0]) === Object.is(itemKey, nextSelection![0])
@@ -1944,7 +2042,6 @@ export function lynxBlockProgramForComponent<Props>(
 					(visibilities ??= new Array(items.length).fill(parentVisible))[index] = prior.visible;
 				}
 				retained.set(itemKey, prior);
-				const priorNested = state.nested?.get(itemKey);
 				if (priorNested !== undefined) {
 					(nestedStates ??= new Map()).set(itemKey, priorNested);
 				}
@@ -1964,6 +2061,7 @@ export function lynxBlockProgramForComponent<Props>(
 					contextsStable &&
 					prior.component === component &&
 					prior.scope === null &&
+					(priorNested === undefined || !nestedStateNeedsRetry(priorNested)) &&
 					blockShallowEqual(prior.props, props)
 				) {
 					// Same component, same props: the body is a function of its props,
@@ -1978,14 +2076,13 @@ export function lynxBlockProgramForComponent<Props>(
 						(visibilities ??= new Array(items.length).fill(parentVisible))[index] = prior.visible;
 					}
 					retained.set(itemKey, prior);
-					const priorNested = state.nested?.get(itemKey);
 					if (priorNested !== undefined) {
 						(nestedStates ??= new Map()).set(itemKey, priorNested);
 					}
 					continue;
 				}
 			}
-			const previousNested = state.nested?.get(itemKey) ?? null;
+			const previousNested = priorNested ?? null;
 			const replaceNested =
 				previousNested !== null &&
 				!((component === null && prior == null) || prior?.component === component);
@@ -2064,6 +2161,7 @@ export function lynxBlockProgramForComponent<Props>(
 		branch: UniversalBranchValue | UniversalComponentValue | UniversalActivityValue | null,
 		contextValues: SemanticContexts,
 		parentVisible: boolean,
+		preserveKeys: readonly unknown[] = EMPTY_INDEXES,
 	): RangeRender => {
 		const branches = state.branchTemplates;
 		if (branches === null) {
@@ -2077,8 +2175,15 @@ export function lynxBlockProgramForComponent<Props>(
 		const previousKeys = state.keys;
 		let nestedState: NestedRangeState | null = null;
 		let nestedRender: NestedRangeRender | null = null;
+		const preserve = (retained: Map<unknown, RetainedRow | null>): void => {
+			if (previous === null) return;
+			for (const key of preserveKeys) {
+				if (previous.has(key) && !retained.has(key)) retained.set(key, previous.get(key) ?? null);
+			}
+		};
 		const renderNothing = (): RangeRender => {
 			const retained = new Map<unknown, RetainedRow | null>();
+			preserve(retained);
 			disposeDepartedRowScopes(context, previous, retained);
 			return {
 				state,
@@ -2177,6 +2282,7 @@ export function lynxBlockProgramForComponent<Props>(
 			branches.set(selected[0], branchState);
 		}
 		const prior = previous?.get(branchState.key) ?? null;
+		const priorNested = state.nested?.get(branchState.key);
 		const contextsStable =
 			state.visible === parentVisible && sameSemanticContexts(state.contextValues, contextValues);
 		let values: readonly UniversalHostTemplateProgramValue[];
@@ -2191,7 +2297,8 @@ export function lynxBlockProgramForComponent<Props>(
 			prior !== null &&
 			contextsStable &&
 			prior.component === component &&
-			(activity === null || state.nested === null || prior.visible === activityVisible) &&
+			(priorNested === undefined || !nestedStateNeedsRetry(priorNested)) &&
+			prior.visible === (activity === null ? parentVisible : activityVisible) &&
 			blockShallowEqual(prior.props, props)
 		) {
 			values = prior.values;
@@ -2203,7 +2310,7 @@ export function lynxBlockProgramForComponent<Props>(
 					: { ...prior, visible: activityVisible };
 			rendered = EMPTY_INDEXES;
 			rowVisible = retainedRow.visible;
-			nestedState = state.nested?.get(branchState.key) ?? null;
+			nestedState = priorNested ?? null;
 			if (activity !== null) {
 				context.afterCommit(() => retainedRow?.scope?.commit(activityVisible));
 				if (retainedRow !== prior) {
@@ -2219,7 +2326,7 @@ export function lynxBlockProgramForComponent<Props>(
 				component,
 				props,
 				prior?.component === component ? prior : null,
-				state.nested?.get(branchState.key) ?? null,
+				priorNested ?? null,
 				false,
 				contextValues,
 				activity === null ? parentVisible : activityVisible,
@@ -2250,6 +2357,7 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 		}
 		const retained = new Map<unknown, RetainedRow | null>([[branchState.key, retainedRow]]);
+		preserve(retained);
 		disposeDepartedRowScopes(context, previous, retained);
 		return {
 			state,
@@ -2281,9 +2389,197 @@ export function lynxBlockProgramForComponent<Props>(
 		};
 	};
 
+	const tryArmValue = (identity: object, render: () => unknown): UniversalSwitchValue => {
+		const renderArm = () =>
+			universalComponent(LYNX_TRANSPORT_RENDERER, TRY_ARM_COMPONENT, { render });
+		return {
+			$$kind: UNIVERSAL_SWITCH,
+			value: identity,
+			// The index selected by `selectedBranch` is the stable arm identity.
+			// Unselected callbacks are never called, so sharing `render` here avoids
+			// allocating three closures around the authored one.
+			cases: [
+				[TRY_BODY_BRANCH, renderArm],
+				[TRY_PENDING_BRANCH, renderArm],
+				[TRY_CATCH_BRANCH, renderArm],
+			],
+			default: null,
+		} as unknown as UniversalSwitchValue;
+	};
+
+	const branchTemplateForKey = (state: RangeState, key: unknown): RangeTemplateState => {
+		for (const branch of state.branchTemplates!.values()) {
+			if (branch.key === key) return branch.template;
+		}
+		return refuse(
+			subject,
+			LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+				'a retained boundary arm lost its compiler-owned template identity.',
+		);
+	};
+
+	/** Render one retained error/Suspense boundary into its compiler range. */
+	const renderTryRange = (
+		context: LynxBlockProgramContext,
+		state: RangeState,
+		boundary: UniversalTryValue,
+		contextValues: SemanticContexts,
+		parentVisible: boolean,
+	): RangeRender => {
+		const tryState = state.tryState;
+		if (tryState === null || state.branchTemplates === null) {
+			return refuse(
+				subject,
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'a non-boundary structural region later held an error/Suspense boundary.',
+			);
+		}
+		const scheduleRetry = (): void => {
+			if (!tryState.active || tryState.needsRetry) return;
+			tryState.needsRetry = true;
+			queueStateRender(TRY_RETRY_SLOT);
+		};
+		const reset = (): void => {
+			if (!tryState.active || !tryState.hasError) return;
+			tryState.hasError = false;
+			tryState.error = undefined;
+			scheduleRetry();
+		};
+		const renderArm = (
+			identity: object,
+			render: () => unknown,
+			preserveKeys: readonly unknown[] = EMPTY_INDEXES,
+		): RangeRender =>
+			renderBranchRange(
+				context,
+				state,
+				tryArmValue(identity, render),
+				contextValues,
+				parentVisible,
+				preserveKeys,
+			);
+		const renderCatch = (error: unknown): RangeRender => {
+			if (boundary.catch === null) throw error;
+			const caught = renderArm(TRY_CATCH_BRANCH, () => boundary.catch!(error, reset));
+			context.afterCommit(() => {
+				tryState.hasError = true;
+				tryState.error = error;
+				tryState.thenable = null;
+				tryState.suspension = null;
+				tryState.needsRetry = false;
+				tryState.bodyKey = null;
+			});
+			return caught;
+		};
+		const renderPending = (suspension: unknown, thenable: PromiseLike<unknown>): RangeRender => {
+			if (boundary.pending === null) throw suspension;
+			const bodyKey = tryState.bodyKey;
+			const retainsBody =
+				bodyKey !== null && state.keys !== null && state.keys.some((key) => key === bodyKey);
+			const pending = renderArm(
+				TRY_PENDING_BRANCH,
+				boundary.pending,
+				retainsBody ? [bodyKey] : EMPTY_INDEXES,
+			);
+			let rendered = pending;
+			if (retainsBody) {
+				const bodyTemplate = branchTemplateForKey(state, bodyKey);
+				const prior = state.retained?.get(bodyKey) ?? null;
+				const hidden = prior === null ? null : { ...prior, visible: false };
+				const retained = new Map<unknown, RetainedRow | null>([[bodyKey, hidden]]);
+				for (const key of pending.keys) retained.set(key, pending.retained.get(key) ?? null);
+				if (hidden !== null) {
+					publishScopedRow(context, state, bodyTemplate, bodyKey, hidden);
+					context.afterCommit(() => hidden.scope?.commit(false));
+				}
+				const bodyNested = state.nested?.get(bodyKey) ?? null;
+				const nestedStates = new Map<unknown, NestedRangeState>();
+				if (bodyNested !== null) nestedStates.set(bodyKey, bodyNested);
+				for (const [key, nested] of pending.nestedStates ?? []) nestedStates.set(key, nested);
+				const pendingVisibility = pending.visibilities?.[0] ?? parentVisible;
+				const keys = [bodyKey, ...pending.keys];
+				rendered = {
+					...pending,
+					templateState: pending.templateState ?? bodyTemplate,
+					templateStates: [
+						bodyTemplate,
+						...(pending.templateState === null ? [] : [pending.templateState]),
+					],
+					items: [null, ...pending.items],
+					rows: [EMPTY_PROGRAM_VALUES, ...pending.rows],
+					handlers: [EMPTY_LISTENERS, ...pending.handlers],
+					refs: [EMPTY_REF_VALUES, ...pending.refs],
+					visibilities: [false, ...(pending.keys.length === 0 ? [] : [pendingVisibility])],
+					visibilityChanged: [0, ...pending.rendered.map((index) => index + 1)],
+					keys,
+					retained,
+					hasScopedRows: (hidden !== null && hidden.scope !== null) || pending.hasScopedRows,
+					structural:
+						state.keys === null ||
+						state.keys.length !== keys.length ||
+						keys.some((key, index) => state.keys![index] !== key),
+					rendered: pending.rendered.map((index) => index + 1),
+					nestedStates: nestedStates.size === 0 ? null : nestedStates,
+					hideNested: bodyNested ?? undefined,
+				};
+			}
+			context.afterCommit(() => {
+				tryState.hasError = false;
+				tryState.error = undefined;
+				tryState.needsRetry = false;
+				tryState.suspension = suspension;
+				if (tryState.thenable === thenable) return;
+				tryState.thenable = thenable;
+				const settle = () => {
+					if (!tryState.active || tryState.thenable !== thenable) return;
+					tryState.thenable = null;
+					tryState.suspension = null;
+					scheduleRetry();
+				};
+				thenable.then(settle, settle);
+			});
+			return rendered;
+		};
+
+		if (tryState.hasError) return renderCatch(tryState.error);
+		if (tryState.thenable !== null) {
+			return renderPending(tryState.suspension, tryState.thenable);
+		}
+		try {
+			const body = renderArm(TRY_BODY_BRANCH, boundary.body);
+			const bodyKey = body.keys[0] ?? null;
+			const bodyWasHidden = bodyKey !== null && state.retained?.get(bodyKey)?.visible === false;
+			context.afterCommit(() => {
+				tryState.hasError = false;
+				tryState.error = undefined;
+				tryState.thenable = null;
+				tryState.suspension = null;
+				tryState.needsRetry = false;
+				tryState.bodyKey = bodyKey;
+			});
+			return bodyWasHidden
+				? {
+						...body,
+						visibilities: [parentVisible],
+						visibilityChanged: [0],
+					}
+				: body;
+		} catch (error) {
+			const thenable = universalSuspensionThenable(error);
+			return thenable === null ? renderCatch(error) : renderPending(error, thenable);
+		}
+	};
+
 	/** Dispose semantic owners held below an outer member after its host leaves. */
 	const disposeNestedScopes = (context: LynxBlockProgramContext, state: NestedRangeState): void => {
 		for (const range of state.ranges) {
+			if (range.tryState !== null) {
+				context.afterCommit(() => {
+					range.tryState!.active = false;
+					range.tryState!.thenable = null;
+					range.tryState!.suspension = null;
+				});
+			}
 			for (const row of range.retained?.values() ?? []) {
 				if (row?.scope === null || row?.scope === undefined) continue;
 				const owner = row.scoped;
@@ -2326,6 +2622,33 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 	};
 
+	/** Disconnect a committed subtree while Suspense retains its physical identity. */
+	const hideNestedRanges = (context: LynxBlockProgramContext, state: NestedRangeState): void => {
+		for (const range of state.ranges) {
+			const site = range.site;
+			if (site === null) continue;
+			for (const [key, member] of site.items) {
+				context.core.setVisibility(member, false);
+				context.root.releaseListeners(member);
+				context.root.releaseRefs(member);
+				const prior = range.retained?.get(key) ?? null;
+				if (prior !== null && prior.visible) {
+					const hidden = { ...prior, visible: false };
+					context.afterCommit(() => {
+						range.retained?.set(key, hidden);
+						if (hidden.scoped !== null) hidden.scoped.current = hidden;
+						hidden.scope?.commit(false);
+					});
+				}
+				const child = range.nested?.get(key);
+				if (child !== undefined) hideNestedRanges(context, child);
+			}
+			context.afterCommit(() => {
+				range.visible = false;
+			});
+		}
+	};
+
 	/**
 	 * Bring one range site level with the render above.
 	 *
@@ -2359,6 +2682,7 @@ export function lynxBlockProgramForComponent<Props>(
 	const applyRange = (context: LynxBlockProgramContext, render: RangeRender): void => {
 		const state = render.state;
 		const templateState = render.templateState;
+		if (render.hideNested !== undefined) hideNestedRanges(context, render.hideNested);
 		const releaseMember = (member: LynxBlock): void => {
 			const nested = state.nested?.get(member.key);
 			if (nested !== undefined) clearNestedRanges(context, nested);
@@ -2380,15 +2704,16 @@ export function lynxBlockProgramForComponent<Props>(
 		};
 		const bindMember = (
 			member: LynxBlock,
+			memberTemplate: RangeTemplateState,
 			handlers: readonly (LynxBlockListener | null)[],
 			refs: readonly unknown[],
 			visible: boolean,
 		): void => {
-			if (templateState!.prepared!.events.length !== 0) {
+			if (memberTemplate.prepared!.events.length !== 0) {
 				if (!visible || handlers.includes(null)) context.root.releaseListeners(member);
 				if (visible) context.root.bindListeners(member, handlers);
 			}
-			if (templateState!.template!.refs !== undefined) {
+			if (memberTemplate.template!.refs !== undefined) {
 				if (visible) context.root.bindRefs(member, refs);
 				else context.root.releaseRefs(member);
 			}
@@ -2477,6 +2802,7 @@ export function lynxBlockProgramForComponent<Props>(
 			const hasVisibilityWork =
 				state.visible !== render.visible ||
 				render.activityVisible !== undefined ||
+				render.visibilityChanged !== undefined ||
 				!render.visible ||
 				render.visibilities !== null;
 			for (const index of rendered) {
@@ -2490,7 +2816,26 @@ export function lynxBlockProgramForComponent<Props>(
 				if (hasVisibilityWork && member.visible !== visible) {
 					context.core.setVisibility(member, visible);
 				}
-				bindMember(member, render.handlers[index]!, render.refs[index]!, visible);
+				bindMember(
+					member,
+					render.templateStates?.[index] ?? templateState,
+					render.handlers[index]!,
+					render.refs[index]!,
+					visible,
+				);
+			}
+			for (const index of render.visibilityChanged ?? EMPTY_INDEXES) {
+				if (rendered.includes(index)) continue;
+				const member = state.site!.items.get(render.keys[index])!;
+				const visible = render.visibilities?.[index] ?? render.visible;
+				if (member.visible !== visible) context.core.setVisibility(member, visible);
+				bindMember(
+					member,
+					render.templateStates?.[index] ?? templateState,
+					render.handlers[index]!,
+					render.refs[index]!,
+					visible,
+				);
 			}
 			applyNested();
 			return;
@@ -2518,10 +2863,13 @@ export function lynxBlockProgramForComponent<Props>(
 			render.rendered,
 			state.nested !== null,
 		);
-		const rendered = render.activityVisible === undefined ? render.rendered : ([0] as const);
+		const rendered =
+			render.visibilityChanged ??
+			(render.activityVisible === undefined ? render.rendered : ([0] as const));
 		const hasVisibilityWork =
 			state.visible !== render.visible ||
 			render.activityVisible !== undefined ||
+			render.visibilityChanged !== undefined ||
 			!render.visible ||
 			render.visibilities !== null;
 		for (const index of rendered) {
@@ -2530,7 +2878,13 @@ export function lynxBlockProgramForComponent<Props>(
 			if (hasVisibilityWork && member.visible !== visible) {
 				context.core.setVisibility(member, visible);
 			}
-			bindMember(member, render.handlers[index]!, render.refs[index]!, visible);
+			bindMember(
+				member,
+				render.templateStates?.[index] ?? templateState,
+				render.handlers[index]!,
+				render.refs[index]!,
+				visible,
+			);
 		}
 		applyNested();
 	};
@@ -2564,6 +2918,9 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			if (isActivityValue(value)) {
 				return renderBranchRange(context, range, value, contextValues, visible);
+			}
+			if (isTryValue(value)) {
+				return renderTryRange(context, range, value, contextValues, visible);
 			}
 			if (
 				(value === null || value === undefined || typeof value === 'boolean') &&
@@ -2957,6 +3314,12 @@ export function lynxBlockProgramForComponent<Props>(
 			if (block !== null && block.template.refs !== undefined) context.root.releaseRefs(block);
 			if (block !== null) context.core.destroyRoot(block);
 			context.afterCommit(() => {
+				for (const range of ranges) {
+					if (range.tryState === null) continue;
+					range.tryState.active = false;
+					range.tryState.thenable = null;
+					range.tryState.suspension = null;
+				}
 				for (const row of scopedRows) {
 					if (row.scoped !== null) {
 						row.scoped.current = null;
