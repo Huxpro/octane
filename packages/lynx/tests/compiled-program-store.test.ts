@@ -653,6 +653,79 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(profile.programRunLiveRetainedHostRefs).toBe(liveBefore);
 	});
 
+	it('caches native-list descriptors and rebuilds only changed metadata rows', () => {
+		const base = emittedHost(true);
+		const publications: unknown[] = [];
+		const papi: typeof base = {
+			...base,
+			setAttribute(node, name, value) {
+				base.setAttribute(node, name, value);
+				if (node.type === 'list' && name === 'update-list-info') publications.push(value);
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }], [0, 1]);
+		const row = emittedListPlan(
+			LIST_EVENT_ROW,
+			['p:item-key', 'c', 'e:bindtap'],
+			[0, 1],
+			[],
+			[0, 2],
+		);
+		const count = 1_000;
+		const values = Array.from({ length: count }, (_, index) => [
+			'item-' + index,
+			'Row ' + index,
+		]).flat();
+		const profile = lynxWireProfile();
+		const buildsBefore = profile.listProgramItemDescriptorBuilds;
+		store.begin();
+		store.mount({ firstHandle: 2, count: 1, parent: page, before: null, plan: shell, values: [] });
+		const listNode = store.range(2, 0);
+		store.mount({ firstHandle: 3, count, parent: listNode, before: null, plan: row, values });
+		store.commit();
+		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count);
+		expect(publications).toHaveLength(1);
+
+		store.begin();
+		expect(store.set(502, 1, 'Row 499 updated')).toBe(true);
+		store.commit();
+		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count);
+		expect(publications).toHaveLength(1);
+
+		store.begin();
+		expect(store.set(502, 0, 'item-499-updated')).toBe(true);
+		store.commit();
+		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count + 1);
+		expect(publications).toHaveLength(2);
+		expect(publications.at(-1)).toMatchObject({
+			updateAction: [{ from: 499, to: 499, 'item-key': 'item-499-updated' }],
+		});
+
+		store.begin();
+		expect(store.set(502, 0, 'item-499-rejected')).toBe(true);
+		store.prepareCommit();
+		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count + 2);
+		store.rollback();
+
+		store.begin();
+		expect(store.set(502, 0, 'item-499-retry')).toBe(true);
+		store.commit();
+		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count + 3);
+		expect(publications.at(-1)).toMatchObject({
+			updateAction: [{ from: 499, to: 499, 'item-key': 'item-499-retry' }],
+		});
+
+		const publicationsBeforeMove = publications.length;
+		store.begin();
+		expect(store.move(3, listNode, null)).toBe(true);
+		store.commit();
+		expect(profile.listProgramItemDescriptorBuilds - buildsBefore).toBe(count + 3);
+		expect(publications).toHaveLength(publicationsBeforeMove + 1);
+		store.dispose();
+	});
+
 	it('accepts an opaque non-object Element handle published by a native driver', () => {
 		const base = emittedHost();
 		const page = base.createPage('0', 0);

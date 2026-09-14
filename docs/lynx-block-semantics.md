@@ -280,6 +280,14 @@ error are reported together and the compact store becomes terminally faulted.
 List callback failures use the same rule instead of replacing the producer
 failure with whichever cleanup happened to throw first.
 
+Logical list-item descriptors are cached on their keyed instances. A child
+binding update therefore changes the retained value (and an attached physical
+cell) without re-expanding static root props or rebuilding every row descriptor.
+Only `item-key`, `reuse-identifier`, `recyclable`, and `defer` root-binding slots
+invalidate one descriptor and publish native list metadata; structural changes
+reuse surviving cached descriptors. Profile builds count cache misses in
+`listProgramItemDescriptorBuilds`.
+
 A same-machine production A/B against exact parent `887042796` attributes the
 shipping cost instead of the already-stale frozen absolute budget. Preview adds
 244 raw / 76 gzip bundle bytes (decoded MTS: 130 / 44); IFR adds 265 raw / 95

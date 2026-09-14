@@ -53,6 +53,8 @@ interface CompiledProgramInstance<Node extends LynxElementRef> {
 	/** Stable compiler-slot identities allocated only when a child range is used. */
 	rangeKeys?: object[];
 	readonly run: CompiledProgramRun<Node>;
+	/** Lazily rebuilt only when native list metadata for this logical row changes. */
+	listItem?: CompiledProgramListItem<Node>;
 	next: number | null;
 	previous: number | null;
 	visible: boolean;
@@ -456,6 +458,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	let workletStore: LynxCompiledProgramWorkletStore<Node> | null = null;
 	const noWorkletPlans = new WeakSet<UniversalProgramPlan>();
 	const listNodeIndexes = new WeakMap<UniversalProgramPlan, readonly number[]>();
+	const listDescriptorSlots = new WeakMap<UniversalProgramPlan, readonly boolean[]>();
 	const retainedHostRefs = (plan: UniversalProgramPlan): number =>
 		plan.resident?.length ?? plan.nodes;
 	const publishInstance = (handle: number, instance: CompiledProgramInstance<Node>): void => {
@@ -578,6 +581,8 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		handle: number,
 		instance: CompiledProgramInstance<Node>,
 	): CompiledProgramListItem<Node> => {
+		const cached = instance.listItem;
+		if (cached !== undefined) return cached;
 		const run = instance.run;
 		const wire = planWire(run.plan);
 		const rootNode = wire.nodes[0]!;
@@ -592,11 +597,34 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		for (const binding of rootNode.bindings ?? []) {
 			props[binding.name] = run.values[valueOffset + binding.valueIndex];
 		}
-		return {
+		const item = {
 			descriptor: createLynxListItemDescriptor(handle, rootNode.type, props),
 			handle,
 			instance,
 		};
+		instance.listItem = item;
+		if (LYNX_PROFILE) lynxWireProfile().listProgramItemDescriptorBuilds++;
+		return item;
+	};
+	const isListDescriptorSlot = (plan: UniversalProgramPlan, slot: number): boolean => {
+		let slots = listDescriptorSlots.get(plan);
+		if (slots === undefined) {
+			const found = new Array<boolean>(plan.values.length).fill(false);
+			for (const binding of planWire(plan).nodes[0]!.bindings ?? []) {
+				const name = binding.name;
+				if (
+					name === 'item-key' ||
+					name === 'reuse-identifier' ||
+					name === 'recyclable' ||
+					name === 'defer'
+				) {
+					found[binding.valueIndex] = true;
+				}
+			}
+			slots = Object.freeze(found);
+			listDescriptorSlots.set(plan, slots);
+		}
+		return slots[slot] === true;
 	};
 	const listItems = (
 		list: CompiledProgramListState<Node>,
@@ -1226,6 +1254,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 						}
 					}
 					run.values[valueIndex] = previous;
+					if (run.deferred && isListDescriptorSlot(run.plan, slot)) {
+						instance.listItem = undefined;
+					}
 				} else if (opcode === JournalOpcode.Remove) {
 					const before = active.pop() as Node | null;
 					const parent = active.pop() as Node;
@@ -1503,7 +1534,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 		}
 		run.values[valueIndex] = value;
-		if (run.deferred) markListDirty(instance.parent);
+		if (run.deferred && isListDescriptorSlot(run.plan, slot)) {
+			instance.listItem = undefined;
+			markListDirty(instance.parent);
+		}
 		undo.push(handle, slot, previous, JournalOpcode.Set);
 		return true;
 	};
