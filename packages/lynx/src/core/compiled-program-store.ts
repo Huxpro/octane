@@ -455,6 +455,21 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		profile.programRunRetainedHostRefs += retained;
 		profile.programRunReleasedHostRefs += owned - retained;
 	};
+	const publishListCellOwnership = (plan: UniversalProgramPlan): void => {
+		if (!LYNX_PROFILE) return;
+		const retained = retainedHostRefs(plan);
+		const profile = lynxWireProfile();
+		profile.listProgramCellRuns++;
+		profile.listProgramCellHosts += plan.nodes;
+		profile.listProgramCellRetainedHostRefs += retained;
+		profile.listProgramCellReleasedHostRefs += plan.nodes - retained;
+		profile.listProgramCellLiveRetainedHostRefs += retained;
+	};
+	const releaseListCellOwnership = (plan: UniversalProgramPlan): void => {
+		if (LYNX_PROFILE) {
+			lynxWireProfile().listProgramCellLiveRetainedHostRefs -= retainedHostRefs(plan);
+		}
+	};
 	const workletsFor = (
 		plan: UniversalProgramPlan,
 	): LynxCompiledProgramWorkletStore<Node> | null => {
@@ -636,7 +651,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		if (rootNode !== undefined && papi.isChild(list.node, rootNode)) {
 			papi.remove(list.node, rootNode);
 		}
-		list.cellsBySign.delete(cell.sign);
+		if (list.cellsBySign.delete(cell.sign)) releaseListCellOwnership(cell.item.instance.run.plan);
 		list.attachedByHandle.delete(cell.item.handle);
 		list.retainedByHandle.delete(cell.item.handle);
 		cell.awaitingEnqueue = false;
@@ -736,8 +751,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 						LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received an invalid native-list cell sign',
 					);
 				}
-				cell = { sign, nodes, item, owner: null, awaitingEnqueue: false };
+				const retainedNodes = compactResidentNodes(run.plan, 1, run.stride, nodes) ?? nodes;
+				cell = { sign, nodes: retainedNodes, item, owner: null, awaitingEnqueue: false };
 				list.cellsBySign.set(sign, cell);
+				publishListCellOwnership(run.plan);
 			} catch (error) {
 				preparedWorklets?.abort();
 				cleanupRoot(papi, nodes[0]);

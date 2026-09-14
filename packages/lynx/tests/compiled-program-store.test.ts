@@ -1177,6 +1177,14 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 			values: ['item-0', 'Row 0', 'item-1', 'Row 1', 'item-2', 'Row 2'],
 		});
 		store.commit();
+		const profile = lynxWireProfile();
+		const cellsBefore = {
+			runs: profile.listProgramCellRuns,
+			hosts: profile.listProgramCellHosts,
+			retained: profile.listProgramCellRetainedHostRefs,
+			released: profile.listProgramCellReleasedHostRefs,
+			live: profile.listProgramCellLiveRetainedHostRefs,
+		};
 
 		const nativeList = papi.lists[0]!;
 		expect(nativeList.node.children).toEqual([]);
@@ -1191,9 +1199,19 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		const firstSign = nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 0, 11);
 		const cell = nativeList.node.children[0]!;
 		expect(cell.children[0]!.children[0]!.text).toBe('Row 0');
+		expect({
+			runs: profile.listProgramCellRuns - cellsBefore.runs,
+			hosts: profile.listProgramCellHosts - cellsBefore.hosts,
+			retained: profile.listProgramCellRetainedHostRefs - cellsBefore.retained,
+			released: profile.listProgramCellReleasedHostRefs - cellsBefore.released,
+			live: profile.listProgramCellLiveRetainedHostRefs - cellsBefore.live,
+		}).toEqual({ runs: 1, hosts: 3, retained: 2, released: 1, live: 2 });
 		nativeList.enqueueComponent(nativeList.node, nativeList.node.uid, firstSign);
+		expect(profile.listProgramCellLiveRetainedHostRefs - cellsBefore.live).toBe(2);
 		const secondSign = nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 1, 12);
 		expect(secondSign).toBe(firstSign);
+		expect(profile.listProgramCellRuns - cellsBefore.runs).toBe(1);
+		expect(profile.listProgramCellLiveRetainedHostRefs - cellsBefore.live).toBe(2);
 		expect(nativeList.node.children[0]).toBe(cell);
 		expect(cell.children[0]!.children[0]!.text).toBe('Row 1');
 		expect(decodeLynxNativeEventToken(cell.events.get('bindEvent:tap'))).toMatchObject({
@@ -1212,6 +1230,7 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		store.remove(4);
 		store.commit();
 		expect(nativeList.node.children).toEqual([]);
+		expect(profile.listProgramCellLiveRetainedHostRefs).toBe(cellsBefore.live);
 		const replacementSign = nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 0);
 		expect(replacementSign).not.toBe(firstSign);
 		const replacement = nativeList.node.children[0]!;
@@ -1224,6 +1243,11 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		store.commit();
 		expect(store.size()).toBe(1);
 		expect(nativeList.node.children).toEqual([]);
+		expect(profile.listProgramCellRuns - cellsBefore.runs).toBe(2);
+		expect(profile.listProgramCellHosts - cellsBefore.hosts).toBe(6);
+		expect(profile.listProgramCellRetainedHostRefs - cellsBefore.retained).toBe(4);
+		expect(profile.listProgramCellReleasedHostRefs - cellsBefore.released).toBe(2);
+		expect(profile.listProgramCellLiveRetainedHostRefs).toBe(cellsBefore.live);
 		expect(nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 0)).toBe(-1);
 
 		store.dispose();

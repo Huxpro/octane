@@ -205,6 +205,12 @@ export interface LynxWireProfile {
 	listProgramCellRuns: number;
 	/** Main: physical hosts painted by resident native-list cell drivers. */
 	listProgramCellHosts: number;
+	/** Main: later-observable host references retained by physical native-list cells. */
+	listProgramCellRetainedHostRefs: number;
+	/** Main: template-static host references released after native-list cell creation. */
+	listProgramCellReleasedHostRefs: number;
+	/** Main: retained host references still live in physical native-list cells. */
+	listProgramCellLiveRetainedHostRefs: number;
 	/** Main: addressed native-list cells that retained generic materialization. */
 	listProgramCellFallbacks: number;
 	/** Main: why the latest addressed native-list cell retained the generic path. */
@@ -278,6 +284,9 @@ export function lynxWireProfile(): LynxWireProfile {
 		programRunDriverFallback: null,
 		listProgramCellRuns: 0,
 		listProgramCellHosts: 0,
+		listProgramCellRetainedHostRefs: 0,
+		listProgramCellReleasedHostRefs: 0,
+		listProgramCellLiveRetainedHostRefs: 0,
 		listProgramCellFallbacks: 0,
 		listProgramCellFallback: null,
 	});

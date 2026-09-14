@@ -237,7 +237,10 @@ does not change, while static internal native controls remain linked below the
 retained root without a long-lived JavaScript reference. Native-list cell
 ownership copies and clears the same resident positions; list-node indexes
 are derived once per plan, and remove, rollback, clear, recycle, and terminal
-disposal release each owner once.
+disposal release each owner once. A physical cell compacts its dense creation
+output before entering the attached, retained, or recycle-pool lifetime, so a
+pooled cell does not keep static internal native controls alive through the
+JavaScript handle table merely because its creation driver had to publish them.
 
 Profile builds expose `programRunOwnedHosts`,
 `programRunRetainedHostRefs`, `programRunReleasedHostRefs`, and the live gauge
@@ -247,6 +250,14 @@ keeps the live count at 15 while replacing a keyed row, and returns it to zero o
 unmount. The store density regression scales the same invariant from one to
 1,000 rows: `3N` native hosts, `2N` retained references, `N` released references,
 and zero live references after disposal.
+
+Native-list demand has a separate physical-cell gauge because deferred logical
+rows do not own native hosts. `listProgramCellHosts`,
+`listProgramCellRetainedHostRefs`, `listProgramCellReleasedHostRefs`, and
+`listProgramCellLiveRetainedHostRefs` count fresh cell materialization, resident
+compaction, and the attached/pool lifetime. Rebinding a pooled cell does not
+increase any cumulative count or the live gauge; destroying that cell returns
+the live gauge to its prior value.
 
 A same-machine production A/B against exact parent `887042796` attributes the
 shipping cost instead of the already-stale frozen absolute budget. Preview adds
