@@ -454,13 +454,6 @@ describe('@octanejs/lynx compact compiled-program transport', () => {
 			let destroyed = false;
 			const papi: typeof base = {
 				...base,
-				append(parent, child) {
-					base.append!(parent, child);
-					if (!destroyed) {
-						destroyed = true;
-						receiver.destroyPage();
-					}
-				},
 				insertBefore(parent, child, before) {
 					base.insertBefore(parent, child, before);
 					if (!destroyed) {
