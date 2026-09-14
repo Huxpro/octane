@@ -1325,6 +1325,61 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(papi.lists[0]!.componentAtIndex(listNode, listNode.uid, 0)).toBeGreaterThan(0);
 	});
 
+	it('retries terminal native-list cell cleanup after one removal mutates and throws', () => {
+		const base = emittedHost(true);
+		let failNextCellRemoval = false;
+		const papi: typeof base = {
+			...base,
+			remove(parent, child) {
+				base.remove(parent, child);
+				if (failNextCellRemoval && parent.type === 'list') {
+					failNextCellRemoval = false;
+					throw new Error('list cell remove-after-mutation fault');
+				}
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 47);
+		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }], [0, 1]);
+		const row = emittedListPlan(
+			LIST_EVENT_ROW,
+			['p:item-key', 'c', 'e:bindtap'],
+			[0, 1],
+			[],
+			[0, 2],
+		);
+		store.begin();
+		store.mount({ firstHandle: 2, count: 1, parent: page, before: null, plan: shell, values: [] });
+		const listNode = store.range(2, 0);
+		store.mount({
+			firstHandle: 3,
+			count: 2,
+			parent: listNode,
+			before: null,
+			plan: row,
+			values: ['item-0', 'Row 0', 'item-1', 'Row 1'],
+		});
+		store.commit();
+
+		const profile = lynxWireProfile();
+		const liveBefore = profile.listProgramCellLiveRetainedHostRefs;
+		const nativeList = papi.lists[0]!;
+		nativeList.componentAtIndex(listNode, listNode.uid, 0);
+		nativeList.componentAtIndex(listNode, listNode.uid, 1);
+		expect(profile.listProgramCellLiveRetainedHostRefs - liveBefore).toBe(4);
+		expect(listNode.children).toHaveLength(2);
+
+		failNextCellRemoval = true;
+		expect(() => store.dispose()).toThrow(AggregateError);
+		expect(store.size()).toBe(0);
+		expect(listNode.children).toEqual([]);
+		expect(profile.listProgramCellLiveRetainedHostRefs - liveBefore).toBe(2);
+		expect(nativeList.componentAtIndex(listNode, listNode.uid, 0)).toBe(-1);
+
+		store.dispose();
+		expect(profile.listProgramCellLiveRetainedHostRefs).toBe(liveBefore);
+	});
+
 	it('faults an unknowable list publication and reports an accepted callback failure', () => {
 		const base = emittedHost(true);
 		let failPublication = true;

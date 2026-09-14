@@ -917,20 +917,36 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		return node;
 	};
 	const disposeList = (list: CompiledProgramListState<Node>): void => {
-		if (list.disposed) return;
-		papi.list?.updateCallbacks(
-			list.node,
-			() => -1,
-			() => {},
-			() => {},
-		);
-		list.disposed = true;
-		for (const cell of list.cellsBySign.values()) destroyListCell(list, cell);
-		list.cellsBySign.clear();
-		list.attachedByHandle.clear();
-		list.retainedByHandle.clear();
-		list.recyclePools.clear();
-		lists?.delete(list.node);
+		if (!list.disposed) {
+			papi.list?.updateCallbacks(
+				list.node,
+				() => -1,
+				() => {},
+				() => {},
+			);
+			list.disposed = true;
+			list.items = Object.freeze([]);
+		}
+		const errors: unknown[] = [];
+		for (const cell of [...list.cellsBySign.values()]) {
+			try {
+				destroyListCell(list, cell);
+			} catch (error) {
+				errors.push(error);
+			}
+		}
+		if (list.cellsBySign.size === 0) {
+			list.attachedByHandle.clear();
+			list.retainedByHandle.clear();
+			list.recyclePools.clear();
+			lists?.delete(list.node);
+		}
+		if (errors.length !== 0) {
+			failAggregate(
+				errors,
+				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled native-list cell disposal failed.',
+			);
+		}
 	};
 	const listsInInstance = (
 		instance: CompiledProgramInstance<Node>,

@@ -267,6 +267,11 @@ host-ref attachment publication, or main-thread worklet/ref activation. A later
 visible transaction installs those resources exactly once; hiding or recycling
 the cell disconnects them before the physical owner returns to the pool. This
 keeps demand from activating a dormant logical handle merely to clean it up.
+Terminal list disposal first replaces native callbacks with inert handlers, then
+cleans every physical cell independently. A cell cleanup that mutates and throws
+does not prevent sibling cells from releasing, and a later terminal retry keeps
+ownership of only the failed cells instead of treating the callback-closed list
+as fully disposed.
 
 A same-machine production A/B against exact parent `887042796` attributes the
 shipping cost instead of the already-stale frozen absolute budget. Preview adds
