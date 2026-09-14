@@ -142,6 +142,8 @@ const enum JournalOpcode {
 
 const MAX_INSTANCE_HANDLE = 2 ** 31 - 1;
 const EMPTY_PROGRAM_VALUES: readonly never[] = Object.freeze([]);
+const DISPOSED_LIST_COMPONENT_AT_INDEX = (): -1 => -1;
+const DISPOSED_LIST_CALLBACK = (): void => {};
 const LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 const LYNX_COMPILED_PROGRAM_STORE_ERROR = 'Octane Lynx OL484';
@@ -1064,7 +1066,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			componentAtIndex,
 			componentAtIndexes,
 			enqueueComponent,
-			items: Object.freeze([]),
+			items: EMPTY_PROGRAM_VALUES,
 			cellsBySign: new Map(),
 			attachedByHandle: new Map(),
 			retainedByHandle: new Map(),
@@ -1078,19 +1080,19 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		if (!list.disposed) {
 			papi.list?.updateCallbacks(
 				list.node,
-				() => -1,
-				() => {},
-				() => {},
+				DISPOSED_LIST_COMPONENT_AT_INDEX,
+				DISPOSED_LIST_CALLBACK,
+				DISPOSED_LIST_CALLBACK,
 			);
 			list.disposed = true;
-			list.items = Object.freeze([]);
+			list.items = EMPTY_PROGRAM_VALUES;
 		}
-		const errors: unknown[] = [];
-		for (const cell of [...list.cellsBySign.values()]) {
+		let errors: unknown[] | null = null;
+		for (const cell of list.cellsBySign.values()) {
 			try {
 				destroyListCell(list, cell);
 			} catch (error) {
-				errors.push(error);
+				(errors ??= []).push(error);
 			}
 		}
 		if (list.cellsBySign.size === 0) {
@@ -1099,7 +1101,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			list.recyclePools.clear();
 			lists?.delete(list.node);
 		}
-		if (errors.length !== 0) {
+		if (errors !== null) {
 			failAggregate(
 				errors,
 				LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled native-list cell disposal failed.',
@@ -2183,13 +2185,13 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			return faulted;
 		},
 		dispose() {
-			const errors: unknown[] = [];
+			let errors: unknown[] | null = null;
 			closing = true;
 			if (journal !== null) {
 				try {
 					rollbackFrame();
 				} catch (error) {
-					errors.push(error);
+					(errors ??= []).push(error);
 				}
 			}
 			if (lists !== null) {
@@ -2197,7 +2199,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					try {
 						disposeList(list);
 					} catch (error) {
-						errors.push(error);
+						(errors ??= []).push(error);
 					}
 				}
 			}
@@ -2207,13 +2209,13 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					try {
 						deactivateInstanceWorklets(instance);
 					} catch (error) {
-						errors.push(error);
+						(errors ??= []).push(error);
 					}
 					try {
 						cleanupRoot(papi, rootOf(instance));
 						rootReleased = true;
 					} catch (error) {
-						errors.push(error);
+						(errors ??= []).push(error);
 					}
 				}
 				if (rootReleased) releaseInstance(handle, instance);
@@ -2221,11 +2223,11 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			try {
 				workletStore?.close();
 			} catch (error) {
-				errors.push(error);
+				(errors ??= []).push(error);
 			}
 			ranges.clear();
 			templates.length = 1;
-			if (errors.length !== 0)
+			if (errors !== null)
 				failAggregate(
 					errors,
 					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled program disposal failed.',

@@ -284,6 +284,12 @@ pooled tables swap before re-partitioning so cleanup may safely mutate the old
 table. `listProgramCellSettlementLookups` therefore scales with materialized
 cells, not the number of dormant logical rows.
 
+Terminal list disposal shares one empty item table and disabled callback
+sentinels across lists, walks the authoritative cell map without a snapshot,
+and allocates its error collection only after the first cleanup fault. A failed
+cell remains registered for a later terminal retry while iteration continues to
+release the other cells.
+
 A list may demand a physical cell while its logical row is retained but hidden.
 Fresh and recycled cells paint that hidden state without native event tokens,
 host-ref attachment publication, or main-thread worklet/ref activation. A later
