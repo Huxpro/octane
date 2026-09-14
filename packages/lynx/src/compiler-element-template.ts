@@ -8,4 +8,4 @@ export {
 } from './compiler/index.js';
 
 export const elementTemplate = true as const;
-export const signature = 'lynx-main-thread-program/31+element-template/5';
+export const signature = 'lynx-main-thread-program/32+element-template/5';

@@ -788,6 +788,33 @@ describe('Lynx main-thread program emission', () => {
 		).toEqual([false, true, true]);
 	});
 
+	it('emits adjacent compiler ranges owned by one text host independently', () => {
+		const ranges = [{ node: 1 }, { node: 1 }] as const;
+		const emission = emitLynxMainThreadProgram(RANGED_ROW, {
+			name: 'createSiblingRanges',
+			ranges,
+		});
+		expect(emission).toMatchObject({ rangeCount: 2, paintsText: [true, true] });
+		const papi = createHost();
+		const page = papi.createPage('0', 0);
+		const create = instantiate(RANGED_ROW, 'createSiblingRanges', ranges)(papi);
+		const nodes = create(
+			...([papi.getUniqueId(page), 'row', undefined, undefined, 'first', 'second'] as never[]),
+		);
+		expect(shape(nodes[1] as never)).toEqual(
+			expect.objectContaining({
+				children: [
+					expect.objectContaining({ text: 'first' }),
+					expect.objectContaining({ text: 'second' }),
+				],
+			}),
+		);
+		expect(nodes.slice(RANGED_ROW.nodes.length)).toEqual([
+			expect.objectContaining({ text: 'first' }),
+			expect.objectContaining({ text: 'second' }),
+		]);
+	});
+
 	it('returns one entry per range site after its nodes, saying what it painted', () => {
 		// The trailing half of the create function's answer, and the reason it
 		// exists: the caller decided which holes to send a string for, this
@@ -1202,12 +1229,6 @@ describe('Lynx main-thread program emission', () => {
 				RANGED_ROW,
 				[{ node: 9 }],
 				/does not have/,
-			],
-			[
-				'two keyed ranges on one host, which no reduction produces',
-				RANGED_ROW,
-				[{ node: 1 }, { node: 1 }],
-				/more than one keyed range/,
 			],
 			[
 				'a keyed range whose anchor is not its parent’s child',
