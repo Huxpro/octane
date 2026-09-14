@@ -1508,6 +1508,119 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		store.dispose();
 	});
 
+	it('reclaims cells materialized before a batched native-list callback fails', () => {
+		const base = emittedHost(true);
+		const failure = new Error('second batched list cell creation fault');
+		let armed = false;
+		let createdRows = 0;
+		const papi: typeof base = {
+			...base,
+			createElement(type, parent, text) {
+				if (armed && type === 'list-item' && ++createdRows === 2) throw failure;
+				return base.createElement(type, parent, text);
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const reported: unknown[] = [];
+		const store = createLynxCompiledProgramStore(
+			papi,
+			papi.getUniqueId(page),
+			47,
+			1,
+			undefined,
+			(error) => reported.push(error),
+		);
+		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }]);
+		const row = emittedListPlan(LIST_EVENT_ROW, ['p:item-key', 'c', 'e:bindtap'], [0, 1]);
+		store.begin();
+		store.mount({ firstHandle: 2, count: 1, parent: page, before: null, plan: shell, values: [] });
+		const listNode = store.range(2, 0);
+		store.mount({
+			firstHandle: 3,
+			count: 2,
+			parent: listNode,
+			before: null,
+			plan: row,
+			values: ['item-0', 'Row 0', 'item-1', 'Row 1'],
+		});
+		store.commit();
+
+		const profile = lynxWireProfile();
+		const liveBefore = profile.listProgramCellLiveRetainedHostRefs;
+		armed = true;
+		papi.lists[0]!.componentAtIndexes(listNode, listNode.uid, [0, 1], [11, 12]);
+
+		expect(reported).toEqual([failure]);
+		expect(store.isFaulted()).toBe(true);
+		expect(listNode.children).toEqual([]);
+		expect(profile.listProgramCellLiveRetainedHostRefs).toBe(liveBefore);
+		store.dispose();
+	});
+
+	it('aggregates batched list publication and cleanup faults and retries the failed owner', () => {
+		const base = emittedHost(true);
+		const publicationFailure = new Error('batched list publication fault');
+		const cleanupFailure = new Error('batched list cleanup fault');
+		let armed = false;
+		let failCleanup = true;
+		let listNode: FakeNode | undefined;
+		const papi: typeof base = {
+			...base,
+			flush(node, options) {
+				base.flush(node, options);
+				if (armed && node === listNode) {
+					armed = false;
+					throw publicationFailure;
+				}
+			},
+			remove(parent, child) {
+				base.remove(parent, child);
+				if (failCleanup && parent.type === 'list') {
+					failCleanup = false;
+					throw cleanupFailure;
+				}
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const reported: unknown[] = [];
+		const store = createLynxCompiledProgramStore(
+			papi,
+			papi.getUniqueId(page),
+			47,
+			1,
+			undefined,
+			(error) => reported.push(error),
+		);
+		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }]);
+		const row = emittedListPlan(LIST_EVENT_ROW, ['p:item-key', 'c', 'e:bindtap'], [0, 1]);
+		store.begin();
+		store.mount({ firstHandle: 2, count: 1, parent: page, before: null, plan: shell, values: [] });
+		listNode = store.range(2, 0);
+		store.mount({
+			firstHandle: 3,
+			count: 2,
+			parent: listNode,
+			before: null,
+			plan: row,
+			values: ['item-0', 'Row 0', 'item-1', 'Row 1'],
+		});
+		store.commit();
+
+		const profile = lynxWireProfile();
+		const liveBefore = profile.listProgramCellLiveRetainedHostRefs;
+		armed = true;
+		papi.lists[0]!.componentAtIndexes(listNode, listNode.uid, [0, 1], [11, 12]);
+
+		expect(reported).toHaveLength(1);
+		expect(reported[0]).toBeInstanceOf(AggregateError);
+		expect((reported[0] as AggregateError).errors).toEqual([publicationFailure, cleanupFailure]);
+		expect(listNode.children).toEqual([]);
+		expect(profile.listProgramCellLiveRetainedHostRefs - liveBefore).toBe(row.nodes);
+
+		store.dispose();
+		expect(profile.listProgramCellLiveRetainedHostRefs).toBe(liveBefore);
+	});
+
 	it('faults an unknowable list publication and reports an accepted callback failure', () => {
 		const base = emittedHost(true);
 		let failPublication = true;

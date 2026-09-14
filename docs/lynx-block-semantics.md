@@ -278,7 +278,11 @@ prepared main-thread worklet abort fails, native roots are still removed; if a
 root removal also fails, the original create/insert error and every cleanup
 error are reported together and the compact store becomes terminally faulted.
 List callback failures use the same rule instead of replacing the producer
-failure with whichever cleanup happened to throw first.
+failure with whichever cleanup happened to throw first. A rejected single or
+batched demand also releases every cell that the callback materialized before
+the failure; batch cleanup continues in reverse order, aggregates cleanup
+faults, and retains only failed owners for terminal disposal retry. Cells that
+the batch never touched remain under the list's existing terminal owner.
 
 Logical list-item descriptors are cached on their keyed instances. A child
 binding update therefore changes the retained value (and an attached physical

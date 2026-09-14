@@ -84,6 +84,11 @@ interface CompiledProgramListCell<Node extends LynxElementRef> {
 	awaitingEnqueue: boolean;
 }
 
+interface CompiledProgramListMaterialization<Node extends LynxElementRef> {
+	readonly cell: CompiledProgramListCell<Node>;
+	readonly reuseNotification: boolean;
+}
+
 interface CompiledProgramListState<Node extends LynxElementRef> {
 	readonly node: Node;
 	/** Logical child range, learned when the first deferred row run arrives. */
@@ -746,13 +751,34 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		return writePhysicalSlot(instance, slot, value);
 	};
+	const failListCallback = (
+		list: CompiledProgramListState<Node>,
+		cells: readonly CompiledProgramListCell<Node>[],
+		error: unknown,
+	): never => {
+		const cleanupErrors: unknown[] = [];
+		const cleaned = new Set<CompiledProgramListCell<Node>>();
+		for (let index = cells.length - 1; index >= 0; index--) {
+			const cell = cells[index]!;
+			if (cleaned.has(cell)) continue;
+			cleaned.add(cell);
+			try {
+				destroyListCell(list, cell);
+			} catch (cleanupError) {
+				cleanupErrors.push(cleanupError);
+			}
+		}
+		if (cleanupErrors.length === 0) throw error;
+		faulted = true;
+		failAggregate(
+			[...(error instanceof AggregateError ? error.errors : [error]), ...cleanupErrors],
+			LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'Compiled native-list callback cleanup failed.',
+		);
+	};
 	const materializeListItem = (
 		list: CompiledProgramListState<Node>,
 		index: number,
-	): {
-		readonly cell: CompiledProgramListCell<Node>;
-		readonly reuseNotification: boolean;
-	} => {
+	): CompiledProgramListMaterialization<Node> => {
 		const item = list.items[index];
 		if (item === undefined)
 			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'requested an out-of-range native-list item');
@@ -828,21 +854,26 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				}
 				throw error;
 			}
-		} else {
-			attachCellOwner(cell, item);
-			const set = run.create.set;
-			if (run.plan.values.length !== 0 && set === undefined) fail(StoreFailure.SlotSetter);
-			for (let slot = 0; slot < values.length; slot++) {
-				if (!writeListPhysicalSlot(item.instance, slot, values[slot]))
-					fail(StoreFailure.SlotSetter);
-			}
-			writeCellEvents(item, item.instance.visible);
 		}
-		if (cell.owner === null) attachCellOwner(cell, item);
-		if (!item.instance.visible) papi.setAttribute(rootOfCell(cell), 'hidden', true);
-		else if (reused) papi.setAttribute(rootOfCell(cell), 'hidden', false);
-		list.attachedByHandle.set(item.handle, cell);
-		return { cell, reuseNotification };
+		try {
+			if (reused) {
+				attachCellOwner(cell, item);
+				const set = run.create.set;
+				if (run.plan.values.length !== 0 && set === undefined) fail(StoreFailure.SlotSetter);
+				for (let slot = 0; slot < values.length; slot++) {
+					if (!writeListPhysicalSlot(item.instance, slot, values[slot]))
+						fail(StoreFailure.SlotSetter);
+				}
+				writeCellEvents(item, item.instance.visible);
+			}
+			if (cell.owner === null) attachCellOwner(cell, item);
+			if (!item.instance.visible) papi.setAttribute(rootOfCell(cell), 'hidden', true);
+			else if (reused) papi.setAttribute(rootOfCell(cell), 'hidden', false);
+			list.attachedByHandle.set(item.handle, cell);
+			return { cell, reuseNotification };
+		} catch (error) {
+			return failListCallback(list, [cell], error);
+		}
 	};
 	const invokeListCallback = <Result>(fallback: Result, callback: () => Result): Result => {
 		if (faulted || closing) return fallback;
@@ -873,22 +904,28 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		) =>
 			invokeListCallback(-1, () => {
 				if (state === undefined || state.disposed) return -1;
-				const result = materializeListItem(state, index);
-				papi.flush(rootOfCell(result.cell), {
-					triggerLayout: true,
-					...(operationId === undefined ? null : { operationID: operationId }),
-					elementID: result.cell.sign,
-					listID: papi.getUniqueId(state.node),
-					...(result.reuseNotification && enableReuseNotification
-						? {
-								listReuseNotification: {
-									listElement: state.node,
-									itemKey: result.cell.item.descriptor.itemKey,
-								},
-							}
-						: null),
-				});
-				return result.cell.sign;
+				let result: CompiledProgramListMaterialization<Node> | undefined;
+				try {
+					result = materializeListItem(state, index);
+					papi.flush(rootOfCell(result.cell), {
+						triggerLayout: true,
+						...(operationId === undefined ? null : { operationID: operationId }),
+						elementID: result.cell.sign,
+						listID: papi.getUniqueId(state.node),
+						...(result.reuseNotification && enableReuseNotification
+							? {
+									listReuseNotification: {
+										listElement: state.node,
+										itemKey: result.cell.item.descriptor.itemKey,
+									},
+								}
+							: null),
+					});
+					return result.cell.sign;
+				} catch (error) {
+					if (result === undefined) throw error;
+					return failListCallback(state, [result.cell], error);
+				}
 			});
 		const enqueueComponent: LynxListEnqueueComponent<Node> = (_list, _listId, sign) => {
 			invokeListCallback(undefined, () => {
@@ -914,28 +951,37 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		) => {
 			invokeListCallback(undefined, () => {
 				if (state === undefined || state.disposed) return;
-				const results = indexes.map((index) => materializeListItem(state!, index));
-				if (asyncFlush) {
-					for (const result of results) {
-						papi.flush(rootOfCell(result.cell), {
-							asyncFlush: true,
-							...(result.reuseNotification && enableReuseNotification
-								? {
-										listReuseNotification: {
-											listElement: state!.node,
-											itemKey: result.cell.item.descriptor.itemKey,
-										},
-									}
-								: null),
-						});
+				const results: CompiledProgramListMaterialization<Node>[] = [];
+				try {
+					for (const index of indexes) results.push(materializeListItem(state!, index));
+					if (asyncFlush) {
+						for (const result of results) {
+							papi.flush(rootOfCell(result.cell), {
+								asyncFlush: true,
+								...(result.reuseNotification && enableReuseNotification
+									? {
+											listReuseNotification: {
+												listElement: state!.node,
+												itemKey: result.cell.item.descriptor.itemKey,
+											},
+										}
+									: null),
+							});
+						}
 					}
+					papi.flush(state.node, {
+						triggerLayout: true,
+						operationIDs: operationIds,
+						elementIDs: results.map((result) => result.cell.sign),
+						listID: papi.getUniqueId(state.node),
+					});
+				} catch (error) {
+					failListCallback(
+						state,
+						results.map((result) => result.cell),
+						error,
+					);
 				}
-				papi.flush(state.node, {
-					triggerLayout: true,
-					operationIDs: operationIds,
-					elementIDs: results.map((result) => result.cell.sign),
-					listID: papi.getUniqueId(state.node),
-				});
 			});
 		};
 		const node = listPAPI.create(
