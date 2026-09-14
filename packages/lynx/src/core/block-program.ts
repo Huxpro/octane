@@ -59,6 +59,8 @@ export interface LynxBlockProgramContext {
 	 */
 	/** Schedule logical computation; false means no non-empty frame currently blocks commit. */
 	schedulePreparation(work: (backpressured: boolean) => void): void;
+	/** Queue host-neutral semantic work on this root's resolved Lynx microtask service. */
+	scheduleMicrotask(work: () => void): void;
 	/* Record a newer logical update folded into the one bounded pending draft. */
 	noteRenderMerge(): void;
 	scheduleRender(work: () => void): Promise<void>;

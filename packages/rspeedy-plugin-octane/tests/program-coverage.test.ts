@@ -233,16 +233,18 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 19,
+				version: 20,
 				runtimeNames: [
 					'Activity',
 					'createContext',
 					'createPortal',
 					'memo',
+					'startTransition',
 					'use',
 					'useBatch',
 					'useCallback',
 					'useContext',
+					'useDeferredValue',
 					'useEffect',
 					'useLayoutEffect',
 					'useMemo',
@@ -250,6 +252,7 @@ describe('Lynx application Block eligibility', () => {
 					'useRef',
 					'useState',
 					'useSyncExternalStore',
+					'useTransition',
 				],
 				threadFunctions: ['background', 'main-thread'],
 				mainThreadProps: true,
@@ -318,6 +321,31 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.reasons).toEqual([]);
 		expect(report.matrix.runtimeNames).toEqual(
 			expect.arrayContaining(['useLayoutEffect', 'useMemo', 'useReducer']),
+		);
+	});
+
+	it('admits paired transition scheduling and deferred-value semantics', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const transitions = semanticRequirements({
+			runtimeUses: [
+				site('startTransition', 4, 2),
+				site('useDeferredValue', 5, 2),
+				site('useTransition', 6, 2),
+			],
+		});
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: transitions, mainThread: transitions }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toEqual(
+			expect.arrayContaining(['startTransition', 'useDeferredValue', 'useTransition']),
 		);
 	});
 
@@ -458,7 +486,7 @@ describe('Lynx application Block eligibility', () => {
 					{
 						...semanticModule,
 						background: semanticRequirements({
-							runtimeUses: [site('useTransition', 2, 3)],
+							runtimeUses: [site('useOptimistic', 2, 3)],
 							runtimeExports: [site('Suspense', 3, 4)],
 							opaqueRuntimeAccesses: [site('export-all', 4, 5)],
 						}),
@@ -512,7 +540,7 @@ describe('Lynx application Block eligibility', () => {
 					code: 'unsupported-runtime-use',
 					module: '/src/App.tsrx',
 					thread: 'background',
-					name: 'useTransition',
+					name: 'useOptimistic',
 					line: 2,
 					column: 3,
 				},
@@ -1034,7 +1062,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 19 },
+				matrix: { version: 20 },
 				eligible: true,
 				reasons: [],
 			},

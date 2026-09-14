@@ -484,6 +484,8 @@ interface RangeTryState {
 	needsRetry: boolean;
 	/** Last accepted primary member, retained and hidden during re-suspension. */
 	bodyKey: unknown;
+	/** Whether the current thenable retained content for a transition attempt. */
+	transitionPending: boolean;
 }
 
 interface RangePortalState {
@@ -607,6 +609,7 @@ function createRangeState(definition: RangeDefinition, value: unknown): RangeSta
 					suspension: null,
 					needsRetry: false,
 					bodyKey: null,
+					transitionPending: false,
 				}
 			: null,
 		portalState: isPortalValue(value) ? { target: null, registration: null, site: null } : null,
@@ -713,6 +716,8 @@ interface RangeRender {
 	readonly portalTarget?: UniversalPortalTargetHandle;
 	/** Undo renderer resources when a later sibling abandons this completed render. */
 	readonly discard?: () => void;
+	/** Deliberately keep this boundary's last accepted physical and semantic range. */
+	readonly retainCommitted?: boolean;
 	readonly rendered: readonly number[];
 	readonly source: Iterable<unknown>;
 	readonly keyedSelection: NonNullable<UniversalForValue['keyedSelection']> | null;
@@ -798,6 +803,20 @@ export function lynxBlockProgramForComponent<Props>(
 			useEffect(create, deps);
 		},
 	});
+	const renderHookScope = <T>(cells: UniversalHookScope, setup: () => T): T =>
+		activeTransitionAttempt === null ? cells.render(setup) : cells.renderTransition(setup);
+	const publishHookScope = (
+		context: LynxBlockProgramContext,
+		cells: UniversalHookScope,
+		visible: boolean,
+	): void => {
+		const transitionAttempt = activeTransitionAttempt;
+		context.afterCommit(() => {
+			const hold = transitionAttempt?.suspended === true;
+			cells.commit(visible, hold);
+			if (hold) transitionWorkScopes.add(cells);
+		});
+	};
 	/**
 	 * The page component's hook cells. Keyed row scopes live on `RetainedRow`
 	 * instead: semantic ownership follows the key without creating Universal host
@@ -841,6 +860,16 @@ export function lynxBlockProgramForComponent<Props>(
 		readonly transaction: UniversalHookScopePrepared;
 	} | null = null;
 	let preparationError: unknown = null;
+	let transitionRenderQueued = false;
+	const transitionWorkScopes = new Set<UniversalHookScope>();
+	interface BlockTransitionAttempt {
+		suspended: boolean;
+	}
+	let activeTransitionAttempt: BlockTransitionAttempt | null = null;
+	const finishBlockTransitions = (): void => {
+		for (const cells of transitionWorkScopes) cells.finishTransitions();
+		transitionWorkScopes.clear();
+	};
 
 	let encoder: UniversalHostEncoder | null = null;
 	let portalCapability: UniversalPortalCapability<LynxClientContainer> | null = null;
@@ -1013,6 +1042,13 @@ export function lynxBlockProgramForComponent<Props>(
 		const cells = (scope ??= createUniversalHookScope({
 			renderer: LYNX_TRANSPORT_RENDERER,
 			scheduleRender: queueStateRender,
+			scheduleTransitionRender(): void {
+				transitionWorkScopes.add(scope!);
+				queueTransitionRender();
+			},
+			scheduleMicrotask(task): void {
+				liveContext!.scheduleMicrotask(task);
+			},
 			readContext(context) {
 				return readSemanticContext(renderingContexts, context);
 			},
@@ -1025,7 +1061,7 @@ export function lynxBlockProgramForComponent<Props>(
 		}));
 		let rendered: RenderedPlan;
 		try {
-			rendered = cells.render(() => renderPlanValue(subject, props));
+			rendered = renderHookScope(cells, () => renderPlanValue(subject, props));
 		} catch (error) {
 			cells.abort();
 			liveContext = previousContext;
@@ -1038,8 +1074,9 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			throw error;
 		}
+		const transitionAttempt = activeTransitionAttempt;
 		context.afterAbort(() => {
-			cells.abort();
+			cells.abort(transitionAttempt !== null);
 			liveContext = previousContext;
 			liveProps = previousProps;
 		});
@@ -1166,6 +1203,27 @@ export function lynxBlockProgramForComponent<Props>(
 				if (scheduled === null || !renderDirtyComputations(context, [...scheduled])) {
 					renderAgain(context, liveProps as Props);
 				}
+			})
+			.catch((error: unknown) => {
+				setTimeout(() => {
+					throw error;
+				}, 0);
+			});
+	}
+
+	/** Coalesce every promoted scope lane into one serialized Block transaction. */
+	function queueTransitionRender(): void {
+		const context = liveContext;
+		if (context === null || block === null) return;
+		if (transitionRenderQueued) {
+			context.noteRenderMerge();
+			return;
+		}
+		transitionRenderQueued = true;
+		void context
+			.scheduleRender(() => {
+				transitionRenderQueued = false;
+				if (block !== null) renderAgain(context, liveProps as Props, true);
 			})
 			.catch((error: unknown) => {
 				setTimeout(() => {
@@ -1375,6 +1433,13 @@ export function lynxBlockProgramForComponent<Props>(
 					scheduleRender(): void {
 						queueScopedRowStateRender(owner);
 					},
+					scheduleTransitionRender(): void {
+						transitionWorkScopes.add(rowScope!);
+						queueTransitionRender();
+					},
+					scheduleMicrotask(task): void {
+						liveContext!.scheduleMicrotask(task);
+					},
 					readContext(context) {
 						return readSemanticContext(renderingContexts, context);
 					},
@@ -1395,12 +1460,13 @@ export function lynxBlockProgramForComponent<Props>(
 				scoped = owner;
 			}
 			const cells = rowScope!;
+			const transitionAttempt = activeTransitionAttempt;
 			context.afterAbort(() => {
-				cells.abort();
+				cells.abort(!created && transitionAttempt !== null);
 				if (created) cells.dispose();
 			});
 			try {
-				rendered = cells.render(() => renderPlanValue(component, props, contexts));
+				rendered = renderHookScope(cells, () => renderPlanValue(component, props, contexts));
 			} catch (error) {
 				// A surrounding Block boundary may accept its fallback, so the root
 				// attempt itself will not abort. Drop this arm's draft here; a fresh
@@ -1410,7 +1476,7 @@ export function lynxBlockProgramForComponent<Props>(
 				if (created) cells.dispose();
 				throw error;
 			}
-			context.afterCommit(() => cells.commit(parentVisible && rendered.visible));
+			publishHookScope(context, cells, parentVisible && rendered.visible);
 		} else if (component !== null) {
 			rendered = renderPlanValue(component, props, contexts);
 		} else {
@@ -1738,7 +1804,9 @@ export function lynxBlockProgramForComponent<Props>(
 		const previous = state.retained;
 		const previousKeys = state.keys;
 		const contextsStable =
-			state.visible === parentVisible && sameSemanticContexts(state.contextValues, contextValues);
+			activeTransitionAttempt === null &&
+			state.visible === parentVisible &&
+			sameSemanticContexts(state.contextValues, contextValues);
 		let nestedStates: Map<unknown, NestedRangeState> | null = null;
 		let nestedRenders: Map<unknown, NestedRangeRender> | null = null;
 		let materializedItems: unknown[] | null = null;
@@ -2377,7 +2445,9 @@ export function lynxBlockProgramForComponent<Props>(
 		const prior = previous?.get(branchState.key) ?? null;
 		const priorNested = state.nested?.get(branchState.key);
 		const contextsStable =
-			state.visible === parentVisible && sameSemanticContexts(state.contextValues, contextValues);
+			activeTransitionAttempt === null &&
+			state.visible === parentVisible &&
+			sameSemanticContexts(state.contextValues, contextValues);
 		let values: readonly UniversalHostTemplateProgramValue[];
 		let listeners: readonly (LynxBlockListener | null)[];
 		let refValues: readonly unknown[];
@@ -2675,10 +2745,11 @@ export function lynxBlockProgramForComponent<Props>(
 					'a non-boundary structural region later held an error/Suspense boundary.',
 			);
 		}
-		const scheduleRetry = (): void => {
+		const scheduleRetry = (transition = tryState.transitionPending): void => {
 			if (!tryState.active || tryState.needsRetry) return;
 			tryState.needsRetry = true;
-			queueStateRender(TRY_RETRY_SLOT);
+			if (transition) queueTransitionRender();
+			else queueStateRender(TRY_RETRY_SLOT);
 		};
 		const reset = (): void => {
 			if (!tryState.active || !tryState.hasError) return;
@@ -2709,21 +2780,50 @@ export function lynxBlockProgramForComponent<Props>(
 				tryState.suspension = null;
 				tryState.needsRetry = false;
 				tryState.bodyKey = null;
+				tryState.transitionPending = false;
 			});
 			return caught;
 		};
 		const renderPending = (suspension: unknown, thenable: PromiseLike<unknown>): RangeRender => {
-			if (boundary.pending === null) throw suspension;
+			const transitionAttempt = activeTransitionAttempt;
+			const transitionPending = transitionAttempt !== null || tryState.transitionPending;
+			if (transitionAttempt !== null) transitionAttempt.suspended = true;
+			let retainedTransition: RangeRender | null = null;
+			if (transitionAttempt !== null && state.retained !== null && state.keys !== null) {
+				retainedTransition = {
+					state,
+					templateState: null,
+					items: EMPTY_INDEXES,
+					rows: EMPTY_PROGRAM_ROWS,
+					handlers: EMPTY_HANDLER_ROWS,
+					refs: EMPTY_REF_ROWS,
+					visibilities: null,
+					keys: state.keys,
+					retained: state.retained,
+					removedRetainedKeys: null,
+					hasScopedRows: state.hasScopedRows,
+					structural: false,
+					contextValues: state.contextValues,
+					visible: state.visible,
+					rendered: EMPTY_INDEXES,
+					source: state.source ?? EMPTY_INDEXES,
+					keyedSelection: state.keyedSelection,
+					componentRows: state.componentRows,
+					sparse: null,
+					nested: EMPTY_NESTED_RANGE_RENDERS,
+					nestedStates: state.nested,
+					retainCommitted: true,
+				};
+			}
+			if (retainedTransition === null && boundary.pending === null) throw suspension;
 			const bodyKey = tryState.bodyKey;
 			const retainsBody =
 				bodyKey !== null && state.keys !== null && state.keys.some((key) => key === bodyKey);
-			const pending = renderArm(
-				TRY_PENDING_BRANCH,
-				boundary.pending,
-				retainsBody ? [bodyKey] : EMPTY_INDEXES,
-			);
+			const pending =
+				retainedTransition ??
+				renderArm(TRY_PENDING_BRANCH, boundary.pending!, retainsBody ? [bodyKey] : EMPTY_INDEXES);
 			let rendered = pending;
-			if (retainsBody) {
+			if (retainedTransition === null && retainsBody) {
 				const bodyTemplate = branchTemplateForKey(state, bodyKey);
 				const prior = state.retained?.get(bodyKey) ?? null;
 				const hidden = prior === null ? null : { ...prior, visible: false };
@@ -2769,6 +2869,10 @@ export function lynxBlockProgramForComponent<Props>(
 				tryState.error = undefined;
 				tryState.needsRetry = false;
 				tryState.suspension = suspension;
+				// An urgent render may deliberately show the fallback while a prior
+				// transition is held. It changes the shell policy, not ownership of the
+				// pending lane; the thenable must still retry and settle that lane.
+				tryState.transitionPending = transitionPending;
 				if (tryState.thenable === thenable) return;
 				tryState.thenable = thenable;
 				const settle = () => {
@@ -2797,6 +2901,7 @@ export function lynxBlockProgramForComponent<Props>(
 				tryState.suspension = null;
 				tryState.needsRetry = false;
 				tryState.bodyKey = bodyKey;
+				tryState.transitionPending = false;
 			});
 			return bodyWasHidden
 				? {
@@ -2940,6 +3045,7 @@ export function lynxBlockProgramForComponent<Props>(
 	 */
 	const applyRange = (context: LynxBlockProgramContext, render: RangeRender): void => {
 		const state = render.state;
+		if (render.retainCommitted === true) return;
 		const templateState = render.templateState;
 		if (render.portalTarget !== undefined && !Object.is(state.site!.parent, render.portalTarget)) {
 			context.core.retargetForSlot(state.site!, render.portalTarget);
@@ -3363,13 +3469,22 @@ export function lynxBlockProgramForComponent<Props>(
 	 * own cells did. Named rather than inlined on the program because a
 	 * state-driven render has no caller to reach it through.
 	 */
-	const renderAgain = (context: LynxBlockProgramContext, props: Props): void => {
-		const restoreRanges = snapshotRangeTemplates();
-		context.afterAbort(() => {
-			for (const restore of restoreRanges) restore();
-		});
-		const rendered = renderSubject(context, props);
+	const renderAgain = (
+		context: LynxBlockProgramContext,
+		props: Props,
+		transition = false,
+	): void => {
+		const previousTransitionAttempt = activeTransitionAttempt;
+		const transitionAttempt: BlockTransitionAttempt | null = transition
+			? { suspended: false }
+			: null;
+		activeTransitionAttempt = transitionAttempt;
 		try {
+			const restoreRanges = snapshotRangeTemplates();
+			context.afterAbort(() => {
+				for (const restore of restoreRanges) restore();
+			});
+			const rendered = renderSubject(context, props);
 			// A block program mounts one template. A component that returns a
 			// different plan on a later render is a different program, and
 			// `block-background.ts` already refuses to swap the program it mounted;
@@ -3433,13 +3548,25 @@ export function lynxBlockProgramForComponent<Props>(
 			context.core.setVisibility(block!, rendered.visible);
 			for (const row of rows) applyRange(context, row);
 			context.afterCommit(() => {
-				scope?.commit(rendered.visible);
+				scope?.commit(rendered.visible, transitionAttempt?.suspended === true);
 				liveComputations = rendered.computations;
 				liveComputationGeneration++;
 			});
+			if (transitionAttempt !== null) {
+				context.afterCommit(() => {
+					if (transitionAttempt.suspended) return;
+					finishBlockTransitions();
+				});
+			}
 		} catch (error) {
 			scope?.abort();
+			// A handled boundary reaches the accepted path above. An error escaping
+			// the whole Block has no later reveal that could own its lane, so settle
+			// every participating scope instead of leaving useTransition pending.
+			if (transitionAttempt !== null) finishBlockTransitions();
 			throw error;
+		} finally {
+			activeTransitionAttempt = previousTransitionAttempt;
 		}
 	};
 
@@ -3614,6 +3741,7 @@ export function lynxBlockProgramForComponent<Props>(
 					range.tryState.active = false;
 					range.tryState.thenable = null;
 					range.tryState.suspension = null;
+					range.tryState.transitionPending = false;
 				}
 				for (const row of scopedRows) {
 					if (row.scoped !== null) {
@@ -3638,6 +3766,7 @@ export function lynxBlockProgramForComponent<Props>(
 				// against a block that is gone.
 				scope?.dispose();
 				scope = null;
+				transitionWorkScopes.clear();
 				liveContext = null;
 				liveProps = undefined;
 			});

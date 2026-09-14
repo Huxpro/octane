@@ -896,3 +896,15 @@ export function useSyncExternalStore<T>(
 	requireRender();
 	return getSnapshot();
 }
+
+export function useDeferredValue<T>(value: T, ..._initialValueAndSlot: unknown[]): T {
+	requireRender();
+	return value;
+}
+
+export function startTransition(_fn: () => void | Promise<unknown>): void {}
+
+export function useTransition(_slot?: unknown): [boolean, typeof startTransition] {
+	requireRender();
+	return [false, startTransition];
+}

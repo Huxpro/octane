@@ -435,6 +435,26 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 		]);
 	}, 120_000);
 
+	it('selects the compact Block application for compiler-proved transitions', async () => {
+		const entry = { main: './src/transition-eligible.ts' };
+		expect(await collectCoreSelections('production', entry)).toEqual([
+			{
+				version: 1,
+				mode: 'automatic',
+				selected: 'block',
+				eligible: true,
+				reasons: [],
+			},
+		]);
+		expect(await collectCoreSelections('production', entry, 'application')).toEqual([
+			{
+				version: 2,
+				selected: 'compiled-program',
+				reasons: [],
+			},
+		]);
+	}, 120_000);
+
 	it('publishes an eligible verdict for a real production Block-compatible graph', async () => {
 		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-block-eligibility-'));
 		const reports: unknown[] = [];
@@ -1112,16 +1132,18 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 19,
+							version: 20,
 							runtimeNames: [
 								'Activity',
 								'createContext',
 								'createPortal',
 								'memo',
+								'startTransition',
 								'use',
 								'useBatch',
 								'useCallback',
 								'useContext',
+								'useDeferredValue',
 								'useEffect',
 								'useLayoutEffect',
 								'useMemo',
@@ -1129,6 +1151,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'useRef',
 								'useState',
 								'useSyncExternalStore',
+								'useTransition',
 							],
 							threadFunctions: ['background', 'main-thread'],
 							mainThreadProps: true,

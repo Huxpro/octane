@@ -184,24 +184,27 @@ pluginOctane({ thread: 'main-thread' });
 
 Application builds attach an `octane:lynx-block-selection` report to the
 generated main-thread asset metadata. Selection version 1 with support-matrix
-version 13 is eligible only when paired
+version 20 is eligible only when paired
 background/main-thread resident-program coverage is complete, semantic and
 feature facts cover the same module set, and the graph stays within this
 independently proven Block subset:
 
-- authored Octane runtime uses or named re-exports are limited to `createContext`,
-  `memo`, `useCallback`, `useContext`, `useEffect`, `useRef`, `useState`, and
-  `useSyncExternalStore`; opaque Octane module access is not eligible;
+- authored Octane runtime uses or named re-exports are limited to the matrix's
+  independently tested Activity, context, portal, memo, Suspense/data, state,
+  effect, external-store, and transition APIs. This includes `startTransition`,
+  `useTransition`, and `useDeferredValue`; opaque Octane module access is not
+  eligible;
 - background/main-thread functions and `main-thread:*` props are supported;
 - the authored template may use compiler-proved local component boundaries,
-  inline render props, component holes, `@if`, `@switch`, and fixed-shape keyed
-  rows below native `list`/`list-item`; fragments, `@try`, Activity, generic
-  renderable holes, ordinary host refs, and template-root events are not
-  eligible;
-- keyed ranges may have an `@empty` arm and one retained static sibling after
-  them, but not a nested or second sibling range under the same host. Rows use
-  an inline host or local component and may own the supported hooks above;
-  their scopes are retained and disposed by key.
+  inline render props, component holes, host refs, `@if`, `@switch`, `@try`,
+  Activity, portals, and fixed-shape keyed rows below native
+  `list`/`list-item`; generic renderable holes and template-root events remain
+  ineligible;
+- keyed ranges may have an `@empty` arm, nested ranges, and multiple retained
+  siblings. Rows use an inline host or local component and may own the supported
+  hooks above; their scopes are retained and disposed by key. Portals select the
+  general Block application because the compact delta vocabulary cannot name a
+  renderer-owned parent; transition APIs themselves remain compact-eligible.
 
 The report retains source module, thread, line, and column for unsupported
 facts, as well as the underlying reason from an incomplete proof. A one-shot

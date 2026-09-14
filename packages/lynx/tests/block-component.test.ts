@@ -38,6 +38,7 @@ import {
 	createUniversalRoot,
 	defineUniversalComponent,
 	memo,
+	startTransition,
 	universalActivity,
 	universalChildren,
 	universalComponent,
@@ -53,6 +54,7 @@ import {
 	use,
 	useCallback,
 	useContext,
+	useDeferredValue,
 	useEffect,
 	useLayoutEffect,
 	useMemo,
@@ -61,6 +63,7 @@ import {
 	useRef,
 	useState,
 	useSyncExternalStore,
+	useTransition,
 	type UniversalRenderable,
 	type UniversalHostCommand,
 } from 'octane/universal/native';
@@ -1608,6 +1611,245 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 });
 
 describe('Lynx compiled component Block semantic boundaries', () => {
+	it('publishes Block transition pending in general and compact products', async () => {
+		for (const compact of [false, true]) {
+			const renders: string[] = [];
+			let begin!: () => void;
+			const TransitionCard = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, () => {
+				const [count, setCount] = useState(0, 'transition-count');
+				const [pending, start] = useTransition('transition');
+				begin = () => start(() => setCount(1));
+				renders.push(`${pending}:${count}`);
+				return universalValue(CARD_PLAN, [
+					'transition',
+					`count ${count === 0 ? 'zero' : 'one'}`,
+					pending ? 'pending' : 'ready',
+					noop,
+					`${pending}:${count}`,
+				]);
+			});
+			const block = blockColumn<Record<string, never>>(undefined, undefined, compact);
+
+			await block.render(TransitionCard, {});
+			begin();
+			await flushMicrotasks();
+			await block.settle(block.background.flushTransport());
+			await flushMicrotasks();
+			await block.settle(block.background.flushTransport());
+
+			expect(renders).toContain('true:0');
+			expect(renders).toContain('true:1');
+			expect(renders.at(-1)).toBe('false:1');
+			expect(paint(block.main.commits).tree).toContain('count one');
+		}
+	});
+
+	it('runs a standalone Block transition through the same staged lane', async () => {
+		let begin!: () => void;
+		const renders: number[] = [];
+		const TransitionCard = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, () => {
+			const [count, setCount] = useState(0, 'standalone-count');
+			begin = () => startTransition(() => setCount(1));
+			renders.push(count);
+			return universalValue(CARD_PLAN, [
+				'transition',
+				`standalone ${count === 0 ? 'zero' : 'one'}`,
+				'meta',
+				noop,
+				'detail',
+			]);
+		});
+		const block = blockColumn<Record<string, never>>();
+
+		await block.render(TransitionCard, {});
+		begin();
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+
+		expect(renders).toEqual([0, 1]);
+		expect(paint(block.main.commits).tree).toContain('standalone one');
+	});
+
+	it('previews and then publishes a deferred value through a Block transition', async () => {
+		const renders: string[] = [];
+		const DeferredCard = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			({ value }: { readonly value: string }) => {
+				const deferred = useDeferredValue(value, 'deferred-value');
+				renders.push(`${value}:${deferred}`);
+				return universalValue(CARD_PLAN, [
+					'deferred',
+					deferred,
+					value === deferred ? 'fresh' : 'stale',
+					noop,
+					'detail',
+				]);
+			},
+		);
+		const block = blockColumn<{ readonly value: string }>();
+
+		await block.render(DeferredCard, { value: 'zero' });
+		await block.render(DeferredCard, { value: 'one' });
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+
+		expect(renders).toContain('one:zero');
+		expect(renders.at(-1)).toBe('one:one');
+		expect(paint(block.main.commits).tree).toContain('one');
+	});
+
+	it('retains transition ownership in a keyed Block row scope', async () => {
+		const row = Object.freeze({ id: 1 });
+		const renders: string[] = [];
+		const TransitionRow = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, () => {
+			const [count, setCount] = useState(0, 'row-count');
+			const [pending, start] = useTransition('row-transition');
+			renders.push(`${pending}:${count}`);
+			return universalValue(CARD_PLAN, [
+				'row',
+				`row ${count === 0 ? 'zero' : 'one'}`,
+				pending ? 'pending' : 'ready',
+				() => start(() => setCount(1)),
+				'detail',
+			]);
+		});
+		const Page = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			() =>
+				universalValue(TABLE_PLAN, [
+					universalFor(
+						[row],
+						(item) => item.id,
+						() => universalComponent(LYNX_TRANSPORT_RENDERER, TransitionRow, {}),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const block = blockColumn<Record<string, never>>();
+
+		await block.render(Page, {});
+		deliverTo(block, cardRangeListener(block.main.commits, 0));
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+
+		expect(renders).toContain('true:0');
+		expect(renders).toContain('true:1');
+		expect(renders.at(-1)).toBe('false:1');
+		expect(paint(block.main.commits).tree).toContain('row one');
+	});
+
+	it('keeps the accepted Suspense body visible until a Block transition can reveal', async () => {
+		let begin!: (promise: Promise<string>) => void;
+		const renders: string[] = [];
+		const TransitionBoundary = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, () => {
+			const [source, setSource] = useState<Promise<string> | null>(null, 'source');
+			const [pending, start] = useTransition('transition');
+			begin = (promise) => start(() => setSource(promise));
+			renders.push(`${pending}:${source === null ? 'ready' : 'staged'}`);
+			return universalValue(TABLE_PLAN, [
+				universalTry(
+					() =>
+						universalValue(CARD_PLAN, [
+							'body',
+							source === null ? 'ready body' : use(source),
+							pending ? 'transition pending' : 'transition ready',
+							noop,
+							'body',
+						]),
+					() => universalValue(CARD_PLAN, ['fallback', 'loading', 'meta', noop, 'pending']),
+				),
+			]);
+		});
+		const block = blockColumn<Record<string, never>>();
+
+		await block.render(TransitionBoundary, {});
+		const pending = deferred<string>();
+		begin(pending.promise);
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+
+		const retained = paint(block.main.commits).tree;
+		expect(renders).toContain('true:staged');
+		expect(retained).toContain('ready body');
+		expect(retained).toContain('transition pending');
+		expect(retained).not.toContain('loading');
+
+		pending.resolve('revealed body');
+		await pending.promise;
+		await block.settle(Promise.resolve());
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+
+		const revealed = paint(block.main.commits).tree;
+		expect(revealed).toContain('revealed body');
+		expect(revealed).toContain('transition ready');
+		expect(revealed).not.toContain('loading');
+		expect(renders.at(-1)).toBe('false:staged');
+	});
+
+	it('settles a retained Block transition after an urgent update forfeits its shell', async () => {
+		let begin!: (promise: Promise<string>) => void;
+		let preempt!: () => void;
+		const renders: string[] = [];
+		const Boundary = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, () => {
+			const [source, setSource] = useState<Promise<string> | null>(null, 'source');
+			const [, setTick] = useState(0, 'tick');
+			const [pending, start] = useTransition('transition');
+			begin = (promise) => start(() => setSource(promise));
+			preempt = () => setTick((value) => value + 1);
+			renders.push(`${pending}:${source === null ? 'ready' : 'staged'}`);
+			return universalValue(TABLE_PLAN, [
+				universalTry(
+					() =>
+						universalValue(CARD_PLAN, [
+							'body',
+							source === null ? 'ready body' : use(source),
+							pending ? 'transition pending' : 'transition ready',
+							noop,
+							'body',
+						]),
+					() => universalValue(CARD_PLAN, ['fallback', 'loading', 'meta', noop, 'pending']),
+				),
+			]);
+		});
+		const block = blockColumn<Record<string, never>>();
+
+		await block.render(Boundary, {});
+		const pending = deferred<string>();
+		begin(pending.promise);
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+		expect(paint(block.main.commits).tree).toContain('ready body');
+
+		preempt();
+		await block.settle(Promise.resolve());
+		await block.settle(block.background.flushTransport());
+		expect(paint(block.main.commits).tree).toContain('loading');
+
+		pending.resolve('urgent reveal');
+		await pending.promise;
+		await block.settle(Promise.resolve());
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+		await flushMicrotasks();
+		await block.settle(block.background.flushTransport());
+
+		expect(paint(block.main.commits).tree).toContain('urgent reveal');
+		expect(renders.at(-1)).toBe('false:staged');
+	});
+
 	it('runs ordinary compiled keyed row hooks with inferred and explicit dependencies', async () => {
 		const metadata = Symbol.for('octane.universal.component');
 		// This Vitest project compiles with HMR. Its wrapper must stay conservative

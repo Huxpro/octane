@@ -329,6 +329,9 @@ export function createLynxBlockBackgroundCore(
 				work(backpressured);
 			});
 		},
+		scheduleMicrotask(work: () => void): void {
+			options.scheduleMicrotask(work);
+		},
 		noteRenderMerge(): void {
 			if (LYNX_PROFILE) lynxWireProfile().blockRenderMerges++;
 		},

@@ -21,6 +21,7 @@ import {
 	defineUniversalComponent,
 	memo,
 	renderLynxFirstScreen,
+	startTransition,
 	universalActivity,
 	universalComponent,
 	universalContext,
@@ -32,9 +33,12 @@ import {
 	use,
 	useBatch,
 	useContext,
+	useDeferredValue,
 	useLayoutEffect,
 	useMemo,
 	useReducer,
+	useState,
+	useTransition,
 } from '../src/main-renderer.compiled-program.js';
 
 const WIRE: UniversalHostTemplateProgram = {
@@ -109,6 +113,23 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 		const result = renderLynxFirstScreen(App, {});
 		expect(result.nodes[0]?.selectedValues).toEqual(['count:6', '6', 'count:6']);
 		expect(memoCalls).toBe(1);
+	});
+
+	it('previews transition hooks without scheduling main-thread first-screen state', () => {
+		const plan = universalPlan('lynx', PLAN);
+		const App = defineUniversalComponent('lynx', () => {
+			const [count] = useState(2);
+			const deferred = useDeferredValue(count);
+			const [pending, begin] = useTransition();
+			return universalValue(plan, [
+				pending ? 'pending' : 'ready',
+				typeof begin,
+				`${deferred}:${typeof startTransition}`,
+			]);
+		});
+
+		const result = renderLynxFirstScreen(App, {});
+		expect(result.nodes[0]?.selectedValues).toEqual(['ready', 'function', '2:function']);
 	});
 
 	it('materializes only the selected if and switch branches as stable ranges', () => {

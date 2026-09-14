@@ -20,7 +20,7 @@ export const LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO = 'octane:lynx-background
 export const LYNX_BACKGROUND_CORE_SELECTION_VERSION = 1;
 export const LYNX_APPLICATION_SELECTION_ASSET_INFO = 'octane:lynx-application-selection';
 export const LYNX_APPLICATION_SELECTION_VERSION = 2;
-export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 19;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 20;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
 	// Each name has an independent assertion through the Block component path.
@@ -30,10 +30,12 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 		'createContext',
 		'createPortal',
 		'memo',
+		'startTransition',
 		'use',
 		'useBatch',
 		'useCallback',
 		'useContext',
+		'useDeferredValue',
 		'useEffect',
 		'useLayoutEffect',
 		'useMemo',
@@ -41,6 +43,7 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 		'useRef',
 		'useState',
 		'useSyncExternalStore',
+		'useTransition',
 	]),
 	threadFunctions: Object.freeze(['background', 'main-thread']),
 	mainThreadProps: true,

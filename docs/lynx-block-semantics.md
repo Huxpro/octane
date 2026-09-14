@@ -54,6 +54,7 @@ must satisfy the runtime invariants below.
 | Fixed-shape keyed `list-item` rows under native `list` | Block selected | The compact store retains logical rows, publishes `update-list-info` before the accepting flush, materializes only requested cells, rebinds scalar/event identity across the established reuse pools, rejects stale enqueue callbacks, and reports accepted async callback faults. Native-list IFR is explicitly deferred to the first compact frame; it neither paints generic list hosts nor switches to Universal. Rows with nested structural ranges still fail closed. |
 | Compiler-proved `Activity` / retained visibility | Block selected | A structural Activity region keeps its component and hook cells across hidden/visible transitions, disconnects effects, refs, and listeners while hidden, and lowers visibility to ordered general-host commands or one compact `VIS`. Hidden compiled first-screen programs are hidden before insertion and reserve—but do not announce—their deterministic listener identities. |
 | Compiler-proved `@try` / Suspense | Block selected | Body, pending, and catch arms have independent compiler-owned semantic scopes. A retained body stays physically mounted but hidden while pending, disconnects effects/refs/listeners after ACK, and reconnects the same host and hook identity on reveal. Thenable retry subscription, caught-error state, and reset publish only after an accepted fallback/catch frame; rejected attempts and completions after deletion or unmount publish nothing. The compact first screen handles synchronous throw plus `use`/`useBatch` suspension without loading the Universal reconciler. |
+| `startTransition`, `useTransition`, and `useDeferredValue` | Block selected | The host-neutral hook scope preserves urgent and transition queues independently, promotes through the Block scheduler, and publishes pending/value changes only at accepted transaction boundaries. Page and retained keyed-row scopes share one coalesced Block transition attempt. A transition that suspends retains its last accepted range without mounting the pending arm, holds pending across retries, and reveals atomically when the thenable settles. Standalone transitions and deferred-value preview/final passes use the same lane machinery in both general and compact Block applications. |
 | Compiler-proved whole-root Template Definitions | Experimental Element Template selected | `experimentalElementTemplate: true` requires complete paired Block/application proof plus complete template lowering. Static hosts, scalar/event slots, and compiler-ordered structural slots use opaque template handles; refs, native lists, main-thread props, text-polymorphic ranges, and non-scalar native composition fail closed instead of mixing ordinary Element refs into the tree. |
 | Main-thread props and thread functions | General Block application only | The Block transport can carry them, but the compact compiled-program product fails closed and keeps the general application product. |
 | Ordered host spreads with unknown property names | Whole-entry Universal compatibility | `UniversalHostPlan.propsSlot` has no resident Block prop-name table. Static named props remain Block-native. |
@@ -202,6 +203,21 @@ the previous target and ownership and releases only the speculative
 registration. The compact application remains ineligible because its instance
 parent vocabulary has no renderer-owned target representation; this boundary
 does not add Universal host records, plan execution, or a mid-tree core switch.
+
+## Transition scheduling cost
+
+Each hook scope allocates transition sets only when its adopting renderer opts
+into the two scheduling services. Promotion adds the participating scope to one
+program-level set; one queued Block render consumes all promoted page and row
+lanes. Ordinary renders retain the urgent fast path and scopes used by other
+adopting cores remain backward-compatible and urgent-only.
+
+An accepted non-suspending attempt settles each participating scope once. A
+suspending attempt retains the range's existing state record and emits no range
+mutation for that boundary; the thenable schedules a transition retry through
+the same serialized host/ACK queue. Host rejection restores the consumed lanes
+and queues one retry, while an escaping error or unmount settles every owned
+batch so pending subscriptions cannot outlive the Block program.
 
 ## Resident host retention
 
