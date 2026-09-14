@@ -882,6 +882,10 @@ export function lynxBlockProgramForComponent<Props>(
 	let block: LynxBlock | null = null;
 	let valueIndexesBySlot: ProgramSiteIndexes = EMPTY_SITE_INDEXES;
 	let eventIndexesBySlot: ProgramSiteIndexes = EMPTY_SITE_INDEXES;
+	// Host refs publish ownership at the ACK boundary and are absent from the
+	// template value map. A dirty group touching one must take the full render
+	// path so bindRefs sees every accepted descriptor together.
+	let refSlots: ReadonlySet<number> | null = null;
 	let ranges: readonly RangeState[] = EMPTY_RANGES;
 
 	/** Read a compiled component's return value, or say what it returned instead. */
@@ -3347,6 +3351,10 @@ export function lynxBlockProgramForComponent<Props>(
 		for (const computation of liveComputations) {
 			if (!computation.sources.some((source) => dirtySources.has(source))) continue;
 			if (computation.kind === 'structural') return undefined;
+			const refs = refSlots;
+			if (refs !== null && computation.slots.some((slot) => refs.has(slot))) {
+				return undefined;
+			}
 			selected.push(computation);
 			for (const source of computation.sources) {
 				if (dirtySources.has(source)) covered.add(source);
@@ -3578,6 +3586,7 @@ export function lynxBlockProgramForComponent<Props>(
 				prepared,
 				valueIndexesBySlot,
 				eventIndexesBySlot,
+				refSlots,
 				block,
 				ranges,
 			};
@@ -3589,6 +3598,7 @@ export function lynxBlockProgramForComponent<Props>(
 				ranges = previous.ranges;
 				valueIndexesBySlot = previous.valueIndexesBySlot;
 				eventIndexesBySlot = previous.eventIndexesBySlot;
+				refSlots = previous.refSlots;
 			});
 			const rendered = renderSubject(context, props);
 			try {
@@ -3652,6 +3662,10 @@ export function lynxBlockProgramForComponent<Props>(
 						: declaredRanges.map((range) => createRangeState(range, rendered.values[range.slot]));
 				valueIndexesBySlot = indexProgramSites(wire.values);
 				eventIndexesBySlot = indexProgramSites(wire.events);
+				refSlots =
+					isLynxCompilerProgram(rendered.plan) && rendered.plan.refs !== undefined
+						? new Set(rendered.plan.refs.map((ref) => ref.slot))
+						: null;
 				const template: LynxBlockTemplate = compileLynxBlockTemplate(
 					wire.wire,
 					rendered.plan.address,
@@ -3755,6 +3769,7 @@ export function lynxBlockProgramForComponent<Props>(
 				dirtySlots = null;
 				valueIndexesBySlot = EMPTY_SITE_INDEXES;
 				eventIndexesBySlot = EMPTY_SITE_INDEXES;
+				refSlots = null;
 				liveComputations = EMPTY_COMPUTATIONS;
 				portalTargetClaims.clear();
 				portalDraftClaims = null;

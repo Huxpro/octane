@@ -316,12 +316,14 @@ adding an unbounded queue.
 Only compiler-proved pure scalar dirty computations may run before the sent
 version settles. When no non-empty frame occupies the commit lane, the queued
 render computes directly and allocates no detached draft. A prepared hook draft
-and its output values are detached, but they do
-not write a host slot, send a message, publish a listener/ref, or run lifecycle
-work. Structural regions, caller-driven prop renders, scoped row renders, and
-unknown computations retain the serialized path. If an accepted render changes
-the computation closure before the logical draft can apply, the draft is
-discarded and recomputed from the new accepted state.
+and its output values are detached, but they do not write a host slot, send a
+message, publish a listener/ref, or run lifecycle work. Structural regions,
+caller-driven prop renders, scoped row renders, and unknown computations retain
+the serialized path. A scalar dependency group that also writes an authored
+host-ref slot stays serialized too: refs are absent from the template value map
+and must be rebound as one complete ownership snapshot at ACK. If an accepted
+render changes the computation closure before the logical draft can apply, the
+draft is discarded and recomputed from the new accepted state.
 
 The linearization points are:
 

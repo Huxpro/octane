@@ -168,6 +168,16 @@ const CARD_COMPILER_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
 	},
 });
 
+const REF_CARD_COMPILER_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+	...CARD_PROGRAM_IR,
+	address: {
+		module: 'tests/CompilerRefCard.lynx.tsrx',
+		index: 0,
+		digest: 'compiler-ref-card',
+	},
+	refs: [{ node: 0, slot: 5 }],
+});
+
 const CONTINUOUS_CARD_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
 	kind: 'host',
 	type: 'view',
@@ -1299,6 +1309,95 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 			lookups: after.blockLookups - before.blockLookups,
 			commands: after.commands - before.commands,
 		}).toEqual({ lookups: 1, commands: 1 });
+	});
+
+	it('keeps dynamic host refs on the serialized ownership path', async () => {
+		const refs: string[] = [];
+		const callback = (name: string) => (handle: unknown | null) => {
+			refs.push(`${name}:${handle === null ? 'null' : 'attach'}`);
+			return () => refs.push(`${name}:cleanup`);
+		};
+		const props = {
+			firstRef: callback('first'),
+			secondRef: callback('second'),
+		};
+		let componentRuns = 0;
+		let setCount!: (value: number) => void;
+		let setSecond!: (value: boolean) => void;
+		const DynamicRef = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function DynamicRef(input: typeof props) {
+				componentRuns++;
+				const [count, updateCount, getCount] = useState(0, 'count');
+				const [second, updateSecond, getSecond] = useState(false, 'second-ref');
+				setCount = updateCount;
+				setSecond = updateSecond;
+				return lynxProgramValue(
+					REF_CARD_COMPILER_PROGRAM,
+					[
+						'card',
+						`count ${TALLY[count] ?? 'many'}`,
+						'card-meta',
+						noop,
+						second ? 'second' : 'first',
+						second ? input.secondRef : input.firstRef,
+					],
+					[
+						{
+							kind: 'scalar',
+							purity: 'pure',
+							escape: 'component-render',
+							sources: [getCount],
+							slots: [1],
+							run: () => [`count ${TALLY[getCount()] ?? 'many'}`],
+						},
+						{
+							kind: 'scalar',
+							purity: 'pure',
+							escape: 'component-render',
+							sources: [getSecond],
+							slots: [4, 5],
+							run: () => [
+								getSecond() ? 'second' : 'first',
+								getSecond() ? input.secondRef : input.firstRef,
+							],
+						},
+					],
+				) as never;
+			},
+		);
+		const block = blockColumn<typeof props>();
+
+		await block.render(DynamicRef, props);
+		expect(refs).toEqual(['first:attach']);
+		expect(componentRuns).toBe(1);
+
+		setCount(1);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(2);
+		setSecond(true);
+		const pending = block.background.flushTransport();
+		await flushMicrotasks();
+		// The ref update is accumulated while the count frame is in flight, but
+		// neither its full component render nor its ownership callback may publish.
+		expect(block.main.commits).toHaveLength(2);
+		expect(componentRuns).toBe(1);
+		expect(refs).toEqual(['first:attach']);
+
+		block.acknowledgePending();
+		for (let guard = 0; guard < 5 && block.main.commits.length < 3; guard++) {
+			await flushMicrotasks();
+		}
+		expect(block.main.commits).toHaveLength(3);
+		expect(componentRuns).toBe(2);
+		expect(refs).toEqual(['first:attach']);
+
+		block.acknowledgePending();
+		await pending;
+
+		expect(paint(block.main.commits).tree).toContain('count once');
+		expect(paint(block.main.commits).tree).toContain('second');
+		expect(refs).toEqual(['first:attach', 'first:cleanup', 'second:attach']);
 	});
 
 	it('keeps compiler scalar updates independent of unrelated keyed row count', async () => {
