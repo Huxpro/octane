@@ -1691,6 +1691,41 @@ export function Card(props: { readonly items: readonly Item[]; readonly theme: s
 		]);
 	});
 
+	it('addresses an Activity body and reports it as a supported structural region', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { Activity } from 'octane';
+
+export function Card(props: { readonly visible: boolean; readonly label: string }) @{
+	<view class="page">
+		<Activity mode={props.visible ? 'visible' : 'hidden'}>
+			<view class="retained"><text>{props.label as string}</text></view>
+		</Activity>
+	</view>
+}
+`;
+		const module = 'src/ActivityCard.lynx.tsrx';
+		const main = compileCard(source, { backend: Backend, module });
+		const background = compileCard(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+
+		expect(main.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
+		expect(background.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
+		expect(main.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			expect.objectContaining({ kind: 'activity' }),
+		]);
+		expect(background.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			expect.objectContaining({ kind: 'activity' }),
+		]);
+		expect(background.lynxBlockSemanticRequirements?.runtimeUses.map((site) => site.name)).toEqual([
+			'Activity',
+		]);
+	});
+
 	it('addresses an open structural range and hashes its topology', () => {
 		const module = 'src/StructuralCard.lynx.tsrx';
 		const main = evaluate(compiled(STRUCTURAL_ADDRESSABLE_CARD, { backend: Backend, module }));

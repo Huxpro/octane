@@ -21,6 +21,7 @@ import {
 	defineUniversalComponent,
 	memo,
 	renderLynxFirstScreen,
+	universalActivity,
 	universalComponent,
 	universalContext,
 	universalIf,
@@ -108,6 +109,26 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 		expect(fallback.nodes.map((node) => node.children[0]?.selectedValues)).toEqual([
 			['else', 'else', 'else'],
 			['default', 'default', 'default'],
+		]);
+	});
+
+	it('retains hidden Activity programs without announcing their events', () => {
+		const eventPlan = universalPlan('lynx', {
+			...PLAN,
+			events: [{ slot: 3, node: 1, type: 'bindtap', priority: 'discrete' }],
+		});
+		const onTap = () => {};
+		const program = (label: string) => universalValue(eventPlan, [label, label, label, onTap]);
+		const App = defineUniversalComponent('lynx', () => [
+			universalActivity('hidden', () => universalActivity('visible', () => program('hidden'))),
+			universalActivity('visible', () => program('visible')),
+		]);
+
+		const result = renderLynxFirstScreen(App, {});
+		expect(result.nodes[0]?.children[0]?.children[0]?.visibility).toBe('hidden');
+		expect(result.nodes[1]?.children[0]?.visibility).toBe('visible');
+		expect(result.envelope.events).toEqual([
+			{ id: 7, type: 'bindtap', listener: { id: 2, priority: 'discrete' } },
 		]);
 	});
 

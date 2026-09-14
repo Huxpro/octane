@@ -37,6 +37,7 @@ import {
 	createUniversalRoot,
 	defineUniversalComponent,
 	memo,
+	universalActivity,
 	universalChildren,
 	universalComponent,
 	universalContext,
@@ -1755,6 +1756,249 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 			expect.arrayContaining(['cleanup:1:light', 'cleanup:2:light']),
 		);
 	});
+
+	it('retains Activity state while visibility gates effects and native listeners', async () => {
+		interface ActivityProps {
+			readonly mode: 'visible' | 'hidden';
+			readonly label: string;
+		}
+		const lifecycle: string[] = [];
+		const activityRef: { current: unknown } = { current: null };
+		const activityProgram = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+			...CARD_PROGRAM_IR,
+			address: {
+				module: 'tests/ActivityChild.lynx.tsrx',
+				index: 0,
+				digest: 'activity-child',
+			},
+			refs: [{ node: 0, slot: 5 }],
+		});
+		let setTone!: (value: string) => void;
+		const ActivityChild = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function ActivityChild({ label }: { readonly label: string }) {
+				const [tone, updateTone] = useState('quiet', 'tone');
+				setTone = updateTone;
+				useLayoutEffect(
+					() => {
+						lifecycle.push(`layout:${label}:${tone}`);
+						return () => lifecycle.push(`layout-cleanup:${label}:${tone}`);
+					},
+					[label, tone],
+					'activity-layout',
+				);
+				useEffect(
+					() => {
+						lifecycle.push(`passive:${label}:${tone}`);
+						return () => lifecycle.push(`passive-cleanup:${label}:${tone}`);
+					},
+					[label, tone],
+					'activity-passive',
+				);
+				return lynxProgramValue(activityProgram, [
+					'activity',
+					label,
+					'activity-meta',
+					() => updateTone('tapped'),
+					`${label}:${tone}`,
+					activityRef,
+				]);
+			},
+		);
+		const ActivityPage = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function ActivityPage({ mode, label }: ActivityProps) {
+				return universalValue(TABLE_PLAN, [
+					universalActivity(mode, () =>
+						universalComponent(LYNX_TRANSPORT_RENDERER, ActivityChild, { label }),
+					),
+				]);
+			},
+			{ hookScope: false },
+		);
+		const block = blockColumn<ActivityProps>(createLynxBlockCore({ templateRuns: () => false }));
+
+		await block.render(ActivityPage as never, { mode: 'hidden', label: 'alpha' });
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([]);
+		const visibility = () =>
+			block.main.commits
+				.map((commit) => commit.batch.commands.filter((command) => command.op === 'visibility'))
+				.filter((commands) => commands.length !== 0)
+				.map((commands) => {
+					const states = new Set(commands.map((command) => command.state));
+					expect(states.size).toBe(1);
+					return commands[0]!.state;
+				});
+		const activityListener = (): LynxResolvedNativeEvent => {
+			const papi = createFakePAPI();
+			const host = createLynxHostContainer(papi, { root: 1 });
+			for (const commit of block.main.commits) prepareLynxHostBatch(host, commit.batch).apply();
+			const label = papi.pages[0]!.children[0]!.children[1]!.children[0]!.children[0]!;
+			const resolved = resolveLynxHostNativeEvent(host, [...label.events.values()][0]);
+			if (resolved === null) throw new Error('the Activity child bound no event site');
+			return resolved;
+		};
+		expect(visibility()).toEqual(['hidden']);
+		expect(activityListener).toThrow();
+		expect(activityRef.current).toBeNull();
+
+		setTone('warm');
+		await block.settle(Promise.resolve());
+		await block.render(ActivityPage as never, { mode: 'hidden', label: 'beta' });
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([]);
+		expect(paint(block.main.commits).tree).toContain('beta:warm');
+
+		await block.render(ActivityPage as never, { mode: 'visible', label: 'beta' });
+		await flushMicrotasks();
+		expect(visibility()).toEqual(['hidden', 'visible']);
+		expect(lifecycle).toEqual(['layout:beta:warm', 'passive:beta:warm']);
+		const visibleHandle = activityRef.current;
+		expect(visibleHandle).toMatchObject({ active: true, attached: true });
+		const live = activityListener();
+		deliverTo(block, live);
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('beta:tapped');
+
+		await block.render(ActivityPage as never, { mode: 'hidden', label: 'beta' });
+		await flushMicrotasks();
+		expect(lifecycle.slice(-2)).toEqual([
+			'layout-cleanup:beta:tapped',
+			'passive-cleanup:beta:tapped',
+		]);
+		expect(() => deliverTo(block, live)).toThrow(/listener/i);
+		expect(activityRef.current).toBeNull();
+
+		await block.render(ActivityPage as never, { mode: 'visible', label: 'gamma' });
+		await flushMicrotasks();
+		expect(paint(block.main.commits).tree).toContain('gamma:tapped');
+		expect(lifecycle.slice(-2)).toEqual(['layout:gamma:tapped', 'passive:gamma:tapped']);
+		expect(activityRef.current).toBe(visibleHandle);
+
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(lifecycle.slice(-2)).toEqual([
+			'layout-cleanup:gamma:tapped',
+			'passive-cleanup:gamma:tapped',
+		]);
+		expect(activityRef.current).toBeNull();
+		expect(visibleHandle).toMatchObject({ active: false });
+	});
+
+	it('matches Universal host observations while an Activity is hidden and revealed', async () => {
+		interface ActivityProps {
+			readonly mode: 'visible' | 'hidden';
+			readonly label: string;
+		}
+		const ActivityChild = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			({ label }: { readonly label: string }) =>
+				universalValue(CARD_PLAN, ['activity', label, 'activity-meta', noop, label]),
+		);
+		const ActivityPage = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			({ mode, label }: ActivityProps) =>
+				universalValue(TABLE_PLAN, [
+					universalActivity(mode, () =>
+						universalComponent(LYNX_TRANSPORT_RENDERER, ActivityChild, { label }),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const universal = universalColumn(ActivityPage as never);
+		const block = blockColumn<ActivityProps>(createLynxBlockCore({ templateRuns: () => false }));
+
+		for (const props of [
+			{ mode: 'hidden', label: 'alpha' },
+			{ mode: 'visible', label: 'beta' },
+			{ mode: 'hidden', label: 'gamma' },
+			{ mode: 'visible', label: 'delta' },
+		] as const) {
+			await universal.render(props);
+			await block.render(ActivityPage as never, props);
+			await flushMicrotasks();
+			expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
+		}
+	});
+
+	it('publishes no Activity effect, ref, or listener from a rejected mount', async () => {
+		const lifecycle: string[] = [];
+		const activityRef: { current: unknown } = { current: null };
+		const activityProgram = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+			...CARD_PROGRAM_IR,
+			address: {
+				module: 'tests/RejectedActivityChild.lynx.tsrx',
+				index: 0,
+				digest: 'rejected-activity-child',
+			},
+			refs: [{ node: 0, slot: 5 }],
+		});
+		const ActivityChild = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, () => {
+			useEffect(
+				() => {
+					lifecycle.push('effect');
+					return () => lifecycle.push('cleanup');
+				},
+				[],
+				'rejected-activity-effect',
+			);
+			return lynxProgramValue(activityProgram, [
+				'activity',
+				'visible',
+				'activity-meta',
+				() => lifecycle.push('tap'),
+				'visible',
+				activityRef,
+			]);
+		});
+		const ActivityPage = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			() =>
+				universalValue(TABLE_PLAN, [
+					universalActivity('visible', () =>
+						universalComponent(LYNX_TRANSPORT_RENDERER, ActivityChild, {}),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const block = blockColumn(createLynxBlockCore({ templateRuns: () => false }));
+
+		const rejected = block.background.renderAsync(ActivityPage as never, {});
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(1);
+		expect(lifecycle).toEqual([]);
+		expect(activityRef.current).toBeNull();
+		const pendingListener = (() => {
+			const papi = createFakePAPI();
+			const host = createLynxHostContainer(papi, { root: 1 });
+			prepareLynxHostBatch(host, block.main.commits[0]!.batch).apply();
+			const label = papi.pages[0]!.children[0]!.children[1]!.children[0]!.children[0]!;
+			return resolveLynxHostNativeEvent(host, [...label.events.values()][0])!;
+		})();
+		expect(() => deliverTo(block, pendingListener)).toThrow(/version|listener/i);
+
+		block.main.reject(block.main.commits[0]!, 'injected Activity mount rejection');
+		await expect(rejected).rejects.toThrow('injected Activity mount rejection');
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([]);
+		expect(activityRef.current).toBeNull();
+
+		await block.render(ActivityPage as never, {});
+		await flushMicrotasks();
+		expect(lifecycle).toEqual(['effect']);
+		expect(activityRef.current).toMatchObject({ active: true, attached: true });
+		const acceptedListener = (() => {
+			const papi = createFakePAPI();
+			const host = createLynxHostContainer(papi, { root: 1 });
+			prepareLynxHostBatch(host, block.main.commits[1]!.batch).apply();
+			const label = papi.pages[0]!.children[0]!.children[1]!.children[0]!.children[0]!;
+			return resolveLynxHostNativeEvent(host, [...label.events.values()][0])!;
+		})();
+		deliverTo(block, acceptedListener);
+		expect(lifecycle).toEqual(['effect', 'tap']);
+	});
+
 	it('replaces @if and @switch branches with isolated state, effects, and listeners', async () => {
 		const ALTERNATE_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
 			kind: 'host',

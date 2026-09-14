@@ -24,7 +24,9 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  * Component-local hook scopes sit above these scoped entry points and publish at
  * the same render-attempt boundary. Native lists reuse these instance and range
  * identities while the main-thread store alone materializes physical cells. De-opt
- * regions, Suspense, Activity, and portals remain selected out until their slices.
+ * regions, Suspense, and portals remain selected out until their slices. Activity
+ * visibility is retained by the component layer and lowered here to transactional
+ * VIS operations over the same resident instance identities.
  */
 
 import { sameLynxUniversalHostPropValue } from './host-props.js';
@@ -242,6 +244,8 @@ export interface LynxBlock {
 	readonly instance: number | null;
 	/** True while the instance is a logical native-list row without a physical cell. */
 	readonly deferred: boolean;
+	/** Last accepted Activity visibility for this retained instance. */
+	visible: boolean;
 	readonly values: UniversalHostTemplateProgramValue[];
 	readonly key: unknown;
 	/** Monotonic committed-order token, refreshed by `link`; deletions may leave gaps. */
@@ -453,6 +457,8 @@ export interface LynxBlockCore {
 		valueIndex: number,
 		value: UniversalHostTemplateProgramValue,
 	): boolean;
+	/** Retain an instance while switching its native/event visibility. */
+	setVisibility(block: LynxBlock, visible: boolean): boolean;
 	/** Hand the accumulated frame to the caller. Null when nothing changed. */
 	flush(): UniversalHostBatch | null;
 	counters(): LynxBlockCoreCounters;
@@ -528,6 +534,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 	let attemptCapturedSlots: Set<LynxBlockForSlot> | null = null;
 	let attemptValues: ValueSnapshotPart[] | null = null;
 	let attemptCapturedValues: Map<LynxBlock, number | Set<number>> | null = null;
+	let attemptVisibility: (LynxBlock | boolean)[] | null = null;
+	let attemptCapturedVisibility: Set<LynxBlock> | null = null;
 	let attemptAccepts: (() => void)[] | null = null;
 
 	const captureSlot = (slot: LynxBlockForSlot): void => {
@@ -668,6 +676,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				firstId: firstId + row * template.hostCount,
 				instance: firstInstance === null ? null : firstInstance + row,
 				deferred: rangeSite?.[4] === true,
+				visible: true,
 				// The listener run is dense in exactly the way the host run is, so a
 				// block's own base is its row offset into the run's base. This is the
 				// `firstListenerId + rowIndex * eventCount + siteIndex` derivation the
@@ -1086,6 +1095,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			attemptCapturedSlots = null;
 			attemptValues = null;
 			attemptCapturedValues = null;
+			attemptVisibility = null;
+			attemptCapturedVisibility = null;
 			for (const accept of accepts ?? []) accept();
 		},
 
@@ -1102,6 +1113,10 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 				const valueIndex = attemptValues![index + 1] as number;
 				block.values[valueIndex] = attemptValues![index + 2] as UniversalHostTemplateProgramValue;
 			}
+			for (let index = (attemptVisibility?.length ?? 0) - 2; index >= 0; index -= 2) {
+				const block = attemptVisibility![index] as LynxBlock;
+				block.visible = attemptVisibility![index + 1] as boolean;
+			}
 			for (let index = (attemptSlots?.length ?? 0) - 1; index >= 0; index--) {
 				const { slot, items, ordered } = attemptSlots![index]!;
 				slot.items.clear();
@@ -1112,6 +1127,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			attemptCapturedSlots = null;
 			attemptValues = null;
 			attemptCapturedValues = null;
+			attemptVisibility = null;
+			attemptCapturedVisibility = null;
 			attemptAccepts = null;
 			return true;
 		},
@@ -1336,6 +1353,44 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		setSlotValue(block, valueIndex, value) {
 			blockLookups++;
 			return write(block, valueIndex, value);
+		},
+
+		setVisibility(block, visible) {
+			if (block.visible === visible) return false;
+			blockLookups++;
+			if (attemptActive) {
+				const captured = (attemptCapturedVisibility ??= new Set());
+				if (!captured.has(block)) {
+					captured.add(block);
+					(attemptVisibility ??= []).push(block, block.visible);
+				}
+			}
+			block.visible = visible;
+			if (deltaProducer !== null) {
+				if (block.instance === null) {
+					fail(
+						LYNX_BLOCK_CORE_DEVELOPMENT &&
+							'a direct VIS requires the block compact instance identity',
+					);
+				}
+				deltaProducer.visibility(block.instance, visible);
+				commandCount++;
+			} else {
+				// Match the universal visibility walk: descendants hide before their
+				// ancestors so resources detach from live parents, while reveal runs in
+				// pre-order so parents exist before descendants reconnect. A compact
+				// resident instance expresses the same transition as one VIS delta.
+				if (visible) {
+					for (let node = 0; node < block.template.hostCount; node++) {
+						emit({ op: 'visibility', id: block.firstId + node, state: 'visible' });
+					}
+				} else {
+					for (let node = block.template.hostCount - 1; node >= 0; node--) {
+						emit({ op: 'visibility', id: block.firstId + node, state: 'hidden' });
+					}
+				}
+			}
+			return true;
 		},
 
 		flush() {

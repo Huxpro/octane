@@ -25,6 +25,7 @@ const UNIVERSAL_IF = Symbol.for('octane.universal.if');
 const UNIVERSAL_SWITCH = Symbol.for('octane.universal.switch');
 const UNIVERSAL_FOR = Symbol.for('octane.universal.for');
 const UNIVERSAL_CONTEXT = Symbol.for('octane.universal.context');
+const UNIVERSAL_ACTIVITY = Symbol.for('octane.universal.activity');
 const CONTEXT_TAG = Symbol.for('octane.context');
 const FIRST_SCREEN_EVENT = Symbol.for('octane.lynx.first-screen-event');
 const NO_CHILDREN = Symbol('octane.lynx.compiled-program.no-children');
@@ -88,6 +89,11 @@ interface ContextValue {
 	readonly value: unknown;
 	readonly children: UniversalRenderable | (() => UniversalRenderable);
 }
+interface ActivityValue {
+	readonly $$kind: symbol;
+	readonly mode: 'visible' | 'hidden';
+	readonly body: () => UniversalRenderable;
+}
 
 export interface NativeUniversalContext<T> extends UniversalContext<T> {
 	(props: {
@@ -112,6 +118,7 @@ interface CompactProgramNode {
 	rangeIds: (number | undefined)[];
 	eventsAt: number;
 	eventsCount: number;
+	readonly visibility: 'visible' | 'hidden';
 }
 
 interface CompactRangeNode {
@@ -333,6 +340,16 @@ export function universalContext<T>(
 	return { $$kind: UNIVERSAL_CONTEXT, context, value, children } as unknown as UniversalRenderable;
 }
 
+export function universalActivity(
+	mode: 'visible' | 'hidden' | string,
+	body: () => UniversalRenderable,
+): UniversalRenderable {
+	if (mode !== 'visible' && mode !== 'hidden') {
+		fail('requires Activity mode to be "visible" or "hidden"');
+	}
+	return { $$kind: UNIVERSAL_ACTIVITY, mode, body } as unknown as UniversalRenderable;
+}
+
 export function createContext<T>(defaultValue: T): NativeUniversalContext<T> {
 	const context = ((props: {
 		value: T;
@@ -451,7 +468,7 @@ function selectedProgramValues(
 	return Object.freeze(selected);
 }
 
-function program(value: PlanValue): CompactProgramNode {
+function program(value: PlanValue, visibility: 'visible' | 'hidden'): CompactProgramNode {
 	const plan = value.plan;
 	if (plan.kind !== 'program') fail('received an unaddressed plan at render time');
 	const children: CompactNode[] = [];
@@ -465,7 +482,7 @@ function program(value: PlanValue): CompactProgramNode {
 			continue;
 		}
 		texts.push(undefined);
-		const members = materialize(selected);
+		const members = materialize(selected, visibility);
 		spans.push(members.length);
 		for (const member of members) children.push(member);
 	}
@@ -482,33 +499,38 @@ function program(value: PlanValue): CompactProgramNode {
 		rangeIds: [],
 		eventsAt: 0,
 		eventsCount: 0,
+		visibility,
 	};
 }
 
-function renderComponent(value: ComponentValue): CompactRangeNode {
+function renderComponent(
+	value: ComponentValue,
+	visibility: 'visible' | 'hidden',
+): CompactRangeNode {
 	const metadata = (value.component as unknown as Record<PropertyKey, unknown>)[
 		UNIVERSAL_COMPONENT
 	] as { readonly id?: unknown } | undefined;
 	if (metadata?.id !== 'lynx') fail('received an uncompiled child component');
-	return range(materialize(value.component(value.props.props, componentContext())));
+	return range(materialize(value.component(value.props.props, componentContext()), visibility));
 }
 
-function materialize(value: unknown): CompactNode[] {
+function materialize(value: unknown, visibility: 'visible' | 'hidden' = 'visible'): CompactNode[] {
 	if (value == null || value === false || value === true) return [];
 	const record = value as Record<string, unknown>;
-	if (record?.$$kind === UNIVERSAL_VALUE) return [program(value as unknown as PlanValue)];
+	if (record?.$$kind === UNIVERSAL_VALUE)
+		return [program(value as unknown as PlanValue, visibility)];
 	if (record?.$$kind === UNIVERSAL_COMPONENT_VALUE) {
-		return [renderComponent(value as unknown as ComponentValue)];
+		return [renderComponent(value as unknown as ComponentValue, visibility)];
 	}
 	if (record?.$$kind === UNIVERSAL_CHILDREN) {
 		const children = value as unknown as ChildrenValue;
 		assertRenderer(children.renderer);
-		return materialize(children.render());
+		return materialize(children.render(), visibility);
 	}
 	if (record?.$$kind === UNIVERSAL_IF) {
 		const branch = value as unknown as IfValue;
 		const body = branch.condition ? branch.then : branch.else;
-		return body === null ? [] : [range(materialize(body()))];
+		return body === null ? [] : [range(materialize(body(), visibility))];
 	}
 	if (record?.$$kind === UNIVERSAL_SWITCH) {
 		const branch = value as unknown as SwitchValue;
@@ -519,7 +541,7 @@ function materialize(value: unknown): CompactNode[] {
 				break;
 			}
 		}
-		return selected === null ? [] : [range(materialize(selected()))];
+		return selected === null ? [] : [range(materialize(selected(), visibility))];
 	}
 	if (record?.$$kind === UNIVERSAL_FOR) {
 		const loop = value as unknown as ForValue;
@@ -530,9 +552,9 @@ function materialize(value: unknown): CompactNode[] {
 			const key = loop.key(item, index);
 			if (keys.has(key)) fail(`received duplicate key ${String(key)}`);
 			keys.add(key);
-			output.push(range(materialize(loop.render(item, index++))));
+			output.push(range(materialize(loop.render(item, index++), visibility)));
 		}
-		if (index === 0 && loop.empty !== null) return [range(materialize(loop.empty()))];
+		if (index === 0 && loop.empty !== null) return [range(materialize(loop.empty(), visibility))];
 		return output;
 	}
 	if (record?.$$kind === UNIVERSAL_CONTEXT) {
@@ -543,14 +565,20 @@ function materialize(value: unknown): CompactNode[] {
 			range(
 				withContexts(contexts, () => {
 					const children = provider.children;
-					return materialize(typeof children === 'function' ? children() : children);
+					return materialize(typeof children === 'function' ? children() : children, visibility);
 				}),
 			),
 		];
 	}
+	if (record?.$$kind === UNIVERSAL_ACTIVITY) {
+		const activity = value as unknown as ActivityValue;
+		const childVisibility =
+			visibility === 'hidden' || activity.mode === 'hidden' ? 'hidden' : 'visible';
+		return [range(materialize(activity.body(), childVisibility))];
+	}
 	if (Array.isArray(value)) {
 		const output: CompactNode[] = [];
-		for (const child of value) output.push(...materialize(child));
+		for (const child of value) output.push(...materialize(child, visibility));
 		return output;
 	}
 	return fail('received an unaddressed renderable');
@@ -610,6 +638,7 @@ function collectEvents(
 		}
 		hosts += node.plan.nodes;
 		node.eventsAt = events.length;
+		const visible = node.visibility === 'visible';
 		const ranges = node.plan.ranges;
 		const sites = node.plan.events;
 		let hole = 0;
@@ -632,7 +661,7 @@ function collectEvents(
 				const site = sites[event++]!;
 				const handler = node.values[site.slot];
 				const listener = next.listener++;
-				if (handler === FIRST_SCREEN_EVENT || typeof handler === 'function') {
+				if (visible && (handler === FIRST_SCREEN_EVENT || typeof handler === 'function')) {
 					events.push({
 						id: node.ids[host]!,
 						type: site.type,

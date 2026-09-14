@@ -33,6 +33,7 @@ interface CompiledFirstScreenResultNode {
 	readonly ids?: readonly number[];
 	readonly spans?: readonly number[];
 	readonly texts?: readonly (string | undefined)[];
+	readonly visibility?: 'visible' | 'hidden';
 }
 
 function fail(message: string): never {
@@ -164,6 +165,7 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 					fail(`program create disagreed about range ${range}`);
 				}
 			}
+			if (node.visibility === 'hidden') papi.setAttribute(created[0], 'hidden', true);
 
 			painted.push({
 				firstId: ids[0]!,

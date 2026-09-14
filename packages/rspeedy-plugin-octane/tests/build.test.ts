@@ -461,16 +461,20 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				program: {
 					version: 1,
 					complete: true,
-					pairedPlans: 8,
-					pairedAddressed: 8,
+					pairedPlans: 9,
+					pairedAddressed: 9,
 					reasons: [],
 				},
 				semantic: {
 					version: 1,
 					paired: true,
 					requirements: {
-						background: { runtimeUses: ['createContext', 'memo', 'useContext', 'useState'] },
-						mainThread: { runtimeUses: ['createContext', 'memo', 'useContext', 'useState'] },
+						background: {
+							runtimeUses: ['Activity', 'createContext', 'memo', 'useContext', 'useState'],
+						},
+						mainThread: {
+							runtimeUses: ['Activity', 'createContext', 'memo', 'useContext', 'useState'],
+						},
 					},
 					reasons: [],
 				},
@@ -485,6 +489,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 									expect.objectContaining({ kind: 'switch' }),
 									expect.objectContaining({ kind: 'component-hole' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockSelection' }),
+									expect.objectContaining({ kind: 'activity' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockFrame' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockRenderFrame' }),
 									expect.objectContaining({ kind: 'inline-render-prop', name: 'render' }),
@@ -512,6 +517,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 									expect.objectContaining({ kind: 'switch' }),
 									expect.objectContaining({ kind: 'component-hole' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockSelection' }),
+									expect.objectContaining({ kind: 'activity' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockFrame' }),
 									expect.objectContaining({ kind: 'local-component', name: 'BlockRenderFrame' }),
 									expect.objectContaining({ kind: 'inline-render-prop', name: 'render' }),
@@ -1028,8 +1034,9 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 13,
+							version: 14,
 							runtimeNames: [
+								'Activity',
 								'createContext',
 								'memo',
 								'useCallback',
@@ -1042,6 +1049,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 							threadFunctions: ['background', 'main-thread'],
 							mainThreadProps: true,
 							templateFeatures: [
+								'activity',
 								'component-hole',
 								'host-ref',
 								'if',

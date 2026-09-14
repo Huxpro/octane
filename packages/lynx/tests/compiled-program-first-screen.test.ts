@@ -89,6 +89,58 @@ describe('compiled-program first-screen painter', () => {
 		adoption.dispose();
 		expect(page.children).toEqual([]);
 	});
+
+	it('hides an Activity program before attaching it to the page', () => {
+		const plan = emittedPlan(
+			{ nodes: [{ type: 'view', parent: -1, props: { class: 'hidden' } }], events: [] },
+			'createHiddenFirstScreenProgram',
+		);
+		const result: LynxFirstScreenRenderResult = {
+			batch: undefined as never,
+			envelope: { renderer: 'lynx', version: 1, events: [] },
+			hostCount: 1,
+			logicalCount: 1,
+			programs: 1,
+			nodes: [
+				{
+					kind: 'program',
+					id: 1,
+					plan,
+					values: [],
+					ids: [1],
+					spans: [],
+					texts: [],
+					rangeIds: [],
+					visibility: 'hidden',
+					children: [],
+				},
+			],
+		};
+		const base = createFakePAPI();
+		const papi = {
+			...base,
+			intrinsics: {
+				view: (pageId: number) => base.createElement('view', pageId, ''),
+				text: (pageId: number) => base.createElement('text', pageId, ''),
+				rawText: (value: string) => base.createElement('#text', 0, value),
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const writes: unknown[] = [];
+		const setAttribute = papi.setAttribute;
+		const observingPAPI = {
+			...papi,
+			setAttribute(node: Parameters<typeof setAttribute>[0], name: string, value: unknown) {
+				writes.push([name, value, page.children.length]);
+				setAttribute(node, name, value);
+			},
+		};
+
+		const adoption = paintLynxCompiledProgramFirstScreen(result, observingPAPI, page);
+		expect(writes).toContainEqual(['hidden', true, 0]);
+		expect(page.children[0]?.attributes.hidden).toBe(true);
+		adoption.dispose();
+	});
 	it('defers a native-list first screen without creating a generic host or requiring adoption', () => {
 		const list = emittedPlan(
 			{ nodes: [{ type: 'list', parent: -1, props: { 'list-type': 'single' } }], events: [] },

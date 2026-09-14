@@ -22,6 +22,10 @@ import {
 	type LynxBlockTemplate,
 } from '../src/core/block-core.js';
 import {
+	createLynxBlockDeltaProducer,
+	preparedLynxBlockDeltaBatch,
+} from '../src/core/block-delta-producer.js';
+import {
 	universalProgramRangeCommandSlot,
 	type UniversalHostCommand,
 } from 'octane/universal/native';
@@ -191,6 +195,62 @@ describe('Lynx block core — compiler range provenance', () => {
 			retried.filter((command) => command.op === 'move').map(universalProgramRangeCommandSlot),
 		).toEqual([7]);
 		core.acceptAttempt();
+	});
+});
+
+describe('Lynx block core — retained visibility', () => {
+	it('emits one root visibility command and restores logical state on abort', () => {
+		const core = createLynxBlockCore();
+		const block = core.mount(null, null, PAGE_TEMPLATE, []);
+		core.flush();
+		core.resetCounters();
+
+		core.beginAttempt();
+		expect(core.setVisibility(block, false)).toBe(true);
+		expect(core.setVisibility(block, false)).toBe(false);
+		expect(core.counters()).toEqual({ blockLookups: 1, commands: 2 });
+		expect(core.flush()?.commands).toEqual([
+			{ op: 'visibility', id: block.firstId + 1, state: 'hidden' },
+			{ op: 'visibility', id: block.firstId, state: 'hidden' },
+		]);
+		expect(block.visible).toBe(false);
+		expect(core.abortAttempt()).toBe(true);
+		expect(block.visible).toBe(true);
+
+		core.beginAttempt();
+		expect(core.setVisibility(block, false)).toBe(true);
+		expect(core.flush()?.commands).toEqual([
+			{ op: 'visibility', id: block.firstId + 1, state: 'hidden' },
+			{ op: 'visibility', id: block.firstId, state: 'hidden' },
+		]);
+		core.acceptAttempt();
+		expect(block.visible).toBe(false);
+	});
+
+	it('uses one compact VIS delta for the whole resident instance', () => {
+		const producer = createLynxBlockDeltaProducer();
+		const core = createLynxBlockCore({ deltaProducer: producer });
+		const template = compileLynxBlockTemplate(PAGE_TEMPLATE.program, {
+			module: 'tests/VisiblePage.lynx.tsrx',
+			index: 0,
+		});
+		core.beginAttempt();
+		const block = core.mount(null, null, template, []);
+		expect(preparedLynxBlockDeltaBatch(core.flush()!)!.operations.map((entry) => entry.op)).toEqual(
+			['run'],
+		);
+		core.acceptAttempt();
+		core.resetCounters();
+
+		core.beginAttempt();
+		expect(core.setVisibility(block, false)).toBe(true);
+		expect(core.setVisibility(block, false)).toBe(false);
+		expect(core.counters()).toEqual({ blockLookups: 1, commands: 1 });
+		expect(preparedLynxBlockDeltaBatch(core.flush()!)!.operations).toEqual([
+			{ op: 'vis', instance: block.instance, state: 'hidden' },
+		]);
+		expect(core.abortAttempt()).toBe(true);
+		expect(block.visible).toBe(true);
 	});
 });
 

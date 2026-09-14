@@ -1,5 +1,5 @@
 /** @jsxImportSource @octanejs/lynx/intrinsics */
-import { createContext, memo, useContext, useState } from 'octane';
+import { Activity, createContext, memo, useContext, useState } from 'octane';
 import type { OctaneNode } from 'octane';
 import type { UniversalRenderable } from 'octane/universal/native';
 
@@ -95,6 +95,13 @@ function BlockShell(props: {
 		{props.selected === 'none'
 			? null
 			: <BlockSelection key={props.selected} label={props.selected} />}
+		<view class="activity-shell">
+			<Activity mode={props.selected === 'none' ? 'hidden' : 'visible'}>
+				<view class="retained-activity">
+					<text>{props.selected as string}</text>
+				</view>
+			</Activity>
+		</view>
 	</view>
 }
 

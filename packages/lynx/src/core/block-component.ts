@@ -56,6 +56,7 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  */
 
 import type {
+	UniversalActivityValue,
 	UniversalComponentValue,
 	UniversalChildrenValue,
 	UniversalContext,
@@ -143,6 +144,7 @@ const UNIVERSAL_PROPS: symbol = Symbol.for('octane.universal.props');
 const UNIVERSAL_COMPONENT: symbol = Symbol.for('octane.universal.component');
 const UNIVERSAL_CHILDREN: symbol = Symbol.for('octane.universal.children');
 const UNIVERSAL_CONTEXT: symbol = Symbol.for('octane.universal.context');
+const UNIVERSAL_ACTIVITY: symbol = Symbol.for('octane.universal.activity');
 
 // Guard the call-site arguments as well as the final message. A production
 const UNIVERSAL_IF: symbol = Symbol.for('octane.universal.if');
@@ -152,6 +154,7 @@ const UNIVERSAL_SWITCH: symbol = Symbol.for('octane.universal.switch');
 const IF_THEN_BRANCH = Object.freeze({});
 const IF_ELSE_BRANCH = Object.freeze({});
 const SWITCH_DEFAULT_BRANCH = Object.freeze({});
+const ACTIVITY_BRANCH = Object.freeze({});
 const LYNX_BLOCK_COMPONENT_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 
@@ -351,10 +354,24 @@ function isComponentRegionValue(value: unknown): value is UniversalComponentValu
 	);
 }
 
+function isActivityValue(value: unknown): value is UniversalActivityValue {
+	return (
+		value !== null &&
+		typeof value === 'object' &&
+		(value as { $$kind?: unknown }).$$kind === UNIVERSAL_ACTIVITY
+	);
+}
+
 function isDynamicRegionValue(
 	value: unknown,
-): value is UniversalForValue | UniversalBranchValue | UniversalComponentValue {
-	return isRangeValue(value) || isBranchValue(value) || isComponentRegionValue(value);
+): value is
+	UniversalForValue | UniversalBranchValue | UniversalComponentValue | UniversalActivityValue {
+	return (
+		isRangeValue(value) ||
+		isBranchValue(value) ||
+		isComponentRegionValue(value) ||
+		isActivityValue(value)
+	);
 }
 
 function selectedBranch(
@@ -376,6 +393,7 @@ function selectedBranch(
 /** One rendered template: the plan it named, and the slot values for it. */
 interface RenderedPlan {
 	readonly contextValues: SemanticContexts;
+	readonly visible: boolean;
 	/** The component that returned it, which is who a refusal has to name. */
 	readonly source: LynxComponent<never>;
 	readonly plan: UniversalPlan | LynxCompilerProgram;
@@ -483,6 +501,7 @@ interface RetainedRow {
 	readonly values: readonly UniversalHostTemplateProgramValue[];
 	readonly listeners: readonly (LynxBlockListener | null)[];
 	readonly refs: readonly unknown[];
+	readonly visible: boolean;
 	/** Last committed list order, used to preserve old/new row evaluation order. */
 	index: number;
 }
@@ -540,6 +559,8 @@ interface RangeRender {
 	readonly componentRows: NonNullable<UniversalForValue['componentRows']> | null;
 	/** Non-null when a compiler proof reached only the old/new selected keys. */
 	readonly sparse: readonly SparseRangeRow[] | null;
+	/** Present only for a retained Activity member. */
+	readonly activityVisible?: boolean;
 }
 
 interface SparseRangeRow {
@@ -661,11 +682,19 @@ export function lynxBlockProgramForComponent<Props>(
 		source: LynxComponent<never>,
 		produced: unknown,
 		inheritedContexts: SemanticContexts = renderingContexts,
+		inheritedVisible = true,
 	): RenderedPlan => {
 		let output = produced;
 		let contextValues = inheritedContexts;
+		let visible = inheritedVisible;
 		while (output !== null && typeof output === 'object') {
 			const kind = (output as { $$kind?: unknown }).$$kind;
+			if (kind === UNIVERSAL_ACTIVITY) {
+				const activity = output as UniversalActivityValue;
+				visible = visible && activity.mode === 'visible';
+				output = withSemanticContexts(contextValues, activity.body);
+				continue;
+			}
 			if (kind === UNIVERSAL_CONTEXT) {
 				const provider = output as UniversalContextValue;
 				const next = new Map(contextValues ?? []);
@@ -709,6 +738,7 @@ export function lynxBlockProgramForComponent<Props>(
 					child.component as unknown as LynxComponent<never>,
 					forwardedProps(child),
 					contextValues,
+					visible,
 				);
 			}
 			break;
@@ -720,6 +750,7 @@ export function lynxBlockProgramForComponent<Props>(
 				values: output.values,
 				computations: output.computations,
 				contextValues,
+				visible,
 			};
 		}
 		const value = output as UniversalPlanValue | null;
@@ -736,6 +767,7 @@ export function lynxBlockProgramForComponent<Props>(
 			values: value.values,
 			computations: EMPTY_COMPUTATIONS,
 			contextValues,
+			visible,
 		};
 	};
 
@@ -751,6 +783,7 @@ export function lynxBlockProgramForComponent<Props>(
 		source: LynxComponent<never>,
 		props: unknown,
 		contexts: SemanticContexts = renderingContexts,
+		visible = true,
 	): RenderedPlan => {
 		const outer = rendering;
 		rendering = source;
@@ -771,7 +804,7 @@ export function lynxBlockProgramForComponent<Props>(
 					}
 					throw error;
 				}
-				return readPlanValue(source, produced, contexts);
+				return readPlanValue(source, produced, contexts, visible);
 			});
 		} finally {
 			rendering = outer;
@@ -1067,12 +1100,14 @@ export function lynxBlockProgramForComponent<Props>(
 		props: unknown,
 		previous: RetainedRow | null,
 		contexts: SemanticContexts,
+		parentVisible = true,
 	): {
 		readonly scope: UniversalHookScope | null;
 		readonly scoped: ScopedRowState | null;
 		readonly values: readonly UniversalHostTemplateProgramValue[];
 		readonly listeners: readonly (LynxBlockListener | null)[];
 		readonly refs: readonly unknown[];
+		readonly visible: boolean;
 	} => {
 		// Component rows own semantic cells independently of their host blocks.
 		// The key map retains the scope; the host acknowledgement publishes its
@@ -1117,7 +1152,7 @@ export function lynxBlockProgramForComponent<Props>(
 				if (created) cells.dispose();
 			});
 			rendered = cells.render(() => renderPlanValue(component, props, contexts));
-			context.afterCommit(() => cells.commit());
+			context.afterCommit(() => cells.commit(parentVisible && rendered.visible));
 		} else if (component !== null) {
 			rendered = renderPlanValue(component, props, contexts);
 		} else {
@@ -1130,6 +1165,7 @@ export function lynxBlockProgramForComponent<Props>(
 					values: produced.values,
 					computations: produced.computations,
 					contextValues: contexts,
+					visible: parentVisible,
 				};
 			} else {
 				const value = produced as UniversalPlanValue | null;
@@ -1146,6 +1182,7 @@ export function lynxBlockProgramForComponent<Props>(
 					values: value.values,
 					computations: EMPTY_COMPUTATIONS,
 					contextValues: contexts,
+					visible: parentVisible,
 				};
 			}
 		}
@@ -1225,6 +1262,7 @@ export function lynxBlockProgramForComponent<Props>(
 				isLynxCompilerProgram(rendered.plan) && rendered.plan.refs !== undefined
 					? rendered.plan.refs.map((ref) => rendered.values[ref.slot])
 					: EMPTY_REF_VALUES,
+			visible: parentVisible && rendered.visible,
 		};
 	};
 
@@ -1270,6 +1308,7 @@ export function lynxBlockProgramForComponent<Props>(
 			current.props,
 			current,
 			state.contextValues,
+			current.visible,
 		);
 		const next: RetainedRow = {
 			component: current.component,
@@ -1279,6 +1318,7 @@ export function lynxBlockProgramForComponent<Props>(
 			values: rendered.values,
 			listeners: rendered.listeners,
 			refs: rendered.refs,
+			visible: rendered.visible,
 			index: current.index,
 		};
 		const member = context.core.writeKeyedValues(state.site, owner.key, rendered.values);
@@ -1290,11 +1330,14 @@ export function lynxBlockProgramForComponent<Props>(
 			);
 		}
 		if (owner.templateState.prepared!.events.length !== 0) {
-			if (rendered.listeners.includes(null)) context.root.releaseListeners(member);
-			context.root.bindListeners(member, rendered.listeners);
+			if (!rendered.visible || rendered.listeners.includes(null)) {
+				context.root.releaseListeners(member);
+			}
+			if (rendered.visible) context.root.bindListeners(member, rendered.listeners);
 		}
 		if (owner.templateState.template!.refs !== undefined) {
-			context.root.bindRefs(member, rendered.refs);
+			if (rendered.visible) context.root.bindRefs(member, rendered.refs);
+			else context.root.releaseRefs(member);
 		}
 		publishScopedRow(context, state, owner.templateState, owner.key, next);
 	}
@@ -1433,6 +1476,7 @@ export function lynxBlockProgramForComponent<Props>(
 									values,
 									listeners,
 									refs: row.refs,
+									visible: row.visible,
 									index: 0,
 								};
 					if (retainedRow !== null) {
@@ -1556,6 +1600,7 @@ export function lynxBlockProgramForComponent<Props>(
 							values: row.values,
 							listeners: row.listeners,
 							refs: row.refs,
+							visible: row.visible,
 							index: prior.index,
 						},
 					});
@@ -1780,6 +1825,7 @@ export function lynxBlockProgramForComponent<Props>(
 					values: row.values,
 					listeners: row.listeners,
 					refs: row.refs,
+					visible: row.visible,
 					index,
 				};
 				publishScopedRow(context, state, state.rowTemplate, itemKey, retainedRow);
@@ -1811,7 +1857,7 @@ export function lynxBlockProgramForComponent<Props>(
 	const renderBranchRange = (
 		context: LynxBlockProgramContext,
 		state: RangeState,
-		branch: UniversalBranchValue | UniversalComponentValue | null,
+		branch: UniversalBranchValue | UniversalComponentValue | UniversalActivityValue | null,
 		contextValues: SemanticContexts,
 	): RangeRender => {
 		const branches = state.branchTemplates;
@@ -1847,9 +1893,12 @@ export function lynxBlockProgramForComponent<Props>(
 				sparse: null,
 			};
 		};
+		const activity = branch !== null && isActivityValue(branch) ? branch : null;
 		const componentRegion = branch !== null && isComponentRegionValue(branch) ? branch : null;
 		let selected: readonly [identity: unknown, render: () => unknown] | null;
-		if (componentRegion === null) {
+		if (activity !== null) {
+			selected = [ACTIVITY_BRANCH, activity.body];
+		} else if (componentRegion === null) {
 			selected = branch === null ? null : selectedBranch(branch as UniversalBranchValue);
 		} else {
 			let identity: unknown = componentRegion.hasKey ? null : componentRegion.component;
@@ -1883,7 +1932,7 @@ export function lynxBlockProgramForComponent<Props>(
 		// state across `<Row key={next} />`; keying only by the component would merge
 		// two different arms. Reuse an identity record only when all three facts
 		// agree, and let a replacement receive a fresh range member below.
-		if (componentRegion === null && invocation !== null) {
+		if (activity === null && componentRegion === null && invocation !== null) {
 			let identity: unknown = null;
 			for (const [candidateIdentity, candidate] of branches) {
 				if (
@@ -1904,7 +1953,9 @@ export function lynxBlockProgramForComponent<Props>(
 			branchState = {
 				key: Object.freeze({}),
 				template: createRangeTemplateState(),
-				...(componentRegion === null && invocation !== null ? { branchIdentity } : null),
+				...(activity === null && componentRegion === null && invocation !== null
+					? { branchIdentity }
+					: null),
 				...(component === null ? null : { component }),
 				...(invocation?.hasKey === true
 					? { hasKey: true, authoredKey: invocation.key }
@@ -1921,6 +1972,7 @@ export function lynxBlockProgramForComponent<Props>(
 		let refValues: readonly unknown[];
 		let retainedRow: RetainedRow | null;
 		let rendered: readonly number[];
+		const activityVisible = activity?.mode === 'visible';
 		if (
 			component !== null &&
 			prior !== null &&
@@ -1931,8 +1983,17 @@ export function lynxBlockProgramForComponent<Props>(
 			values = prior.values;
 			listeners = prior.listeners;
 			refValues = prior.refs;
-			retainedRow = prior;
+			retainedRow =
+				activity === null || prior.visible === activityVisible
+					? prior
+					: { ...prior, visible: activityVisible };
 			rendered = EMPTY_INDEXES;
+			if (activity !== null) {
+				context.afterCommit(() => retainedRow?.scope?.commit(activityVisible));
+				if (retainedRow !== prior) {
+					publishScopedRow(context, state, branchState.template, branchState.key, retainedRow);
+				}
+			}
 		} else {
 			const row = renderRow(
 				context,
@@ -1943,6 +2004,7 @@ export function lynxBlockProgramForComponent<Props>(
 				props,
 				prior?.component === component ? prior : null,
 				contextValues,
+				activity === null ? true : activityVisible,
 			);
 			values = row.values;
 			listeners = row.listeners;
@@ -1959,6 +2021,7 @@ export function lynxBlockProgramForComponent<Props>(
 							values,
 							listeners,
 							refs: row.refs,
+							visible: row.visible,
 							index: 0,
 						};
 			if (retainedRow !== null) {
@@ -1986,6 +2049,7 @@ export function lynxBlockProgramForComponent<Props>(
 			keyedSelection: null,
 			componentRows: null,
 			sparse: null,
+			...(activity === null ? null : { activityVisible }),
 		};
 	};
 
@@ -2022,6 +2086,21 @@ export function lynxBlockProgramForComponent<Props>(
 	const applyRange = (context: LynxBlockProgramContext, render: RangeRender): void => {
 		const state = render.state;
 		const templateState = render.templateState;
+		const bindMember = (
+			member: LynxBlock,
+			handlers: readonly (LynxBlockListener | null)[],
+			refs: readonly unknown[],
+			visible: boolean,
+		): void => {
+			if (templateState!.prepared!.events.length !== 0) {
+				if (!visible || handlers.includes(null)) context.root.releaseListeners(member);
+				if (visible) context.root.bindListeners(member, handlers);
+			}
+			if (templateState!.template!.refs !== undefined) {
+				if (visible) context.root.bindRefs(member, refs);
+				else context.root.releaseRefs(member);
+			}
+		};
 		if (render.sparse !== null) {
 			if (templateState === null) {
 				refuse(
@@ -2094,22 +2173,19 @@ export function lynxBlockProgramForComponent<Props>(
 			// hand, reached from a component instead: `benchmarks/lynx-table/app/
 			// src/block-program.ts`'s `select` writes the two rows whose class
 			// moved, and so does this, without the page having told it which two.
-			const events = templateState.prepared!.events.length !== 0;
-			for (const index of render.rendered) {
+			const rendered = render.activityVisible === undefined ? render.rendered : ([0] as const);
+			for (const index of rendered) {
 				const member = context.core.writeKeyedValues(
 					state.site!,
 					render.keys[index],
 					render.rows[index]!,
 				);
 				if (member === undefined) continue;
-				if (events) {
-					const handlers = render.handlers[index]!;
-					if (handlers.includes(null)) context.root.releaseListeners(member);
-					context.root.bindListeners(member, handlers);
+				const visible = render.activityVisible ?? true;
+				if (render.activityVisible !== undefined) {
+					context.core.setVisibility(member, visible);
 				}
-				if (templateState.template!.refs !== undefined) {
-					context.root.bindRefs(member, render.refs[index]!);
-				}
+				bindMember(member, render.handlers[index]!, render.refs[index]!, visible);
 			}
 			return;
 		}
@@ -2141,17 +2217,14 @@ export function lynxBlockProgramForComponent<Props>(
 			// rediscover the identity the component layer already established.
 			render.rendered,
 		);
-		const events = templateState.prepared!.events.length !== 0;
-		for (const index of render.rendered) {
+		const rendered = render.activityVisible === undefined ? render.rendered : ([0] as const);
+		for (const index of rendered) {
 			const member = state.site!.items.get(render.keys[index])!;
-			if (events) {
-				const handlers = render.handlers[index]!;
-				if (handlers.includes(null)) context.root.releaseListeners(member);
-				context.root.bindListeners(member, handlers);
+			const visible = render.activityVisible ?? true;
+			if (render.activityVisible !== undefined) {
+				context.core.setVisibility(member, visible);
 			}
-			if (templateState.template!.refs !== undefined) {
-				context.root.bindRefs(member, render.refs[index]!);
-			}
+			bindMember(member, render.handlers[index]!, render.refs[index]!, visible);
 		}
 	};
 
@@ -2178,6 +2251,9 @@ export function lynxBlockProgramForComponent<Props>(
 				return renderBranchRange(context, range, value, contextValues);
 			}
 			if (isComponentRegionValue(value)) {
+				return renderBranchRange(context, range, value, contextValues);
+			}
+			if (isActivityValue(value)) {
 				return renderBranchRange(context, range, value, contextValues);
 			}
 			if (
@@ -2270,7 +2346,7 @@ export function lynxBlockProgramForComponent<Props>(
 				context.root.setListener(
 					block!,
 					eventIndex,
-					typeof output === 'function' ? (output as LynxBlockListener) : null,
+					block!.visible && typeof output === 'function' ? (output as LynxBlockListener) : null,
 				);
 			}
 		}
@@ -2356,10 +2432,14 @@ export function lynxBlockProgramForComponent<Props>(
 			const held = block!.values;
 			const worklets = block!.template.mainThreadValues;
 			if (isLynxCompilerProgram(rendered.plan) && rendered.plan.refs !== undefined) {
-				context.root.bindRefs(
-					block!,
-					rendered.plan.refs.map((ref) => rendered.values[ref.slot]),
-				);
+				if (rendered.visible) {
+					context.root.bindRefs(
+						block!,
+						rendered.plan.refs.map((ref) => rendered.values[ref.slot]),
+					);
+				} else {
+					context.root.releaseRefs(block!);
+				}
 			}
 			for (let index = 0; index < values.length; index++) {
 				// The scoped write: only the slots a render moved reach the core, which
@@ -2385,11 +2465,14 @@ export function lynxBlockProgramForComponent<Props>(
 			// render's closure.
 			if (prepared!.events.length !== 0) {
 				context.root.releaseListeners(block!);
-				context.root.bindListeners(block!, listenersFor(rendered.values));
+				if (rendered.visible) {
+					context.root.bindListeners(block!, listenersFor(rendered.values));
+				}
 			}
+			context.core.setVisibility(block!, rendered.visible);
 			for (const row of rows) applyRange(context, row);
 			context.afterCommit(() => {
-				scope?.commit();
+				scope?.commit(rendered.visible);
 				liveComputations = rendered.computations;
 				liveComputationGeneration++;
 			});
@@ -2487,7 +2570,8 @@ export function lynxBlockProgramForComponent<Props>(
 								emptyTemplate: createRangeTemplateState(),
 								branchTemplates:
 									isBranchValue(rendered.values[range.slot]) ||
-									isComponentRegionValue(rendered.values[range.slot])
+									isComponentRegionValue(rendered.values[range.slot]) ||
+									isActivityValue(rendered.values[range.slot])
 										? new Map()
 										: null,
 								retained: null,
@@ -2514,21 +2598,24 @@ export function lynxBlockProgramForComponent<Props>(
 				// is the authority on and rejects the same way for every caller.
 				block = context.core.mount(null, null, template, values);
 				if (isLynxCompilerProgram(rendered.plan) && rendered.plan.refs !== undefined) {
-					context.root.bindRefs(
-						block,
-						rendered.plan.refs.map((ref) => rendered.values[ref.slot]),
-					);
+					if (rendered.visible) {
+						context.root.bindRefs(
+							block,
+							rendered.plan.refs.map((ref) => rendered.values[ref.slot]),
+						);
+					}
 				}
-				if (wire.events.length !== 0) {
+				if (rendered.visible && wire.events.length !== 0) {
 					context.root.bindListeners(block, listenersFor(rendered.values));
 				}
+				context.core.setVisibility(block, rendered.visible);
 				for (let index = 0; index < ranges.length; index++) {
 					const range = ranges[index]!;
 					range.site = context.core.openForSlot(block, range.node, range.slot, range.before);
 					applyRange(context, rows[index]!);
 				}
 				context.afterCommit(() => {
-					scope?.commit();
+					scope?.commit(rendered.visible);
 					liveComputations = rendered.computations;
 					liveComputationGeneration++;
 				});

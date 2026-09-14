@@ -35,6 +35,7 @@ import {
 	useState,
 	useReducer,
 	useSyncExternalStore,
+	type UniversalContext,
 } from 'octane/universal/native';
 
 /** A scope plus the schedule calls it made, which is half of what is asserted. */
@@ -581,6 +582,77 @@ describe('universal hook scope', () => {
 		expect(lifecycle.slice(-2)).toEqual(['layout-cleanup:1', 'passive-cleanup:1']);
 	});
 
+	it('retains cells while Activity visibility disconnects and reconnects effects', () => {
+		const layout: (() => void)[] = [];
+		const passive: (() => void)[] = [];
+		const lifecycle: string[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleLayoutEffectCommit(task) {
+				layout.push(task);
+			},
+			schedulePassiveEffectCommit(task) {
+				passive.push(task);
+			},
+		});
+		let update!: (value: number) => void;
+		const render = (value: string) =>
+			scope.render(() => {
+				const [count, setCount] = useState(1, 'count');
+				update = setCount;
+				useLayoutEffect(
+					() => {
+						lifecycle.push(`layout:create:${value}:${count}`);
+						return () => lifecycle.push(`layout:cleanup:${value}:${count}`);
+					},
+					[value, count],
+					'layout',
+				);
+				useEffect(
+					() => {
+						lifecycle.push(`passive:create:${value}:${count}`);
+						return () => lifecycle.push(`passive:cleanup:${value}:${count}`);
+					},
+					[value, count],
+					'passive',
+				);
+				return count;
+			});
+
+		expect(render('hidden')).toBe(1);
+		scope.commit(false);
+		expect(layout).toEqual([]);
+		expect(passive).toEqual([]);
+
+		update(2);
+		expect(render('latest')).toBe(2);
+		scope.commit();
+		expect(layout).toEqual([]);
+		expect(passive).toEqual([]);
+
+		scope.commit(true);
+		layout.shift()!();
+		passive.shift()!();
+		expect(lifecycle).toEqual(['layout:create:latest:2', 'passive:create:latest:2']);
+
+		scope.commit(false);
+		layout.shift()!();
+		passive.shift()!();
+		expect(lifecycle).toEqual([
+			'layout:create:latest:2',
+			'passive:create:latest:2',
+			'layout:cleanup:latest:2',
+			'passive:cleanup:latest:2',
+		]);
+
+		scope.commit(true);
+		layout.shift()!();
+		passive.shift()!();
+		expect(lifecycle.slice(-2)).toEqual(['layout:create:latest:2', 'passive:create:latest:2']);
+		scope.dispose();
+	});
+
 	it('cleans up an effect in its previous phase when a slot changes phase', () => {
 		const layout: (() => void)[] = [];
 		const passive: (() => void)[] = [];
@@ -655,8 +727,10 @@ describe('universal hook scope', () => {
 		const scope = createUniversalHookScope({
 			renderer: 'test',
 			scheduleRender() {},
-			readContext(context) {
-				return context === Theme ? value : context.defaultValue;
+			readContext<T>(context: UniversalContext<T>): T {
+				return context === (Theme as unknown as UniversalContext<T>)
+					? (value as T)
+					: context.defaultValue;
 			},
 		});
 

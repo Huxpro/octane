@@ -20,12 +20,13 @@ export const LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO = 'octane:lynx-background
 export const LYNX_BACKGROUND_CORE_SELECTION_VERSION = 1;
 export const LYNX_APPLICATION_SELECTION_ASSET_INFO = 'octane:lynx-application-selection';
 export const LYNX_APPLICATION_SELECTION_VERSION = 2;
-export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 13;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 14;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
 	// Each name has an independent assertion through the Block component path.
 	// Expanding this list is a semantic change, not a discovery heuristic.
 	runtimeNames: Object.freeze([
+		'Activity',
 		'createContext',
 		'memo',
 		'useCallback',
@@ -38,6 +39,7 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	threadFunctions: Object.freeze(['background', 'main-thread']),
 	mainThreadProps: true,
 	templateFeatures: Object.freeze([
+		'activity',
 		'component-hole',
 		'host-ref',
 		'if',

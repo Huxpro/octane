@@ -232,8 +232,9 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 13,
+				version: 14,
 				runtimeNames: [
+					'Activity',
 					'createContext',
 					'memo',
 					'useCallback',
@@ -246,6 +247,7 @@ describe('Lynx application Block eligibility', () => {
 				threadFunctions: ['background', 'main-thread'],
 				mainThreadProps: true,
 				templateFeatures: [
+					'activity',
 					'component-hole',
 					'host-ref',
 					'if',
@@ -269,6 +271,23 @@ describe('Lynx application Block eligibility', () => {
 		expect(Object.isFrozen(report)).toBe(true);
 		expect(Object.isFrozen(report.matrix.keyedRanges)).toBe(true);
 		expect(Object.isFrozen(report.reasons)).toBe(true);
+	});
+
+	it('admits Activity only after both compiler threads prove the same supported use', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const activity = semanticRequirements({ runtimeUses: [site('Activity', 8, 2)] });
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: activity, mainThread: activity }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toContain('Activity');
 	});
 
 	it('fails closed when a proof is incomplete, unpaired, version-skewed, or covers another graph', () => {
@@ -887,7 +906,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 13 },
+				matrix: { version: 14 },
 				eligible: true,
 				reasons: [],
 			},

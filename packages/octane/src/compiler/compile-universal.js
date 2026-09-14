@@ -2409,6 +2409,9 @@ function blockTemplateFeature(node, rangeRowNodes, state) {
 	}
 	if (node.type !== 'JSXElement' && node.type !== 'Element') return null;
 	const name = jsxName(node);
+	if (name === 'Activity') {
+		return Object.freeze({ kind: 'activity', name: null, ...sourcePosition(node) });
+	}
 	if (name === 'list' || name === 'list-item') {
 		return Object.freeze({ kind: 'native-list', name, ...sourcePosition(node) });
 	}

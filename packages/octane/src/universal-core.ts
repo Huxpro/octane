@@ -6209,8 +6209,15 @@ export interface UniversalHookScope {
 		compute: (sources: readonly (() => unknown)[]) => void,
 	): UniversalHookScopePrepared | null;
 
-	/** Publish the last render's cells and drop the updates it consumed. */
-	commit(): void;
+	/**
+	 * Publish the last render's cells and drop the updates it consumed.
+	 *
+	 * A visibility argument lets an adopting core retain the cells behind an
+	 * Activity boundary without keeping layout/passive subscriptions live. When
+	 * omitted, the scope keeps its last accepted visibility (visible initially),
+	 * so dirty projections do not have to rediscover their owning boundary.
+	 */
+	commit(visible?: boolean): void;
 	/** Drop the last render's cells, leaving the committed ones in place. */
 	abort(): void;
 	/** Release the cells. A setter that fires afterwards is ignored. */
@@ -6278,6 +6285,7 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 	};
 	const record = createOwnerRecord(root, null, null, HOOK_SCOPE_IDENTITY, null);
 	let draft: DraftOwner | null = null;
+	let visible = true;
 	let nextUniversalId = 0;
 	const queueHeads = new WeakMap<UniversalHookUpdateQueue, number>();
 	const scope: UniversalHookScope = {
@@ -6452,12 +6460,14 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				},
 			});
 		},
-		commit(): void {
+		commit(nextVisible = visible): void {
 			const owner = draft;
-			if (owner === null) return;
-			draft = null;
+			const previousVisible = visible;
+			if (owner === null && previousVisible === nextVisible) return;
+			visible = nextVisible;
+			if (owner !== null) draft = null;
 			const previousEffects = record.effectOrder;
-			const nextEffects = [...owner.seenEffects];
+			const nextEffects = owner === null ? previousEffects : [...owner.seenEffects];
 			const previousBySlot = new Map(previousEffects.map((effect) => [effect.slot, effect]));
 			const nextBySlot = new Map(nextEffects.map((effect) => [effect.slot, effect]));
 			const layoutCleanupTasks: (() => void)[] = [];
@@ -6470,6 +6480,7 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			for (const previous of previousEffects) {
 				const next = nextBySlot.get(previous.slot);
 				if (
+					(previousVisible && !nextVisible) ||
 					next === undefined ||
 					next.phase !== previous.phase ||
 					!depsEqual(previous.deps, next.deps)
@@ -6487,10 +6498,11 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			for (const next of nextEffects) {
 				const previous = previousBySlot.get(next.slot);
 				if (
-					previous === undefined ||
-					previous.phase !== next.phase ||
-					!depsEqual(previous.deps, next.deps) ||
-					!previous.mounted
+					nextVisible &&
+					(previous === undefined ||
+						previous.phase !== next.phase ||
+						!depsEqual(previous.deps, next.deps) ||
+						!previous.mounted)
 				) {
 					const tasks = next.phase === 'passive' ? (passiveCreateTasks ??= []) : layoutCreateTasks;
 					tasks.push(() => {
@@ -6498,22 +6510,24 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 					});
 				}
 			}
-			for (const [slot, hook] of owner.hooks) {
-				if (hook.kind === 'effect' && !nextBySlot.has(slot)) owner.hooks.delete(slot);
+			if (owner !== null) {
+				for (const [slot, hook] of owner.hooks) {
+					if (hook.kind === 'effect' && !nextBySlot.has(slot)) owner.hooks.delete(slot);
+				}
+				record.hooks = owner.hooks;
+				record.effectOrder = nextEffects;
+				record.componentProps = owner.componentProps;
+				// Same drain as an accepted universal commit: an update the render
+				// folded into a cell is gone, one it skipped is still owed.
+				for (const [slot, applied] of owner.appliedUpdates) {
+					const queue = record.updates.get(slot);
+					if (queue !== applied.queue || applied.lane) continue;
+					queue.splice(0, applied.consumed);
+					queueHeads.set(queue, (queueHeads.get(queue) ?? 0) + applied.consumed);
+					if (queue.length === 0) record.updates.delete(slot);
+				}
+				record.mounted = true;
 			}
-			record.hooks = owner.hooks;
-			record.effectOrder = nextEffects;
-			record.componentProps = owner.componentProps;
-			// Same drain as an accepted universal commit: an update the render
-			// folded into a cell is gone, one it skipped is still owed.
-			for (const [slot, applied] of owner.appliedUpdates) {
-				const queue = record.updates.get(slot);
-				if (queue !== applied.queue || applied.lane) continue;
-				queue.splice(0, applied.consumed);
-				queueHeads.set(queue, (queueHeads.get(queue) ?? 0) + applied.consumed);
-				if (queue.length === 0) record.updates.delete(slot);
-			}
-			record.mounted = true;
 			if (layoutCleanupTasks.length !== 0 || layoutCreateTasks.length !== 0) {
 				services.scheduleLayoutEffectCommit?.(() =>
 					runCommitTasks([...layoutCleanupTasks, ...layoutCreateTasks]),
