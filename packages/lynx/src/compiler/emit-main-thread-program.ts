@@ -1018,7 +1018,6 @@ export function emitLynxMainThreadProgram(
 	// container does not own, and both are one identity check away from being
 	// caught at the mount instead of showing up as a blank cell.
 	const ranges = options.ranges ?? [];
-	const ranged = new Set<number>();
 	const painted = new Set<number>();
 	for (let index = 0; index < ranges.length; index++) {
 		const range = ranges[index]!;
@@ -1027,10 +1026,6 @@ export function emitLynxMainThreadProgram(
 		if (!Number.isSafeInteger(node) || node < 0 || node >= program.nodes.length) {
 			refuse(`a keyed range names node ${node}, which the program does not have`);
 		}
-		// The reduction cannot produce two independently owned ranges on one host,
-		// because the resident store still identifies a range by its physical parent.
-		// A program that says otherwise was not produced by the supported reducer.
-		if (ranged.has(node)) refuse(`node ${node} holds more than one keyed range`);
 		if (
 			before !== null &&
 			(!Number.isSafeInteger(before) ||
@@ -1040,7 +1035,6 @@ export function emitLynxMainThreadProgram(
 		) {
 			refuse(`keyed range ${index} names a static anchor outside node ${node}`);
 		}
-		ranged.add(node);
 		const host = program.nodes[node]!.type;
 		if (host === '#text' || host === 'raw-text') {
 			refuse(`raw-text node ${node} cannot hold a keyed range`);

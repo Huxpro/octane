@@ -50,14 +50,14 @@ must satisfy the runtime invariants below.
 | `memo()` | Block selected | Stateful keyed rows honor custom prop comparators without swallowing local updates; context reads pierce the memo bailout, the compact first screen treats the wrapper as identity, and the production selector admits the runtime export. |
 | Compiler-proved dirty hook slots and binding groups | Block selected | Owner-local invalidation reaches only dependent computations and program slots; structural changes retain the full reconcile path. |
 | Fixed-shape keyed `list-item` rows under native `list` | Block selected | The compact store retains logical rows, publishes `update-list-info` before the accepting flush, materializes only requested cells, rebinds scalar/event identity across the established reuse pools, rejects stale enqueue callbacks, and reports accepted async callback faults. Native-list IFR is explicitly deferred to the first compact frame; it neither paints generic list hosts nor switches to Universal. Rows with nested structural ranges still fail closed. |
-| Compiler-proved `Activity` / retained visibility | Block selected | A single structural Activity region keeps its component and hook cells across hidden/visible transitions, disconnects effects, refs, and listeners while hidden, and lowers visibility to ordered general-host commands or one compact `VIS`. Hidden compiled first-screen programs are hidden before insertion and reserve—but do not announce—their deterministic listener identities. Independently overlapping dynamic ranges under one host remain subject to the refusal below. |
-| Compiler-proved whole-root Template Definitions | Experimental Element Template selected | `experimentalElementTemplate: true` requires complete paired Block/application proof plus complete template lowering. Static hosts, scalar/event slots, and one structural slot per range use opaque template handles; refs, native lists, main-thread props, text-polymorphic ranges, and non-scalar native composition fail closed instead of mixing ordinary Element refs into the tree. |
+| Compiler-proved `Activity` / retained visibility | Block selected | A structural Activity region keeps its component and hook cells across hidden/visible transitions, disconnects effects, refs, and listeners while hidden, and lowers visibility to ordered general-host commands or one compact `VIS`. Hidden compiled first-screen programs are hidden before insertion and reserve—but do not announce—their deterministic listener identities. |
+| Compiler-proved whole-root Template Definitions | Experimental Element Template selected | `experimentalElementTemplate: true` requires complete paired Block/application proof plus complete template lowering. Static hosts, scalar/event slots, and compiler-ordered structural slots use opaque template handles; refs, native lists, main-thread props, text-polymorphic ranges, and non-scalar native composition fail closed instead of mixing ordinary Element refs into the tree. |
 | Main-thread props and thread functions | General Block application only | The Block transport can carry them, but the compact compiled-program product fails closed and keeps the general application product. |
 | Ordered host spreads with unknown property names | Whole-entry Universal compatibility | `UniversalHostPlan.propsSlot` has no resident Block prop-name table. Static named props remain Block-native. |
 | Generic renderable holes (primitive/array/fragment shape changes) | Whole-entry Universal compatibility | The compiler cannot yet prove a stable structural region kind, and Block does not infer one from the first value. |
 | `@try`/Suspense and portals | Whole-entry Universal compatibility | These retain the existing Universal lifecycle until separate Block transaction and identity proofs land. |
 | Nested keyed ranges | Block selected | Every outer key retains independent recursive range state; nested RUN/MOVE/CLEAR stays compiler-addressed, including `@empty`, visibility, rollback, and recursive resource cleanup. |
-| Multiple independently owned keyed ranges under one host | Rejected by Block | Static siblings are supported, but two dynamic sibling ranges still need distinct resident range identities instead of the shared physical-parent key. |
+| Multiple independently owned keyed ranges under one host | Block selected | Every range keeps its compiler `(owner, slot)` identity even when several slots resolve to the same native parent and static anchor. General and compact RUN/MOVE/CLEAR, rollback, first-screen paint, and Element Template child slots preserve authored order; an empty middle range does not hide the next live sibling anchor. |
 | Insertion effects | Rejected by Block | The Block transaction has no pre-mutation publication phase. |
 | A row whose root is non-host, has a root event, or is not compile-time host structure | Rejected by Block | The row program cannot currently name the parent-inserted root and its own root event independently. |
 | Unknown compiler/runtime proof version or graph mismatch | Whole-entry Universal compatibility | The selector fails closed and records structured reasons in the build asset. |
@@ -136,6 +136,23 @@ plan. Removing or replacing the identity disposes the active scope before the
 new identity is published. A non-tail structural range carries its
 compiler-selected static sibling through the program digest, first-screen plan,
 compact delta frame, and resident range store.
+
+## Sibling-range identity cost
+
+Physical host identity is insufficient when several compiler ranges share one
+parent, so Block keeps logical identity at the owner slot. The general core
+allocates one range-site array only for a block that opens structural ranges and
+links adjacent sites once. The compact store lazily allocates stable object keys
+for only the child slots that are used; it performs no per-command string-key
+construction. Each live range keeps its ordered later sibling keys so a tail
+insertion can find the next non-empty range before falling back to the shared
+static anchor. Range-free programs retain neither structure.
+
+The compiler emits the same ordered range facts to background and main-thread
+plans. First-screen painting consumes them forwards, and experimental Element
+Template lowering emits every same-host child slot in that order. The production
+application fixture contains two adjacent nested ranges and proves all 15 paired
+plans are addressed before selecting the compact compiled-program product.
 
 ## Resident host retention
 

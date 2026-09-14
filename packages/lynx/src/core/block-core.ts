@@ -253,6 +253,8 @@ export interface LynxBlock {
 	/** Survivor list, as in `runtime.ts` — the LIS operates over this order. */
 	prev: LynxBlock | null;
 	next: LynxBlock | null;
+	/** Lazily retained compiler range sites owned by this instance. */
+	rangeSites?: LynxBlockProgramRangeSite[];
 }
 
 /**
@@ -283,6 +285,8 @@ type LynxBlockProgramRangeSite = LynxBlockForSlot & {
 	readonly 3: number | null;
 	/** Descendants mounted here are physically deferred native-list rows. */
 	readonly 4: boolean;
+	/** Next adjacent compiler range sharing the same physical/static anchor. */
+	5: LynxBlockProgramRangeSite | null;
 };
 
 /**
@@ -575,6 +579,15 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		return first;
 	};
 
+	const nextSiblingHead = (site: LynxBlockProgramRangeSite): LynxBlock | null => {
+		let sibling = site[5];
+		while (sibling !== null) {
+			if (sibling.head !== null) return sibling.head;
+			sibling = sibling[5];
+		}
+		return null;
+	};
+
 	/**
 	 * A run of `count` instances mounted at one site with one command.
 	 *
@@ -654,12 +667,16 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			});
 			commandCount++;
 		} else if (templateRunsAllowed()) {
+			const physicalBefore =
+				beforeBlock === null || beforeBlock === undefined
+					? ((rangeSite === undefined ? null : nextSiblingHead(rangeSite)?.firstId) ?? before)
+					: before;
 			// Frozen, like the program it carries: the incremental compact
 			// acknowledgement the wire offers for a post-first-screen run is only
 			// accepted for a command the producer promised not to mutate.
 			const shared = {
 				parent,
-				before,
+				before: physicalBefore,
 				firstId,
 				firstListenerId,
 				count,
@@ -676,7 +693,11 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 			}
 			emit(run);
 		} else {
-			mountRunLegacy(parent, before, template, values, firstId, firstListenerId, count);
+			const physicalBefore =
+				beforeBlock === null || beforeBlock === undefined
+					? ((rangeSite === undefined ? null : nextSiblingHead(rangeSite)?.firstId) ?? before)
+					: before;
+			mountRunLegacy(parent, physicalBefore, template, values, firstId, firstListenerId, count);
 		}
 		const blocks: LynxBlock[] = new Array(count);
 		for (let row = 0; row < count; row++) {
@@ -1180,18 +1201,28 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 						`static anchor node ${String(beforeNodeIndex)} is not a child of host node ${nodeIndex}`,
 				);
 			}
-			return {
+			const site = {
 				0: programRangeSlot,
 				parent: block.firstId + nodeIndex,
 				1: block.instance,
 				2: beforeNodeIndex,
 				3: beforeNodeIndex === null ? null : block.firstId + beforeNodeIndex,
 				4: block.deferred || block.template.program.nodes[nodeIndex]!.type === 'list',
+				5: null,
 				items: new Map(),
 				head: null,
 				tail: null,
 				size: 0,
 			} as LynxBlockProgramRangeSite;
+			const sites = (block.rangeSites ??= []);
+			for (let index = sites.length - 1; index >= 0; index--) {
+				const previous = sites[index]!;
+				if (previous.parent !== site.parent || previous[3] !== site[3]) continue;
+				previous[5] = site;
+				break;
+			}
+			sites.push(site);
+			return site;
 		},
 
 		fillForSlot,
@@ -1350,7 +1381,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 							op: 'move',
 							parent: slot.parent,
 							id: survivor.firstId,
-							before,
+							before: beforeBlock?.firstId ?? nextSiblingHead(site)?.firstId ?? site[3],
 						};
 						if (site[0] != null) recordUniversalProgramRangeCommand(move, site[0]);
 						emit(move);

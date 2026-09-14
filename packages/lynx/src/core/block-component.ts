@@ -47,9 +47,9 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  * effects are refused because this core has no pre-mutation phase. Context
  * values follow providers into retained keyed and branch scopes.
  *
- * A range nested inside a range is refused too. Its rows would need range state
- * of their own, carried through every reconcile of the outer list, and that is
- * a second design rather than a wider loop.
+ * Nested and sibling ranges retain compiler-slot ownership recursively. Native
+ * lists still refuse ranged rows until physical cell recycling can carry that
+ * ownership without confusing logical rows with reused native controls.
  *
  * Every refusal names the component, because a bundle that silently rendered
  * nothing would be far worse than one that says which piece it lacks.
@@ -1292,7 +1292,7 @@ export function lynxBlockProgramForComponent<Props>(
 					refuse(
 						subject,
 						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-							'a nested row has more than one independently owned range under the same host element.',
+							'a nested row has a structural range where no host parent can own it.',
 					);
 				}
 				const wire = prepareUniversalTemplateProgram(encoderFor(context), split.compiled);
@@ -2474,7 +2474,11 @@ export function lynxBlockProgramForComponent<Props>(
 			// src/block-program.ts`'s `select` writes the two rows whose class
 			// moved, and so does this, without the page having told it which two.
 			const rendered = render.activityVisible === undefined ? render.rendered : ([0] as const);
-			const hasVisibilityWork = !render.visible || render.visibilities !== null;
+			const hasVisibilityWork =
+				state.visible !== render.visible ||
+				render.activityVisible !== undefined ||
+				!render.visible ||
+				render.visibilities !== null;
 			for (const index of rendered) {
 				const member = context.core.writeKeyedValues(
 					state.site!,
@@ -2515,7 +2519,11 @@ export function lynxBlockProgramForComponent<Props>(
 			state.nested !== null,
 		);
 		const rendered = render.activityVisible === undefined ? render.rendered : ([0] as const);
-		const hasVisibilityWork = !render.visible || render.visibilities !== null;
+		const hasVisibilityWork =
+			state.visible !== render.visible ||
+			render.activityVisible !== undefined ||
+			!render.visible ||
+			render.visibilities !== null;
 		for (const index of rendered) {
 			const member = state.site!.items.get(render.keys[index])!;
 			const visible = render.visibilities?.[index] ?? render.visible;
@@ -2846,7 +2854,7 @@ export function lynxBlockProgramForComponent<Props>(
 						refuse(
 							subject,
 							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-								'its dynamic regions require more than one independently owned range under the same host element, which the resident store cannot identify separately yet.',
+								'its dynamic region is the whole program and has no host parent to own it.',
 						);
 					}
 					const preparedProgram = prepareUniversalTemplateProgram(

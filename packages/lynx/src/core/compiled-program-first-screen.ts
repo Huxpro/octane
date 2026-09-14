@@ -178,19 +178,19 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 				count: 1,
 			});
 
-			let end = node.children.length;
-			for (let range = plan.ranges.length - 1; range >= 0; range--) {
-				const start = end - spans[range]!;
-				if (start < 0) fail('program range spans exceed its children');
+			let start = 0;
+			for (let range = 0; range < plan.ranges.length; range++) {
+				const end = start + spans[range]!;
+				if (end > node.children.length) fail('program range spans exceed its children');
 				const site = plan.ranges[range]!;
 				const rangeParent = created[site.node];
 				if (rangeParent === undefined) fail(`cannot resolve range ${range} parent`);
 				const rangeBefore = site.before == null ? null : created[site.before];
 				if (rangeBefore === undefined) fail(`cannot resolve range ${range} anchor`);
 				paintNodes(node.children.slice(start, end), rangeParent, rangeBefore);
-				end = start;
+				start = end;
 			}
-			if (end !== 0) fail('program has children outside its declared ranges');
+			if (start !== node.children.length) fail('program has children outside its declared ranges');
 			papi.insertBefore(parent, created[0], before);
 			attachedAny = true;
 			if (papi.isEqual(parent, page)) pageRoots.push(created[0]);

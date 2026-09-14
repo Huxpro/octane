@@ -80,6 +80,38 @@ describe('Element Template program lowering', () => {
 		});
 	});
 
+	it('keeps sibling structural slots in authored order before one static child', () => {
+		const result = deriveLynxElementTemplateProgram(
+			ir({
+				wire: {
+					nodes: [
+						{ type: 'view', parent: -1, props: {} },
+						{ type: 'text', parent: 0, props: { id: 'tail' } },
+					],
+					events: [],
+				},
+				values: [],
+				events: [],
+				ranges: [
+					{ slot: 4, node: 0, before: 1 },
+					{ slot: 7, node: 0, before: 1 },
+				],
+				addressable: true,
+			}),
+		);
+
+		expect(result).toMatchObject({
+			childSlots: 2,
+			template: {
+				children: [
+					{ kind: 'elementSlot', elementSlotIndex: 0 },
+					{ kind: 'elementSlot', elementSlotIndex: 1 },
+					{ kind: 'element', type: 'text' },
+				],
+			},
+		});
+	});
+
 	it('fails closed instead of mixing ordinary refs or typed-list handles', () => {
 		const base = ir({
 			wire: { nodes: [{ type: 'view', parent: -1, props: {} }], events: [] },

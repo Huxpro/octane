@@ -48,6 +48,10 @@ interface CompiledProgramRun<Node extends LynxElementRef> {
 interface CompiledProgramInstance<Node extends LynxElementRef> {
 	readonly index: number;
 	readonly parent: Node;
+	/** Logical structural range; sibling compiler slots may share `parent`. */
+	readonly range: CompiledProgramRangeKey<Node>;
+	/** Stable compiler-slot identities allocated only when a child range is used. */
+	rangeKeys?: object[];
 	readonly run: CompiledProgramRun<Node>;
 	next: number | null;
 	previous: number | null;
@@ -58,7 +62,11 @@ interface CompiledProgramRange<Node extends LynxElementRef> {
 	head: number | null;
 	tail: number | null;
 	readonly before: Node | null;
+	/** Later adjacent compiler ranges whose first live member is this range's anchor. */
+	readonly nextRanges: readonly CompiledProgramRangeKey<Node>[] | null;
 }
+
+type CompiledProgramRangeKey<Node extends LynxElementRef> = Node | object;
 
 interface CompiledProgramListItem<Node extends LynxElementRef> {
 	readonly descriptor: LynxListItemDescriptor;
@@ -76,6 +84,8 @@ interface CompiledProgramListCell<Node extends LynxElementRef> {
 
 interface CompiledProgramListState<Node extends LynxElementRef> {
 	readonly node: Node;
+	/** Logical child range, learned when the first deferred row run arrives. */
+	range: CompiledProgramRangeKey<Node> | null;
 	readonly componentAtIndex: LynxListComponentAtIndex<Node>;
 	readonly componentAtIndexes: LynxListComponentAtIndexes<Node>;
 	readonly enqueueComponent: LynxListEnqueueComponent<Node>;
@@ -178,10 +188,17 @@ export interface LynxCompiledProgramMount<Node extends LynxElementRef> {
 	readonly count: number;
 	readonly firstHandle: number;
 	readonly parent: Node;
+	/** Compiler-owned parent identity when several ranges share one native host. */
+	readonly range?: LynxCompiledProgramRangeIdentity;
 	readonly plan: UniversalProgramPlan;
 	/** Offset of this run's contiguous value segment inside `values`. */
 	readonly valueOffset?: number;
 	readonly values: readonly unknown[];
+}
+
+export interface LynxCompiledProgramRangeIdentity {
+	readonly owner: number;
+	readonly slot: number;
 }
 
 export interface LynxCompiledProgramAdoptionSeed<Node extends LynxElementRef> {
@@ -244,8 +261,14 @@ export interface LynxCompiledProgramStore<Node extends LynxElementRef = LynxElem
 	mount(input: LynxCompiledProgramMount<Node>): void;
 	node(instance: number, index: number): Node;
 	range(instance: number, slot: number): Node;
-	clear(parent: Node): void;
-	move(handle: number, parent: Node, before: number | null, anchor?: Node | null): boolean;
+	clear(parent: Node, range?: LynxCompiledProgramRangeIdentity): void;
+	move(
+		handle: number,
+		parent: Node,
+		before: number | null,
+		anchor?: Node | null,
+		range?: LynxCompiledProgramRangeIdentity,
+	): boolean;
 	remove(handle: number): void;
 	set(handle: number, slot: number, value: unknown): boolean;
 	visibility(handle: number, visible: boolean): boolean;
@@ -387,7 +410,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	const instances = new Map<number, CompiledProgramInstance<Node>>();
 	const creates = new WeakMap<UniversalProgramPlan, CompiledProgramCreate>();
 	const templates: (UniversalProgramPlan | undefined)[] = [undefined];
-	const ranges = new Map<Node, CompiledProgramRange<Node>>();
+	const ranges = new Map<CompiledProgramRangeKey<Node>, CompiledProgramRange<Node>>();
 	let lists: Map<Node, CompiledProgramListState<Node>> | null = null;
 	let dirtyLists: Set<CompiledProgramListState<Node>> | null = null;
 	let pendingListDisposals: Set<CompiledProgramListState<Node>> | null = null;
@@ -544,7 +567,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	const listItems = (
 		list: CompiledProgramListState<Node>,
 	): readonly CompiledProgramListItem<Node>[] => {
-		const range = ranges.get(list.node);
+		const range = ranges.get(list.range ?? list.node);
 		const items: CompiledProgramListItem<Node>[] = [];
 		let handle = range?.head ?? null;
 		while (handle !== null) {
@@ -837,6 +860,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		);
 		state = {
 			node,
+			range: null,
 			componentAtIndex,
 			componentAtIndexes,
 			enqueueComponent,
@@ -1012,6 +1036,54 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			);
 		return node;
 	};
+	const rangeSiteIndex = (owner: CompiledProgramInstance<Node>, slot: number): number => {
+		const index = owner.run.plan.ranges.findIndex((site) => site.slot === slot);
+		if (index < 0) fail(StoreFailure.RangeSlot);
+		return index;
+	};
+	const rangeIdentityKey = (ownerHandle: number, slot: number): object => {
+		const owner = requireInstance(ownerHandle);
+		const index = rangeSiteIndex(owner, slot);
+		const keys = (owner.rangeKeys ??= new Array(owner.run.plan.ranges.length));
+		return (keys[index] ??= Object.freeze({}));
+	};
+	const rangeKeyOf = (
+		parent: Node,
+		identity: LynxCompiledProgramRangeIdentity | undefined,
+	): CompiledProgramRangeKey<Node> => {
+		if (identity === undefined) return parent;
+		const expected = rangeOf(identity.owner, identity.slot);
+		if (!papi.isEqual(expected, parent)) {
+			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'range identity names another host');
+		}
+		return rangeIdentityKey(identity.owner, identity.slot);
+	};
+	const nextSiblingRangeKeys = (
+		identity: LynxCompiledProgramRangeIdentity | undefined,
+	): readonly CompiledProgramRangeKey<Node>[] | null => {
+		if (identity === undefined) return null;
+		const owner = requireInstance(identity.owner);
+		const sites = owner.run.plan.ranges;
+		const current = rangeSiteIndex(owner, identity.slot);
+		const site = sites[current]!;
+		let siblings: CompiledProgramRangeKey<Node>[] | null = null;
+		for (let index = current + 1; index < sites.length; index++) {
+			const candidate = sites[index]!;
+			if (candidate.node === site.node && (candidate.before ?? null) === (site.before ?? null)) {
+				(siblings ??= []).push(rangeIdentityKey(identity.owner, candidate.slot));
+			}
+		}
+		return siblings;
+	};
+	const rangeEndAnchor = (range: CompiledProgramRange<Node>): Node | null => {
+		for (const key of range.nextRanges ?? []) {
+			const next = ranges.get(key);
+			if (next?.head !== null && next?.head !== undefined) {
+				return rootOf(requireInstance(next.head));
+			}
+		}
+		return range.before;
+	};
 	const writePhysicalSlot = (
 		instance: CompiledProgramInstance<Node>,
 		slot: number,
@@ -1135,14 +1207,14 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		else instances.get(instance.previous)!.next = instance.next;
 		if (instance.next === null) range.tail = instance.previous;
 		else instances.get(instance.next)!.previous = instance.previous;
-		if (range.head === null) ranges.delete(instance.parent);
+		if (range.head === null) ranges.delete(instance.range);
 	};
 	const relink = (
 		handle: number,
 		instance: CompiledProgramInstance<Node>,
 		range: CompiledProgramRange<Node>,
 	): void => {
-		if (!ranges.has(instance.parent)) ranges.set(instance.parent, range);
+		if (!ranges.has(instance.range)) ranges.set(instance.range, range);
 		if (instance.previous === null) range.head = handle;
 		else instances.get(instance.previous)!.next = handle;
 		if (instance.next === null) range.tail = handle;
@@ -1153,17 +1225,18 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		instance: CompiledProgramInstance<Node>,
 		before: number | null,
 	): void => {
-		const range = ranges.get(instance.parent)!;
+		const range = ranges.get(instance.range)!;
 		const oldBefore = instance.next;
 		if (!instance.run.deferred) {
 			const root = rootOf(instance);
-			const anchor = before === null ? range.before : rootOf(instances.get(before)!);
+			const anchor = before === null ? rangeEndAnchor(range) : rootOf(instances.get(before)!);
 			try {
 				papi.insertBefore(instance.parent, root, anchor);
 			} catch (error) {
 				try {
 					const previousInstance = oldBefore === null ? undefined : instances.get(oldBefore)!;
-					const previous = previousInstance === undefined ? range.before : rootOf(previousInstance);
+					const previous =
+						previousInstance === undefined ? rangeEndAnchor(range) : rootOf(previousInstance);
 					papi.insertBefore(instance.parent, root, previous);
 				} catch (rollbackError) {
 					faulted = true;
@@ -1244,9 +1317,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	const removeInstance = (handle: number, undo: unknown[]): void => {
 		const instance = requireInstance(handle);
 		const run = instance.run;
-		for (const site of run.plan.ranges) {
-			const parent = run.nodes[instance.index * run.stride + site.node];
-			if (ranges.has(parent!)) {
+		for (let index = 0; index < run.plan.ranges.length; index++) {
+			const site = run.plan.ranges[index]!;
+			const rangeKey = instance.rangeKeys?.[index];
+			if (rangeKey !== undefined && ranges.has(rangeKey)) {
 				fail(
 					(typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__) &&
 						`cannot remove instance ${handle} while range slot ${site.slot} owns children`,
@@ -1254,7 +1328,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 		}
 		if (run.deferred) {
-			const range = ranges.get(instance.parent);
+			const range = ranges.get(instance.range);
 			if (range === undefined) fail(StoreFailure.RangeOrder);
 			unlink(instance, range);
 			releaseInstance(handle, instance);
@@ -1265,10 +1339,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const root = rootOf(instance);
 		const parent = papi.getParent(root);
 		if (parent === null || !papi.isEqual(parent, instance.parent)) fail(StoreFailure.Detached);
-		const range = ranges.get(instance.parent);
+		const range = ranges.get(instance.range);
 		if (range === undefined) fail(StoreFailure.RangeOrder);
 		const nextInstance = instance.next === null ? undefined : instances.get(instance.next)!;
-		const before = nextInstance === undefined ? range.before : rootOf(nextInstance);
+		const before = nextInstance === undefined ? rangeEndAnchor(range) : rootOf(nextInstance);
 		deactivateInstanceWorklets(instance);
 		try {
 			papi.remove(parent, root);
@@ -1474,9 +1548,15 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		if (staticAnchor !== null && !papi.isChild(input.parent, staticAnchor)) {
 			fail(StoreFailure.MoveAnchor);
 		}
-		let range = ranges.get(input.parent);
+		const rangeKey = rangeKeyOf(input.parent, input.range);
+		let range = ranges.get(rangeKey);
 		if (range === undefined) {
-			range = { head: null, tail: null, before: staticAnchor };
+			range = {
+				head: null,
+				tail: null,
+				before: staticAnchor,
+				nextRanges: nextSiblingRangeKeys(input.range),
+			};
 		} else if (
 			input.before === null &&
 			((range.before === null) !== (staticAnchor === null) ||
@@ -1490,7 +1570,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		if (input.before !== null) {
 			requireHandle(input.before);
 			const anchor = instances.get(input.before);
-			if (anchor === undefined || !papi.isEqual(anchor.parent, input.parent)) {
+			if (anchor === undefined || anchor.range !== rangeKey) {
 				fail(
 					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'received an anchor outside the target range',
 				);
@@ -1499,6 +1579,16 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		const previous = next === null ? range.tail : instances.get(next)!.previous;
 		const deferred = lists?.has(input.parent) === true;
+		if (deferred) {
+			const list = lists!.get(input.parent)!;
+			if (list.range !== null && list.range !== rangeKey) {
+				fail(
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+						'a native list cannot materialize more than one logical child range',
+				);
+			}
+			list.range = rangeKey;
+		}
 		let create = creates.get(plan);
 		if (create === undefined) {
 			// The resolver returns the immutable plan whose digest the two build
@@ -1574,7 +1664,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				create.run(pageId, input.count, physicalValues, tokens, [], created);
 				preparedWorklets?.publish(created, nodeStride);
 				compact = compactResidentNodes(plan, input.count, nodeStride, created);
-				const before = next === null ? range.before : rootOf(instances.get(next)!);
+				const before = next === null ? rangeEndAnchor(range) : rootOf(instances.get(next)!);
 				for (let index = 0; index < input.count; index++) {
 					const node = created[index * nodeStride];
 					if (node === null || node === undefined)
@@ -1624,6 +1714,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			const instance: CompiledProgramInstance<Node> = {
 				index,
 				parent: input.parent,
+				range: rangeKey,
 				previous: runPrevious,
 				next,
 				run,
@@ -1711,18 +1802,21 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		resolve(template) {
 			return templates[template];
 		},
-		clear(parent) {
+		clear(parent, identity) {
 			const undo = requireJournal();
-			const range = ranges.get(parent);
+			const range = ranges.get(rangeKeyOf(parent, identity));
 			while (range !== undefined && range.head !== null) {
 				removeInstance(range.head!, undo);
 			}
 		},
-		move(handle, parent, before, anchor = null) {
+		move(handle, parent, before, anchor = null, identity) {
 			const undo = requireJournal();
 			const instance = requireInstance(handle);
-			if (!papi.isEqual(instance.parent, parent)) fail(StoreFailure.MoveRange);
-			const range = ranges.get(parent);
+			const rangeKey = rangeKeyOf(parent, identity);
+			if (!papi.isEqual(instance.parent, parent) || instance.range !== rangeKey) {
+				fail(StoreFailure.MoveRange);
+			}
+			const range = ranges.get(rangeKey);
 			if (
 				range === undefined ||
 				(before !== null && anchor !== null) ||
@@ -1735,7 +1829,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			if (before !== null) {
 				requireHandle(before);
 				const anchor = instances.get(before);
-				if (anchor === undefined || !papi.isEqual(anchor.parent, instance.parent)) {
+				if (anchor === undefined || anchor.range !== rangeKey) {
 					fail(StoreFailure.MoveAnchor);
 				}
 			}

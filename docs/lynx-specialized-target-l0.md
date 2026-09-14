@@ -1180,6 +1180,20 @@ in §3 and the extraction-first decision in §5.
   milliseconds are not comparable with the depth-fix window above; only the
   within-window ratios are.
 
+- **R6 Block sibling-range ownership.** Distinct compiler ranges may now share
+  one physical host and one retained static anchor without collapsing their
+  identity into the host ref. General Block links compiler range sites on their
+  owning instance; the compact frame carries `(owner, slot)` through
+  RUN/MOVE/CLEAR and the resident store uses lazy stable object keys. Tail
+  insertions scan the ordered later range identities for the next live head, so
+  three adjacent ranges remain authored correctly even when the middle range is
+  empty. First-screen paint now consumes same-anchor ranges forwards, and the
+  experimental Element Template derivation emits every child slot in source
+  order. The ordinary production fixture selects the compiled-program product
+  with **15/15 paired plans addressed**; the explicit whole-root Element
+  Template build also accepts the same graph. These are deterministic semantic
+  and build proofs, not native-device performance evidence.
+
 - **L3 (direct first-screen, first slice):** `renderFirstScreenNow` applies
   the rendered record tree straight to the Element PAPI
   (`applyLynxFirstScreenDirect`): no command staging, cloned record maps, or

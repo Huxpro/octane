@@ -461,8 +461,8 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				program: {
 					version: 1,
 					complete: true,
-					pairedPlans: 13,
-					pairedAddressed: 13,
+					pairedPlans: 15,
+					pairedAddressed: 15,
 					reasons: [],
 				},
 				semantic: {
@@ -536,6 +536,12 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 									expect.objectContaining({
 										empty: true,
 										nested: false,
+										lastChild: false,
+										row: { kind: 'inline-host', name: 'text' },
+									}),
+									expect.objectContaining({
+										empty: true,
+										nested: false,
 										lastChild: true,
 										row: { kind: 'inline-host', name: 'text' },
 									}),
@@ -574,6 +580,12 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 										nested: true,
 										lastChild: true,
 										row: { kind: 'inline-host', name: 'view' },
+									}),
+									expect.objectContaining({
+										empty: true,
+										nested: false,
+										lastChild: false,
+										row: { kind: 'inline-host', name: 'text' },
 									}),
 									expect.objectContaining({
 										empty: true,
@@ -1078,7 +1090,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 16,
+							version: 17,
 							runtimeNames: [
 								'Activity',
 								'createContext',
@@ -1112,6 +1124,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								nonTail: true,
 								rowKinds: ['inline-host', 'local-component'],
 								rowHooks: true,
+								siblings: true,
 							},
 						},
 						eligible: false,

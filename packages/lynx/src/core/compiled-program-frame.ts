@@ -8,6 +8,7 @@ import {
 	LYNX_DELTA_PROTOCOL_VERSION,
 } from './delta-protocol.js';
 import type { LynxCompiledProgramStore } from './compiled-program-store.js';
+import type { LynxCompiledProgramRangeIdentity } from './compiled-program-store.js';
 import type { LynxElementRef } from './papi.js';
 
 const enum Opcode {
@@ -76,7 +77,9 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 
 	store.begin();
 	try {
-		const range = (at: number): Node => {
+		const range = (
+			at: number,
+		): { readonly parent: Node; readonly identity?: LynxCompiledProgramRangeIdentity } => {
 			const handle = input[at];
 			const slot = input[at + 1];
 			if (handle === ROOT_INSTANCE) {
@@ -85,9 +88,12 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 						(typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__) &&
 							'requires root range slot 0',
 					);
-				return page;
+				return { parent: page };
 			}
-			return store.range(handle as number, slot as number);
+			return {
+				parent: store.range(handle as number, slot as number),
+				identity: { owner: handle as number, slot: slot as number },
+			};
 		};
 		const anchor = (at: number): { before: number | null; anchor: Node | null } => {
 			const handle = input[at];
@@ -188,7 +194,8 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 						anchor: before.anchor,
 						count: runCount,
 						firstHandle,
-						parent,
+						parent: parent.parent,
+						range: parent.identity,
 						plan,
 						valueOffset,
 						values,
@@ -222,7 +229,8 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 				case Opcode.Clear: {
 					if (arity !== 2)
 						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'CLEAR requires two fields');
-					store.clear(range(cursor));
+					const parent = range(cursor);
+					store.clear(parent.parent, parent.identity);
 					break;
 				}
 				case Opcode.Move: {
@@ -231,7 +239,7 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 					const handle = input[cursor] as number;
 					const parent = range(cursor + 1);
 					const before = anchor(cursor + 3);
-					store.move(handle, parent, before.before, before.anchor);
+					store.move(handle, parent.parent, before.before, before.anchor, parent.identity);
 					break;
 				}
 				case Opcode.Visibility: {

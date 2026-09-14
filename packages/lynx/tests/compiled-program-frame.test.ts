@@ -98,6 +98,35 @@ function emittedStructuralPlan(): UniversalProgramPlan {
 	};
 }
 
+function emittedSiblingStructuralPlan(): UniversalProgramPlan {
+	const program: UniversalHostTemplateProgram = {
+		nodes: [
+			{ type: 'view', parent: -1, props: { id: 'ranges' } },
+			{ type: 'text', parent: 0, props: { id: 'footer' } },
+		],
+		events: [],
+	};
+	const ranges = [
+		{ slot: 7, node: 0, before: 1, id: 1, paintsText: false },
+		{ slot: 8, node: 0, before: 1, id: 1, paintsText: false },
+		{ slot: 9, node: 0, before: 1, id: 1, paintsText: false },
+	] as const;
+	const emission = emitLynxMainThreadProgram(program, {
+		name: 'createCompactSiblingStructuralShell',
+		ranges,
+		structuralRuns: true,
+	});
+	return {
+		kind: 'program',
+		slots: [null, null, null, null, null, null, null, 'r', 'r', 'r'],
+		nodes: program.nodes.length,
+		values: [],
+		events: [],
+		ranges,
+		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
+	};
+}
+
 function emittedHost(): LynxElementPAPI<FakeNode> {
 	const base = createFakePAPI();
 	return {
@@ -718,6 +747,155 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		store.dispose();
 		expect(removed).toEqual(['row-5', 'shell']);
 		expect(page.children).toEqual([]);
+	});
+
+	it('keeps adjacent compiler ranges independent on one physical host', () => {
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		const shell = emittedSiblingStructuralPlan();
+		const row = emittedPlan();
+		const shellAddress = { module: 'tests/SiblingShell.lynx.tsrx', index: 0 };
+		const rowAddress = { module: 'tests/Row.lynx.tsrx', index: 0 };
+		const resolve = (module: string, index: number) => {
+			if (module === shellAddress.module && index === shellAddress.index) return shell;
+			if (module === rowAddress.module && index === rowAddress.index) return row;
+			return undefined;
+		};
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage(
+				[
+					{
+						op: 'run',
+						templateId: 1,
+						parent: { instance: 1, slot: 0 },
+						before: null,
+						firstInstance: 2,
+						count: 1,
+						values: [],
+					},
+					{
+						op: 'run',
+						templateId: 2,
+						parent: { instance: 2, slot: 7 },
+						before: { instance: 2, slot: 1 },
+						firstInstance: 3,
+						count: 1,
+						values: ['first-a', 'cold', 'A'],
+					},
+					{
+						op: 'run',
+						templateId: 2,
+						parent: { instance: 2, slot: 9 },
+						before: { instance: 2, slot: 1 },
+						firstInstance: 4,
+						count: 1,
+						values: ['second-a', 'cold', 'B'],
+					},
+				],
+				[
+					{ id: 1, address: shellAddress },
+					{ id: 2, address: rowAddress },
+				],
+			),
+		);
+		const ranges = page.children[0]!;
+		expect(ranges.children.map((node) => node.id)).toEqual(['first-a', 'second-a', 'footer']);
+
+		const appendFirst = encodeLynxDeltaMessage([
+			{
+				op: 'run',
+				templateId: 2,
+				parent: { instance: 2, slot: 7 },
+				before: { instance: 2, slot: 1 },
+				firstInstance: 5,
+				count: 1,
+				values: ['first-b', 'warm', 'C'],
+			},
+		]);
+		expect(() =>
+			applyLynxCompiledProgramFrame(store, page, resolve, [...appendFirst, 99, 0]),
+		).toThrow(/opcode 99/);
+		expect(ranges.children.map((node) => node.id)).toEqual(['first-a', 'second-a', 'footer']);
+		applyLynxCompiledProgramFrame(store, page, resolve, appendFirst);
+		expect(ranges.children.map((node) => node.id)).toEqual([
+			'first-a',
+			'first-b',
+			'second-a',
+			'footer',
+		]);
+
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage([
+				{
+					op: 'run',
+					templateId: 2,
+					parent: { instance: 2, slot: 8 },
+					before: { instance: 2, slot: 1 },
+					firstInstance: 6,
+					count: 1,
+					values: ['middle-a', 'warm', 'D'],
+				},
+			]),
+		);
+		expect(ranges.children.map((node) => node.id)).toEqual([
+			'first-a',
+			'first-b',
+			'middle-a',
+			'second-a',
+			'footer',
+		]);
+
+		expect(() =>
+			applyLynxCompiledProgramFrame(
+				store,
+				page,
+				resolve,
+				encodeLynxDeltaMessage([
+					{
+						op: 'move',
+						instance: 3,
+						parent: { instance: 2, slot: 9 },
+						before: { instance: 2, slot: 1 },
+					},
+				]),
+			),
+		).toThrow(/outside the instance range/);
+		expect(ranges.children.map((node) => node.id)).toEqual([
+			'first-a',
+			'first-b',
+			'middle-a',
+			'second-a',
+			'footer',
+		]);
+
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage([{ op: 'clear', parent: { instance: 2, slot: 7 } }]),
+		);
+		expect(ranges.children.map((node) => node.id)).toEqual(['middle-a', 'second-a', 'footer']);
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage([{ op: 'clear', parent: { instance: 2, slot: 8 } }]),
+		);
+		expect(ranges.children.map((node) => node.id)).toEqual(['second-a', 'footer']);
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage([{ op: 'clear', parent: { instance: 2, slot: 9 } }]),
+		);
+		expect(ranges.children.map((node) => node.id)).toEqual(['footer']);
 	});
 
 	it('hides and restores an eventful instance with the original compact token', () => {

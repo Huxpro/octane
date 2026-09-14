@@ -24,8 +24,8 @@
 // events over the same nodes in the same order.
 //
 // What this does not cover is refused by name rather than half-rendered, and
-// the refusals are asserted here too: insertion-effect timing and independently
-// overlapping keyed range sites remain later composition layers.
+// the refusals are asserted here too. Insertion-effect timing remains a later
+// composition layer; compiler-slot identities now cover overlapping ranges.
 import { describe, expect, it, vi } from 'vitest';
 
 vi.hoisted(() => {
@@ -3856,6 +3856,57 @@ describe('Lynx compiled component keyed-range semantic boundaries', () => {
 			await block.render(Listed as LynxComponent<TableProps>, props);
 			expect(classes(block.main.commits)).toEqual(expected);
 			expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
+		}
+	});
+
+	it('keeps sibling keyed ranges independent under one host', async () => {
+		interface SiblingRangesProps {
+			readonly left: readonly TableRow[];
+			readonly right: readonly TableRow[];
+		}
+		const SIBLING_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			props: { class: 'page' },
+			children: [
+				{ kind: 'slot', slot: 0 },
+				{ kind: 'slot', slot: 1 },
+				{ kind: 'host', type: 'text', props: { class: 'footer' }, children: [] },
+			],
+		});
+		const SiblingRanges = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function SiblingRanges(props: SiblingRangesProps) {
+				const render = (side: string) => (row: TableRow) =>
+					universalValue(ROW_PLAN, ['row', String(row.id), noop, `${side} ${row.label}`]);
+				return universalValue(SIBLING_PLAN, [
+					universalFor(props.left, (row: TableRow) => row.id, render('left')),
+					universalFor(props.right, (row: TableRow) => row.id, render('right')),
+				]);
+			},
+		);
+		const rows = (...ids: number[]): TableRow[] => ids.map((id) => ({ id, label: `row ${id}` }));
+		const ladder: readonly SiblingRangesProps[] = [
+			{ left: [], right: rows(20) },
+			{ left: rows(1, 2), right: rows(20) },
+			{ left: rows(2, 3, 1), right: rows(21, 20) },
+			{ left: rows(3), right: [] },
+			{ left: rows(3), right: rows(22) },
+		];
+		const universal = universalColumn(SiblingRanges as LynxComponent<SiblingRangesProps>);
+		const block = blockColumn<SiblingRangesProps>();
+
+		for (const props of ladder) {
+			await universal.render(props);
+			await block.render(SiblingRanges as LynxComponent<SiblingRangesProps>, props);
+			const result = paint(block.main.commits).tree;
+			expect(result).toBe(paint(universal.main.commits).tree);
+			if (props.left.length !== 0 && props.right.length !== 0) {
+				expect(result.lastIndexOf('left row')).toBeLessThan(result.indexOf('right row'));
+			}
+			expect(result.indexOf('footer')).toBeGreaterThan(
+				Math.max(result.lastIndexOf('left row'), result.lastIndexOf('right row')),
+			);
 		}
 	});
 

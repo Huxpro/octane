@@ -1651,6 +1651,43 @@ export function Card(props: { readonly items: readonly Item[] }) @{
 		]);
 	});
 
+	it('addresses sibling keyed ranges by compiler slot on one host', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+interface Item { readonly id: number; readonly label: string }
+
+export function Card(props: { readonly left: readonly Item[]; readonly right: readonly Item[] }) @{
+	<view class="rows">
+		@for (const item of props.left; key item.id) {
+			<view class="left"><text>{item.label as string}</text></view>
+		}
+		@for (const item of props.right; key item.id) {
+			<view class="right"><text>{item.label as string}</text></view>
+		}
+		<text class="tail">ready</text>
+	</view>
+}
+`;
+		const module = 'src/SiblingRows.lynx.tsrx';
+		const mainResult = compileCard(source, { backend: Backend, module });
+		const backgroundResult = compileCard(source, {
+			thread: 'background',
+			backend: Backend,
+			module,
+		});
+		const main = evaluate(mainResult.code);
+		const background = evaluate(backgroundResult.code);
+		const root = main.roots.find((candidate) => candidate.ranges?.length === 2);
+
+		expect(mainResult.mainThreadProgramCoverage).toEqual({ total: 3, addressed: 3 });
+		expect(backgroundResult.mainThreadProgramCoverage).toEqual({ total: 3, addressed: 3 });
+		expect(root?.ranges).toEqual([
+			expect.objectContaining({ slot: expect.any(Number), node: 0, before: 1 }),
+			expect.objectContaining({ slot: expect.any(Number), node: 0, before: 1 }),
+		]);
+		expect(root!.ranges[0]!.slot).not.toBe(root!.ranges[1]!.slot);
+		expect(background.addresses).toEqual(main.addresses);
+	});
+
 	it('keeps a Provider-rooted keyed program fully addressed and dirty-grouped', () => {
 		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
 import { createContext, useContext, useState } from 'octane';

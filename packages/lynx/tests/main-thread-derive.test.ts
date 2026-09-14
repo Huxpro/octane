@@ -345,7 +345,7 @@ describe('deriving the shared Lynx program IR from a plan', () => {
 		expect(deriveLynxProgramIR(COMMAND_ONLY_PROP)).toBeNull();
 	});
 
-	it('declines two independently owned ranges under one host', () => {
+	it('retains compiler-slot identity for two independently owned ranges under one host', () => {
 		const SIBLINGS = universalPlan(LYNX_TRANSPORT_RENDERER, {
 			kind: 'host',
 			type: 'view',
@@ -354,7 +354,12 @@ describe('deriving the shared Lynx program IR from a plan', () => {
 				{ kind: 'slot', slot: 1 },
 			],
 		}).root as UniversalHostPlan;
-		expect(deriveLynxProgramIR(SIBLINGS)).toBeNull();
+		expect(deriveLynxProgramIR(SIBLINGS)).toMatchObject({
+			ranges: [
+				{ slot: 0, node: 0, before: null },
+				{ slot: 1, node: 0, before: null },
+			],
+		});
 	});
 	it('declines a native-list row with a structural range until cells can retain nested ownership', () => {
 		const RANGED_LIST_ROW = universalPlan(LYNX_TRANSPORT_RENDERER, {

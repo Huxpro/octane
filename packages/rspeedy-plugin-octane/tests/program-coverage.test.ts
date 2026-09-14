@@ -232,7 +232,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 16,
+				version: 17,
 				runtimeNames: [
 					'Activity',
 					'createContext',
@@ -262,6 +262,7 @@ describe('Lynx application Block eligibility', () => {
 				keyedRanges: {
 					empty: true,
 					nested: true,
+					siblings: true,
 					lastChild: true,
 					nonTail: true,
 					rowKinds: ['inline-host', 'local-component'],
@@ -340,6 +341,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.eligible).toBe(true);
 		expect(report.reasons).toEqual([]);
 		expect(report.matrix.keyedRanges.nested).toBe(true);
+		expect(report.matrix.keyedRanges.siblings).toBe(true);
 	});
 
 	it('fails closed when a proof is incomplete, unpaired, version-skewed, or covers another graph', () => {
@@ -951,7 +953,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 16 },
+				matrix: { version: 17 },
 				eligible: true,
 				reasons: [],
 			},

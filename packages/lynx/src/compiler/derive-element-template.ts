@@ -85,10 +85,9 @@ export function deriveLynxElementTemplateProgram(
 		children[parent]!.push(index);
 	}
 
-	const ranges = new Map<number, { readonly index: number; readonly before: number | null }>();
+	const ranges = new Map<number, { readonly index: number; readonly before: number | null }[]>();
 	for (let index = 0; index < ir.ranges.length; index++) {
 		const range = ir.ranges[index]!;
-		if (ranges.has(range.node)) return null;
 		const before = range.before ?? null;
 		if (
 			!Number.isSafeInteger(range.node) ||
@@ -100,7 +99,9 @@ export function deriveLynxElementTemplateProgram(
 		) {
 			return null;
 		}
-		ranges.set(range.node, { index, before });
+		let owned = ranges.get(range.node);
+		if (owned === undefined) ranges.set(range.node, (owned = []));
+		owned.push({ index, before });
 	}
 
 	const attributes = Array.from(
@@ -168,10 +169,11 @@ export function deriveLynxElementTemplateProgram(
 	attributes[0]!.push({ kind: 'slot', key: 'hidden', attrSlotIndex: visibilitySlot });
 
 	const lower = (index: number): LynxElementTemplateNode => {
-		const range = ranges.get(index);
+		const ownedRanges = ranges.get(index);
 		const loweredChildren: (LynxElementTemplateNode | LynxElementTemplateElementSlot)[] = [];
 		for (const child of children[index]!) {
-			if (range?.before === child) {
+			for (const range of ownedRanges ?? []) {
+				if (range.before !== child) continue;
 				loweredChildren.push({
 					kind: 'elementSlot',
 					type: 'slot',
@@ -180,7 +182,8 @@ export function deriveLynxElementTemplateProgram(
 			}
 			loweredChildren.push(lower(child));
 		}
-		if (range !== undefined && range.before === null) {
+		for (const range of ownedRanges ?? []) {
+			if (range.before !== null) continue;
 			loweredChildren.push({
 				kind: 'elementSlot',
 				type: 'slot',

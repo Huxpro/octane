@@ -14,7 +14,7 @@ function emittedPlan(
 	const emission = emitLynxMainThreadProgram(program, { name, ranges, structuralRuns: true });
 	return {
 		kind: 'program',
-		slots: ranges.length === 0 ? [] : ['r'],
+		slots: ranges.map(() => 'r'),
 		nodes: program.nodes.length,
 		values: [],
 		events: [],
@@ -88,6 +88,76 @@ describe('compiled-program first-screen painter', () => {
 		expect(page.children[0]!.children.map((child) => child.classes)).toEqual(['row', 'footer']);
 		adoption.dispose();
 		expect(page.children).toEqual([]);
+	});
+
+	it('paints sibling ranges in compiler order before their shared static anchor', () => {
+		const shellWire: UniversalHostTemplateProgram = {
+			nodes: [
+				{ type: 'view', parent: -1, props: { class: 'shell' } },
+				{ type: 'text', parent: 0, props: { class: 'footer' } },
+			],
+			events: [],
+		};
+		const shell = emittedPlan(shellWire, 'createSiblingFirstScreenShell', [
+			{ slot: 0, node: 0, before: 1, id: 1, paintsText: false },
+			{ slot: 1, node: 0, before: 1, id: 2, paintsText: false },
+		]);
+		const row = (name: string, className: string) =>
+			emittedPlan(
+				{ nodes: [{ type: 'view', parent: -1, props: { class: className } }], events: [] },
+				name,
+			);
+		const first = row('createFirstSiblingRow', 'first');
+		const second = row('createSecondSiblingRow', 'second');
+		const child = (id: number, plan: UniversalProgramPlan) => ({
+			kind: 'program' as const,
+			id,
+			plan,
+			values: [],
+			ids: [id],
+			spans: [],
+			texts: [],
+			rangeIds: [],
+			children: [],
+		});
+		const result: LynxFirstScreenRenderResult = {
+			batch: undefined as never,
+			envelope: { renderer: 'lynx', version: 1, events: [] },
+			hostCount: 4,
+			logicalCount: 4,
+			programs: 3,
+			nodes: [
+				{
+					kind: 'program',
+					id: 1,
+					plan: shell,
+					values: [],
+					ids: [1, 4],
+					spans: [1, 1],
+					texts: [undefined, undefined],
+					rangeIds: [undefined, undefined],
+					children: [child(2, first), child(3, second)],
+				},
+			],
+		};
+		const base = createFakePAPI();
+		const papi = {
+			...base,
+			intrinsics: {
+				view: (pageId: number) => base.createElement('view', pageId, ''),
+				text: (pageId: number) => base.createElement('text', pageId, ''),
+				rawText: (value: string) => base.createElement('#text', 0, value),
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const adoption = paintLynxCompiledProgramFirstScreen(result, papi, page);
+
+		expect(page.children[0]!.children.map((node) => node.classes)).toEqual([
+			'first',
+			'second',
+			'footer',
+		]);
+		adoption.dispose();
 	});
 
 	it('hides an Activity program before attaching it to the page', () => {

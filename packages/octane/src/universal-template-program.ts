@@ -623,9 +623,9 @@ const EMPTY_TEMPLATE_PROGRAM_RANGES: readonly UniversalTemplateProgramRange[] =
  *
  * A non-tail range names its next surviving static sibling as `before`, in the
  * reduced program's node space. The host can therefore insert the range without
- * rediscovering topology at run time. More than one range under one parent is
- * still declined: independent sibling ranges need independent resident range
- * identities, not merely the shared physical parent this reducer can name.
+ * rediscovering topology at run time. Adjacent ranges may name the same static
+ * anchor (or the tail); their compiler slots remain distinct identities, and a
+ * resident receiver uses the next non-empty sibling range as the live anchor.
  *
  * Not memoized. The result depends on the caller's values as well as the plan,
  * and its consumer derives it once per mounted program, so a cache here would
@@ -651,13 +651,6 @@ export function universalTemplateProgramWithoutRanges(
 		count++;
 	}
 	if (count === 0) return { compiled, ranges: EMPTY_TEMPLATE_PROGRAM_RANGES };
-	const rangeParents = new Set<number>();
-	for (let index = 0; index < shape.length; index++) {
-		if (!dropped[index]) continue;
-		const parent = shape[index]!.parent;
-		if (rangeParents.has(parent)) return null;
-		rangeParents.add(parent);
-	}
 	// Backwards over the pre-order gives every dropped leaf its next surviving
 	// direct sibling in O(nodes), including a run of adjacent dropped holes.
 	const nextChild = new Map<number, number>();

@@ -84,6 +84,11 @@ function BlockShell(props: {
 					} @empty {
 						<text class="nested-tag-empty">No tags</text>
 					}
+					@for (const tag of item.tags; key tag) {
+						<text class="nested-tag-mirror">{'Mirror ' + tag as string}</text>
+					} @empty {
+						<text class="nested-tag-mirror-empty">No mirror tags</text>
+					}
 				</view>
 			} @empty {
 				<view class="nested-group-empty">
