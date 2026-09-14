@@ -673,6 +673,36 @@ describe('@octanejs/lynx compact compiled-program store', () => {
 		expect(profile.programRunLiveRetainedHostRefs).toBe(liveBefore);
 	});
 
+	it('disposes dense live instances in reverse order from one handle snapshot', () => {
+		const base = emittedHost();
+		const removed: string[] = [];
+		const papi: typeof base = {
+			...base,
+			remove(parent, child) {
+				removed.push(child.id);
+				base.remove(parent, child);
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page));
+		const plan = emittedPlan(papi, [0, 2]);
+		const count = 1_000;
+		const values = Array.from({ length: count }, (_, row) => [
+			'row-' + row,
+			'cold',
+			'label-' + row,
+		]).flat();
+		store.begin();
+		store.mount({ firstHandle: 1, count, parent: page, before: null, plan, values });
+		store.commit();
+
+		store.dispose();
+		expect(removed).toHaveLength(count);
+		expect(removed[0]).toBe('row-999');
+		expect(removed.at(-1)).toBe('row-0');
+		expect(page.children).toEqual([]);
+	});
+
 	it('caches native-list descriptor plans and rebuilds only changed metadata rows', () => {
 		const base = emittedHost(true);
 		const publications: unknown[] = [];

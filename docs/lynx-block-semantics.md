@@ -290,6 +290,11 @@ and allocates its error collection only after the first cleanup fault. A failed
 cell remains registered for a later terminal retry while iteration continues to
 release the other cells.
 
+Whole-store disposal preserves reverse-handle cleanup order with one scalar
+handle snapshot. It does not spread the instance map into an outer array plus
+one `[handle, instance]` pair allocation per live instance; failed roots remain
+in the authoritative map for the next terminal retry.
+
 A list may demand a physical cell while its logical row is retained but hidden.
 Fresh and recycled cells paint that hidden state without native event tokens,
 host-ref attachment publication, or main-thread worklet/ref activation. A later

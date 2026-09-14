@@ -2203,7 +2203,8 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					}
 				}
 			}
-			for (const [handle, instance] of [...instances].reverse()) {
+			for (const handle of Array.from(instances.keys()).reverse()) {
+				const instance = instances.get(handle)!;
 				let rootReleased = instance.run.deferred;
 				if (!instance.run.deferred) {
 					try {
