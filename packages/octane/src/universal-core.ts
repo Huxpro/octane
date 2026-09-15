@@ -91,6 +91,8 @@ export interface UniversalContext<T> {
 export interface UniversalRendererMetadata {
 	readonly id: string;
 	readonly module?: string;
+	/** Compiler proof that this component needs semantic hook ownership. */
+	readonly hookScope?: boolean;
 	readonly target: 'universal';
 }
 
@@ -205,6 +207,8 @@ export interface UniversalProgramRange {
 	readonly slot: number;
 	/** Emitted node its members are appended into. */
 	readonly node: number;
+	/** Next static child node in this program, or null when the range is last. */
+	readonly before?: number | null;
 	/**
 	 * Where the range sits in the program's own pre-order, counting the
 	 * program's nodes and its ranges and nothing else.
@@ -299,7 +303,9 @@ export interface UniversalProgramCreate {
 	 * after creation, before later PAPI writes for that instance, so a caller can
 	 * retain and clean the created prefix if one of those writes throws. Nothing
 	 * is appended to a parent: the caller still attaches each instance's root,
-	 * exactly as it does per call.
+	 * exactly as it does per call. A driver advertising `runValueOffset` may read
+	 * the first instance's values at the optional `valueOffset`; drivers without
+	 * that capability retain the original zero-based table contract.
 	 */
 	readonly run?: (
 		pageId: unknown,
@@ -308,21 +314,41 @@ export interface UniversalProgramCreate {
 		events: readonly unknown[],
 		ranges: readonly unknown[],
 		out: unknown[],
+		valueOffset?: number,
 	) => void;
+	/** The driver accepts `valueOffset` without requiring a cell-scoped values copy. */
+	readonly runValueOffset?: true;
 }
 
 export interface UniversalProgramPlan {
 	readonly kind: 'program';
+	/** Compiler-emitted program ABI; absent only on legacy hand-written programs. */
+	readonly version?: number;
 	/** Per-value-slot kind table; `null` for a slot no node writes. */
 	readonly slots: readonly (UniversalSlotKind | null)[];
 	/** How many hosts the program creates. */
 	readonly nodes: number;
+	/** Physical node indexes retained after a dense run; absent means every node. */
+	readonly resident?: readonly number[];
 	/** Plan slot feeding each positional value parameter, in parameter order. */
 	readonly values: readonly number[];
 	/** Listener parameters in parameter order, one entry per event site. */
 	readonly events: readonly UniversalProgramEvent[];
 	/** The holes the program declares rather than compiling their members. */
 	readonly ranges: readonly UniversalProgramRange[];
+	/** Resident host-node indexes that carry authored background refs. */
+	readonly refs?: readonly number[];
+	/**
+	 * Whole-root Lynx Element Template identity emitted only by an explicitly
+	 * selected SDK Template Definition backend.
+	 */
+	readonly elementTemplate?: {
+		readonly templateId: string;
+		readonly attributeSlots: number;
+		readonly childSlots: number;
+		/** Present only when this plan can retain a mounted hidden instance. */
+		readonly visibilitySlot?: number;
+	};
 	/**
 	 * Take the host once; return the per-instance create.
 	 *
@@ -1897,6 +1923,18 @@ class UniversalSuspense {
 	constructor(readonly thenable: PromiseLike<unknown>) {}
 }
 
+/**
+ * Read the thenable carried by the universal suspension sentinel.
+ *
+ * Renderer cores that adopt the shared hook scope need to route suspensions to
+ * their own retained-boundary transaction without importing or reproducing the
+ * private sentinel class. Ordinary thrown thenables are still ordinary errors;
+ * only `use()`/`useBatch()` create this value.
+ */
+export function universalSuspensionThenable(value: unknown): PromiseLike<unknown> | null {
+	return value instanceof UniversalSuspense ? value.thenable : null;
+}
+
 class UniversalSuspendedAttemptImpl implements UniversalSuspendedAttempt {
 	private state: 'suspended' | 'aborted' = 'suspended';
 
@@ -2527,7 +2565,7 @@ function rendererRegionOwnerBridge(value: unknown): UniversalRendererRegionOwner
 export function defineUniversalComponent<P>(
 	renderer: string,
 	render: (props: P, context: UniversalRenderContext) => UniversalRenderable,
-	metadata?: { module?: string },
+	metadata?: { module?: string; hookScope?: boolean },
 ): UniversalComponent<P> {
 	assertRendererId(renderer, 'defineUniversalComponent renderer');
 	if (typeof render !== 'function')
@@ -2535,7 +2573,12 @@ export function defineUniversalComponent<P>(
 	Object.defineProperty(render, UNIVERSAL_COMPONENT, {
 		configurable: false,
 		enumerable: false,
-		value: Object.freeze({ id: renderer, module: metadata?.module, target: 'universal' }),
+		value: Object.freeze({
+			id: renderer,
+			module: metadata?.module,
+			...(typeof metadata?.hookScope === 'boolean' ? { hookScope: metadata.hookScope } : null),
+			target: 'universal',
+		}),
 	});
 	return render as UniversalComponent<P>;
 }
@@ -2710,7 +2753,7 @@ export function hmrUniversalComponent<P>(
 			if (owner !== null) owners.add(owner.record);
 			return meta.component(props, context);
 		},
-		{ module: metadata.module },
+		{ module: metadata.module, hookScope: true },
 	) as UniversalHmrComponent<P>;
 	Object.defineProperties(wrapper, {
 		[UNIVERSAL_HMR]: { value: meta },
@@ -5805,17 +5848,18 @@ function universalTransitionBatchForUpdate(): UniversalTransitionBatch | null {
 }
 
 /**
- * A hook scope's stand-in root has no microtask scheduler, no promotion, and
- * no batch membership, so an update staged into a transition batch would fault
- * when the batch promotes — and batch eligibility is module-global, so even a
- * foreign root's in-flight async transition would otherwise catch a
- * scope-owned setter. A transition is a scheduling hint rather than a
- * semantic, so a scope-owned update runs urgently instead of being staged.
+ * Legacy hook scopes have no promotion services, so they deliberately keep the
+ * old urgent-only behavior. A scope whose adopting core supplies both services
+ * joins the same module-global batches as a full Universal root instead.
  */
 function universalTransitionBatchForRecordUpdate(
 	record: UniversalOwnerRecord,
 ): UniversalTransitionBatch | null {
-	if ((record.root as { hookScopeStandIn?: boolean }).hookScopeStandIn === true) return null;
+	const scopeRoot = record.root as {
+		hookScopeStandIn?: boolean;
+		hookScopeTransitions?: boolean;
+	};
+	if (scopeRoot.hookScopeStandIn === true && scopeRoot.hookScopeTransitions !== true) return null;
 	return universalTransitionBatchForUpdate();
 }
 
@@ -5916,7 +5960,7 @@ const scheduleOwner = createScheduleOwner<UniversalOwnerRecord>((owner, slot) =>
 			typeof slot === 'symbol' || typeof slot === 'number' ? slot : undefined,
 		);
 	}
-	owner.root.scheduleOwned(owner);
+	owner.root.scheduleOwned(owner, slot);
 });
 
 function currentDraftOwner(): DraftOwner {
@@ -6000,6 +6044,94 @@ function applyUniversalHookUpdateQueue<T>(
 	return value;
 }
 
+/**
+ * Publish one accepted owner's update queues, including transition lanes.
+ *
+ * Hook scopes and the full Universal root deliberately meet at this function:
+ * an adopting renderer may own a different scheduler and commit protocol, but
+ * it must not grow a second interpretation of urgent rebases around skipped
+ * transition updates.
+ */
+function publishAppliedUniversalHookUpdates(
+	record: UniversalOwnerRecord,
+	appliedUpdates: ReadonlyMap<unknown, AppliedUniversalHookUpdates>,
+	onUrgentConsumed?: (queue: UniversalHookUpdateQueue, count: number) => void,
+): void {
+	for (const [slot, applied] of appliedUpdates) {
+		const queue = record.updates.get(slot);
+		if (queue !== applied.queue) continue;
+		if (!applied.lane) {
+			queue.splice(0, applied.consumed);
+			if (queue.batches !== undefined) {
+				queue.batches.splice(0, applied.consumed);
+				queue.rebases?.splice(0, applied.consumed);
+				queue.baseState = applied.baseState;
+			}
+			onUrgentConsumed?.(queue, applied.consumed);
+			if (queue.length === 0) record.updates.delete(slot);
+			continue;
+		}
+		const appendedValues = queue.slice(applied.consumed);
+		const appendedBatches =
+			queue.batches?.slice(applied.consumed) ??
+			new Array<UniversalTransitionBatch | null>(appendedValues.length).fill(null);
+		const appendedRebases =
+			queue.rebases?.slice(applied.consumed) ??
+			new Array<boolean>(appendedValues.length).fill(false);
+		queue.length = 0;
+		queue.push(...applied.remainingValues, ...appendedValues);
+		queue.baseState = applied.baseState;
+		queue.batches = [...applied.remainingBatches, ...appendedBatches];
+		const rebases = [...applied.remainingRebases, ...appendedRebases];
+		if (rebases.some(Boolean)) queue.rebases = rebases;
+		else delete queue.rebases;
+		if (queue.length === 0) {
+			record.updates.delete(slot);
+		} else if (queue.batches.every((batch) => batch === null)) {
+			const pendingValues = queue.filter((_, index) => !rebases[index]);
+			queue.length = 0;
+			queue.push(...pendingValues);
+			delete queue.kind;
+			delete queue.baseState;
+			delete queue.batches;
+			delete queue.rebases;
+			if (queue.length === 0) record.updates.delete(slot);
+		}
+	}
+}
+
+/** Drop one canceled lane from a single semantic owner. */
+function discardUniversalTransitionBatchFromOwner(
+	owner: UniversalOwnerRecord,
+	batch: UniversalTransitionBatch,
+): void {
+	for (const [slot, queue] of owner.updates) {
+		const batches = queue.batches;
+		if (batches === undefined || !batches.includes(batch)) continue;
+		const values: unknown[] = [];
+		const remainingBatches: (UniversalTransitionBatch | null)[] = [];
+		const rebases: boolean[] = [];
+		for (let index = 0; index < queue.length; index++) {
+			if (batches[index] === batch) continue;
+			values.push(queue[index]);
+			remainingBatches.push(batches[index]);
+			rebases.push(queue.rebases?.[index] ?? false);
+		}
+		if (
+			values.length === 0 ||
+			(remainingBatches.every((remaining) => remaining === null) && rebases.every(Boolean))
+		) {
+			owner.updates.delete(slot);
+		} else {
+			queue.length = 0;
+			queue.push(...values);
+			queue.batches = remainingBatches;
+			if (rebases.some(Boolean)) queue.rebases = rebases;
+			else delete queue.rebases;
+		}
+	}
+}
+
 function hasUniversalUpdatesForAttempt(owner: UniversalOwnerRecord): boolean {
 	if (owner.updates.size === 0) return false;
 	const attempt = currentAttempt();
@@ -6027,6 +6159,24 @@ function cloneStateHook<T>(owner: DraftOwner, slot: unknown): StateHook<T> | und
 		owner.clonedHooks.add(slot);
 		hook.value = applyUniversalHookUpdateQueue(owner, slot, 'state', hook.value, (value, update) =>
 			typeof update === 'function' ? (update as (previous: T) => T)(value) : (update as T),
+		);
+	}
+	return hook;
+}
+
+function cloneReducerHook<S, A>(owner: DraftOwner, slot: unknown): ReducerHook<S, A> | undefined {
+	let hook = owner.hooks.get(slot) as ReducerHook<S, A> | undefined;
+	if (hook?.kind !== 'reducer') return undefined;
+	if (!owner.clonedHooks.has(slot)) {
+		hook = { ...hook };
+		owner.hooks.set(slot, hook);
+		owner.clonedHooks.add(slot);
+		hook.value = applyUniversalHookUpdateQueue(
+			owner,
+			slot,
+			'reducer',
+			hook.value,
+			(value, action) => hook!.reducer(value, action as A),
 		);
 	}
 	return hook;
@@ -6119,7 +6269,12 @@ export interface UniversalHookScopeServices {
 	 * while no render of this scope was in flight. An update raised *during* a
 	 * render settles inside that render, so this is never re-entrant.
 	 */
-	scheduleRender(): void;
+	scheduleRender(slot: unknown): void;
+	/**
+	 * Resolve one context read from the adopting core's semantic environment.
+	 * Absence keeps context reads fail-closed.
+	 */
+	readonly readContext?: <T>(context: UniversalContext<T>) => T;
 	/**
 	 * Publish layout-effect cleanup/create work after the host has accepted the
 	 * render this scope just committed. Absence keeps every effect refused.
@@ -6131,6 +6286,14 @@ export interface UniversalHookScopeServices {
 	 * render and before disposal.
 	 */
 	readonly schedulePassiveEffectCommit?: (task: () => void) => void;
+	/**
+	 * Schedule a full transition render for this scope's adopting renderer.
+	 * Supplied together with `scheduleMicrotask`; absence preserves the urgent-only
+	 * compatibility used by older adopting cores.
+	 */
+	readonly scheduleTransitionRender?: () => void;
+	/** Queue transition promotion on the adopting renderer's resolved microtask service. */
+	readonly scheduleMicrotask?: (task: () => void) => void;
 }
 
 export interface UniversalHookScope {
@@ -6140,12 +6303,52 @@ export interface UniversalHookScope {
 	 * is the output of the last pass rather than the first.
 	 */
 	render<T>(setup: () => T): T;
-	/** Publish the last render's cells and drop the updates it consumed. */
-	commit(): void;
+	/** Render under every promoted transition lane currently owned by this scope. */
+	renderTransition<T>(setup: () => T): T;
+	/** Whether a promoted or deliberately held transition still belongs to this scope. */
+	hasTransitionWork(): boolean;
+	/**
+	 * Apply queued updates for the named state/reducer cells, then run only the
+	 * compiler-proved computation that consumes their stable getters. Returns
+	 * false without opening a transaction when any slot is not independently
+	 * projectable, so the host can fall back to a complete component render.
+	 */
+	renderDirty(
+		slots: readonly unknown[],
+		compute: (sources: readonly (() => unknown)[]) => void,
+	): boolean;
+	/**
+	 * Project a compiler-proved dirty render without replacing an older draft
+	 * that is waiting for host acknowledgement. The returned transaction can be
+	 * published after that older draft settles, or discarded when newer input
+	 * supersedes it.
+	 */
+	prepareDirty(
+		slots: readonly unknown[],
+		compute: (sources: readonly (() => unknown)[]) => void,
+	): UniversalHookScopePrepared | null;
+
+	/**
+	 * Publish the last render's cells and drop the updates it consumed.
+	 *
+	 * A visibility argument lets an adopting core retain the cells behind an
+	 * Activity boundary without keeping layout/passive subscriptions live. When
+	 * omitted, the scope keeps its last accepted visibility (visible initially),
+	 * so dirty projections do not have to rediscover their owning boundary.
+	 */
+	commit(visible?: boolean, holdTransitions?: boolean): void;
 	/** Drop the last render's cells, leaving the committed ones in place. */
-	abort(): void;
+	abort(retryTransitions?: boolean): void;
+	/** Settle and discard every promoted, drafted, or held transition owned by this scope. */
+	finishTransitions(): void;
 	/** Release the cells. A setter that fires afterwards is ignored. */
 	dispose(): void;
+}
+
+/** One detached hook-scope draft, owned by an accepting host transaction. */
+export interface UniversalHookScopePrepared {
+	commit(): void;
+	abort(): void;
 }
 
 const HOOK_SCOPE_IDENTITY: readonly unknown[] = Object.freeze([]);
@@ -6171,6 +6374,19 @@ export const UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED =
 	'Octane universal hook scope: the component read a context, and this scope has no provider chain to serve one.';
 
 export function createUniversalHookScope(services: UniversalHookScopeServices): UniversalHookScope {
+	const transitionServices =
+		services.scheduleTransitionRender !== undefined || services.scheduleMicrotask !== undefined;
+	if (
+		transitionServices &&
+		(services.scheduleTransitionRender === undefined || services.scheduleMicrotask === undefined)
+	) {
+		throw new Error(
+			'Octane universal hook scope: transition scheduling requires both scheduleTransitionRender and scheduleMicrotask.',
+		);
+	}
+	let record!: UniversalOwnerRecord;
+	let scheduledTransitionBatches: Set<UniversalTransitionBatch> | null = null;
+	let heldTransitionBatches: Set<UniversalTransitionBatch> | null = null;
 	// The hook path reads exactly two members off a root: the renderer id, which
 	// the owner record copies once, and `scheduleOwned`, which `scheduleOwner`
 	// calls for an update raised outside a render. Standing those two up is
@@ -6178,12 +6394,32 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 	// `UniversalRootImpl` unreachable from a core that only wants cells.
 	const root = {
 		renderer: services.renderer,
-		// The brand the setter path reads to keep a scope-owned update out of
-		// transition batches, which would promote through root machinery this
-		// stand-in deliberately does not have.
+		// The brand keeps legacy adopting cores urgent-only. A scope with the two
+		// explicit services below instead participates in the shared transition
+		// controller while retaining its adopting renderer's commit protocol.
 		hookScopeStandIn: true,
-		scheduleOwned(): void {
-			services.scheduleRender();
+		hookScopeTransitions: transitionServices,
+		scheduleOwned(_owner: UniversalOwnerRecord, slot: unknown): void {
+			services.scheduleRender(slot);
+		},
+		scheduleTransition(batch: UniversalTransitionBatch): void {
+			if (!transitionServices || record.disposed || batch.settled) {
+				finishUniversalTransitionRoot(batch, root as UniversalRootImpl<any, any>);
+				return;
+			}
+			(scheduledTransitionBatches ??= new Set()).add(batch);
+			services.scheduleTransitionRender!();
+		},
+		discardTransitionBatch(batch: UniversalTransitionBatch): void {
+			scheduledTransitionBatches?.delete(batch);
+			heldTransitionBatches?.delete(batch);
+			for (const owner of batch.updates.keys()) {
+				if (owner === record) batch.updates.delete(owner);
+			}
+			discardUniversalTransitionBatchFromOwner(record, batch);
+		},
+		__scheduleMicrotask(task: () => void): void {
+			services.scheduleMicrotask?.(task);
 		},
 	} as unknown as UniversalRootImpl<any, any>;
 	const scopeId = (NEXT_HOOK_SCOPE_ID++).toString(36);
@@ -6192,26 +6428,118 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 		formatId(index: number): string {
 			return `:octane-h${scopeId}-${index.toString(36)}:`;
 		},
-		// A context read reaching the bridge means no provider answered — and a
-		// scope has no provider chain at all, so the default value is the only
-		// answer it could ever give. Silently giving it would make a component
-		// under a provider render the wrong value with no diagnostic, so the
-		// scope refuses instead; a core that wants provider values needs the
-		// owner chain this scope deliberately does not build.
-		readBridgeContext(): never {
-			throw new Error(UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED);
+		// The adopting core owns the provider chain. Without an explicit reader,
+		// retain the old fail-closed contract instead of silently serving defaults
+		// to a component that may actually be under a provider.
+		readBridgeContext<T>(context: UniversalContext<T>): T {
+			const read = services.readContext;
+			if (read === undefined) throw new Error(UNIVERSAL_HOOK_SCOPE_CONTEXT_REFUSED);
+			return read(context);
 		},
 	};
-	const record = createOwnerRecord(root, null, null, HOOK_SCOPE_IDENTITY, null);
+	record = createOwnerRecord(root, null, null, HOOK_SCOPE_IDENTITY, null);
 	let draft: DraftOwner | null = null;
+	let draftTransitionBatches: ReadonlySet<UniversalTransitionBatch> =
+		EMPTY_UNIVERSAL_TRANSITION_BATCHES;
+	let visible = true;
 	let nextUniversalId = 0;
-	return {
+	const queueHeads = new WeakMap<UniversalHookUpdateQueue, number>();
+	const renderScope = <T>(
+		setup: () => T,
+		transitionBatches: ReadonlySet<UniversalTransitionBatch>,
+		transitionRender: boolean,
+	): T => {
+		if (record.disposed) {
+			throw new Error('Octane universal hook scope: this scope was disposed.');
+		}
+		if (CURRENT_ATTEMPT !== null) {
+			throw new Error('Octane universal hook scope: a render is already in flight.');
+		}
+		const owner = draftOwner(record, null, HOOK_SCOPE_REPLAY);
+		const attempt: RenderAttempt = {
+			root,
+			hookRoot,
+			owner,
+			scope: null,
+			owners: [owner],
+			treeFeatures: 0,
+			replayEntries: HOOK_SCOPE_REPLAY_ENTRIES,
+			retryThenables: new Set(),
+			nextUniversalId,
+			implicitSlot: 0,
+			transitionBatches,
+			transitionRender,
+			bridgeContextReads: null,
+			retainEligible: false,
+			retainedCount: 0,
+			dirtyEpoch: 0,
+		};
+		CURRENT_ATTEMPT = attempt;
+		CURRENT_OWNER = owner;
+		const warmPlanCheckpoint = ACTIVE_UNIVERSAL_WARM_PLANS.length;
+		try {
+			let produced: T;
+			for (let pass = 0; ; pass++) {
+				if (pass === 25) throw new Error('Too many universal render-phase updates.');
+				ACTIVE_UNIVERSAL_WARM_PLANS.length = warmPlanCheckpoint;
+				owner.seenEffects = [];
+				owner.needsRender = false;
+				owner.implicitSlot = 0;
+				produced = setup();
+				if (!owner.needsRender) break;
+			}
+			if (
+				owner.seenEffects.some(
+					(effect) =>
+						effect.phase === 'insertion' ||
+						(effect.phase === 'layout' && services.scheduleLayoutEffectCommit === undefined) ||
+						(effect.phase === 'passive' && services.schedulePassiveEffectCommit === undefined),
+				)
+			) {
+				throw new Error(UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED);
+			}
+			draft = owner;
+			draftTransitionBatches = transitionBatches;
+			nextUniversalId = attempt.nextUniversalId;
+			return produced;
+		} finally {
+			ACTIVE_UNIVERSAL_WARM_PLANS.length = warmPlanCheckpoint;
+			CURRENT_ATTEMPT = null;
+			CURRENT_OWNER = null;
+		}
+	};
+	const scope: UniversalHookScope = {
 		render<T>(setup: () => T): T {
+			return renderScope(setup, EMPTY_UNIVERSAL_TRANSITION_BATCHES, false);
+		},
+		renderTransition<T>(setup: () => T): T {
+			const batches = new Set(scheduledTransitionBatches ?? EMPTY_UNIVERSAL_TRANSITION_BATCHES);
+			scheduledTransitionBatches = null;
+			try {
+				return renderScope(setup, batches, true);
+			} catch (error) {
+				for (const batch of batches) (scheduledTransitionBatches ??= new Set()).add(batch);
+				throw error;
+			}
+		},
+		hasTransitionWork(): boolean {
+			return (
+				(scheduledTransitionBatches?.size ?? 0) !== 0 || (heldTransitionBatches?.size ?? 0) !== 0
+			);
+		},
+		renderDirty(slots, compute): boolean {
 			if (record.disposed) {
 				throw new Error('Octane universal hook scope: this scope was disposed.');
 			}
 			if (CURRENT_ATTEMPT !== null) {
 				throw new Error('Octane universal hook scope: a render is already in flight.');
+			}
+			const sources: (() => unknown)[] = [];
+			for (const slot of slots) {
+				const hook = record.hooks.get(slot);
+				if (hook?.kind === 'reducer') sources.push(hook.get);
+				else if (hook?.kind === 'state' && !('linked' in hook)) sources.push(hook.get);
+				else return false;
 			}
 			const owner = draftOwner(record, null, HOOK_SCOPE_REPLAY);
 			const attempt: RenderAttempt = {
@@ -6234,59 +6562,80 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			};
 			CURRENT_ATTEMPT = attempt;
 			CURRENT_OWNER = owner;
-			// The same per-pass housekeeping `executeOwner` does: the warm-plan
-			// stack truncates to its checkpoint so a `useBatch` warm plan neither
-			// leaks across renders nor replays a stale pass's speculation, and the
-			// effect list resets so only the settled pass's effects are judged.
 			const warmPlanCheckpoint = ACTIVE_UNIVERSAL_WARM_PLANS.length;
 			try {
-				// A setup that writes its own state settles inside this attempt,
-				// on this draft — the same loop and the same cap `executeOwner`
-				// runs. Rebuilding the draft instead would drop the write, and
-				// committing between passes would publish a state the component
-				// has already moved off.
-				let produced: T;
 				for (let pass = 0; ; pass++) {
 					if (pass === 25) throw new Error('Too many universal render-phase updates.');
 					ACTIVE_UNIVERSAL_WARM_PLANS.length = warmPlanCheckpoint;
-					owner.seenEffects = [];
+					// A proved computation declares no hooks. Preserve the committed
+					// effect set so accepting this partial transaction cannot clean one up.
+					owner.seenEffects = [...record.effectOrder];
 					owner.needsRender = false;
 					owner.implicitSlot = 0;
-					produced = setup();
+					for (const slot of slots) {
+						const hook = owner.hooks.get(slot);
+						if (hook?.kind === 'reducer') cloneReducerHook(owner, slot);
+						else cloneStateHook(owner, slot);
+					}
+					compute(sources);
 					if (!owner.needsRender) break;
 				}
-				// An effect cell with nothing to run it is a subscription that
-				// silently never happens, so a setup that declared one on its
-				// settled pass is refused rather than committed. A consumer may
-				// supply exactly the accepted-host boundary layout effects need;
-				// Each phase needs an explicit accepting-core scheduler. Insertion
-				// remains refused because it precedes host mutation and this scope has
-				// no mutation phase to publish into.
-				if (
-					owner.seenEffects.some(
-						(effect) =>
-							effect.phase === 'insertion' ||
-							(effect.phase === 'layout' && services.scheduleLayoutEffectCommit === undefined) ||
-							(effect.phase === 'passive' && services.schedulePassiveEffectCommit === undefined),
-					)
-				) {
-					throw new Error(UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED);
-				}
 				draft = owner;
+				draftTransitionBatches = EMPTY_UNIVERSAL_TRANSITION_BATCHES;
 				nextUniversalId = attempt.nextUniversalId;
-				return produced;
 			} finally {
 				ACTIVE_UNIVERSAL_WARM_PLANS.length = warmPlanCheckpoint;
 				CURRENT_ATTEMPT = null;
 				CURRENT_OWNER = null;
 			}
+			return true;
 		},
-		commit(): void {
+		prepareDirty(slots, compute): UniversalHookScopePrepared | null {
+			const previous = draft;
+			if (!scope.renderDirty(slots, compute)) return null;
+			const prepared = draft!;
+			draft = previous;
+			const ends = new Map<unknown, readonly [UniversalHookUpdateQueue, number]>();
+			for (const [slot, applied] of prepared.appliedUpdates) {
+				if (!applied.lane) {
+					ends.set(slot, [applied.queue, (queueHeads.get(applied.queue) ?? 0) + applied.consumed]);
+				}
+			}
+			let settled = false;
+			return Object.freeze({
+				commit(): void {
+					if (settled) return;
+					if (draft !== null) {
+						throw new Error('Octane universal hook scope: an older draft is still in flight.');
+					}
+					settled = true;
+					for (const [slot, [queue, end]] of ends) {
+						const applied = prepared.appliedUpdates.get(slot)!;
+						prepared.appliedUpdates.set(slot, {
+							...applied,
+							consumed: Math.max(0, end - (queueHeads.get(queue) ?? 0)),
+						});
+					}
+					draft = prepared;
+					scope.commit();
+				},
+				abort(): void {
+					settled = true;
+				},
+			});
+		},
+		commit(nextVisible = visible, holdTransitions = false): void {
 			const owner = draft;
-			if (owner === null) return;
-			draft = null;
+			const transitionBatches = draftTransitionBatches;
+			const previousVisible = visible;
+			if (owner === null && previousVisible === nextVisible) return;
+			visible = nextVisible;
+			if (owner !== null) {
+				draft = null;
+				draftTransitionBatches = EMPTY_UNIVERSAL_TRANSITION_BATCHES;
+			}
 			const previousEffects = record.effectOrder;
-			const nextEffects = [...owner.seenEffects];
+			const nextEffects = owner === null ? previousEffects : [...owner.seenEffects];
 			const previousBySlot = new Map(previousEffects.map((effect) => [effect.slot, effect]));
 			const nextBySlot = new Map(nextEffects.map((effect) => [effect.slot, effect]));
 			const layoutCleanupTasks: (() => void)[] = [];
@@ -6299,6 +6648,7 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			for (const previous of previousEffects) {
 				const next = nextBySlot.get(previous.slot);
 				if (
+					(previousVisible && !nextVisible) ||
 					next === undefined ||
 					next.phase !== previous.phase ||
 					!depsEqual(previous.deps, next.deps)
@@ -6316,10 +6666,11 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			for (const next of nextEffects) {
 				const previous = previousBySlot.get(next.slot);
 				if (
-					previous === undefined ||
-					previous.phase !== next.phase ||
-					!depsEqual(previous.deps, next.deps) ||
-					!previous.mounted
+					nextVisible &&
+					(previous === undefined ||
+						previous.phase !== next.phase ||
+						!depsEqual(previous.deps, next.deps) ||
+						!previous.mounted)
 				) {
 					const tasks = next.phase === 'passive' ? (passiveCreateTasks ??= []) : layoutCreateTasks;
 					tasks.push(() => {
@@ -6327,21 +6678,27 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 					});
 				}
 			}
-			for (const [slot, hook] of owner.hooks) {
-				if (hook.kind === 'effect' && !nextBySlot.has(slot)) owner.hooks.delete(slot);
+			if (owner !== null) {
+				for (const [slot, hook] of owner.hooks) {
+					if (hook.kind === 'effect' && !nextBySlot.has(slot)) owner.hooks.delete(slot);
+				}
+				record.hooks = owner.hooks;
+				record.effectOrder = nextEffects;
+				record.componentProps = owner.componentProps;
+				publishAppliedUniversalHookUpdates(record, owner.appliedUpdates, (queue, count) => {
+					queueHeads.set(queue, (queueHeads.get(queue) ?? 0) + count);
+				});
+				record.mounted = true;
 			}
-			record.hooks = owner.hooks;
-			record.effectOrder = nextEffects;
-			record.componentProps = owner.componentProps;
-			// Same drain as an accepted universal commit: an update the render
-			// folded into a cell is gone, one it skipped is still owed.
-			for (const [slot, applied] of owner.appliedUpdates) {
-				const queue = record.updates.get(slot);
-				if (queue !== applied.queue || applied.lane) continue;
-				queue.splice(0, applied.consumed);
-				if (queue.length === 0) record.updates.delete(slot);
+			if (transitionBatches.size !== 0) {
+				if (holdTransitions) {
+					for (const batch of transitionBatches) {
+						(heldTransitionBatches ??= new Set()).add(batch);
+					}
+				} else {
+					for (const batch of transitionBatches) finishUniversalTransitionRoot(batch, root);
+				}
 			}
-			record.mounted = true;
 			if (layoutCleanupTasks.length !== 0 || layoutCreateTasks.length !== 0) {
 				services.scheduleLayoutEffectCommit?.(() =>
 					runCommitTasks([...layoutCleanupTasks, ...layoutCreateTasks]),
@@ -6357,11 +6714,39 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				services.schedulePassiveEffectCommit?.(() => runCommitTasks(tasks));
 			}
 		},
-		abort(): void {
+		abort(retryTransitions = false): void {
+			const transitionBatches = draftTransitionBatches;
 			draft = null;
+			draftTransitionBatches = EMPTY_UNIVERSAL_TRANSITION_BATCHES;
+			for (const batch of transitionBatches) {
+				(scheduledTransitionBatches ??= new Set()).add(batch);
+			}
+			if (retryTransitions && transitionBatches.size !== 0) {
+				services.scheduleTransitionRender?.();
+			}
+		},
+		finishTransitions(): void {
+			const batches = new Set([
+				...(scheduledTransitionBatches ?? EMPTY_UNIVERSAL_TRANSITION_BATCHES),
+				...(heldTransitionBatches ?? EMPTY_UNIVERSAL_TRANSITION_BATCHES),
+				...draftTransitionBatches,
+			]);
+			draft = null;
+			draftTransitionBatches = EMPTY_UNIVERSAL_TRANSITION_BATCHES;
+			scheduledTransitionBatches = null;
+			heldTransitionBatches = null;
+			for (const batch of batches) finishUniversalTransitionRoot(batch, root);
 		},
 		dispose(): void {
+			const transitionBatches = new Set([
+				...(scheduledTransitionBatches ?? EMPTY_UNIVERSAL_TRANSITION_BATCHES),
+				...(heldTransitionBatches ?? EMPTY_UNIVERSAL_TRANSITION_BATCHES),
+				...draftTransitionBatches,
+			]);
 			draft = null;
+			draftTransitionBatches = EMPTY_UNIVERSAL_TRANSITION_BATCHES;
+			scheduledTransitionBatches = null;
+			heldTransitionBatches = null;
 			record.disposed = true;
 			const layoutTasks: (() => void)[] = [];
 			const passiveTasks: (() => void)[] = [];
@@ -6383,8 +6768,10 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			if (passiveTasks.length !== 0) {
 				services.schedulePassiveEffectCommit?.(() => runCommitTasks(passiveTasks));
 			}
+			for (const batch of transitionBatches) finishUniversalTransitionRoot(batch, root);
 		},
 	};
+	return scope;
 }
 
 export function useState<T>(
@@ -6743,18 +7130,7 @@ export function useReducer<S, A, I = S>(
 		owner.hooks.set(resolved, hook as UniversalHook);
 		owner.clonedHooks.add(resolved);
 	} else {
-		if (!owner.clonedHooks.has(resolved)) {
-			hook = { ...hook };
-			owner.hooks.set(resolved, hook);
-			owner.clonedHooks.add(resolved);
-			hook.value = applyUniversalHookUpdateQueue(
-				owner,
-				resolved,
-				'reducer',
-				hook.value,
-				(value, action) => reducer(value, action as A),
-			);
-		}
+		hook = cloneReducerHook<S, A>(owner, resolved)!;
 		hook.reducer = reducer;
 	}
 	return [hook.value, hook.dispatch, hook.get];
@@ -8885,7 +9261,7 @@ class UniversalRootImpl<Container, PublicInstance>
 		if (this.eventScopeDepth === 0 && UNIVERSAL_SYNC_DEPTH === 0) this.queueScheduledWork();
 	}
 
-	scheduleOwned(owner: UniversalOwnerRecord): void {
+	scheduleOwned(owner: UniversalOwnerRecord, _slot?: unknown): void {
 		if (owner.root !== this || owner.disposed) return;
 		this.scheduledOwners.add(owner);
 		// Stamp the owner and its ancestors so retained-subtree adoption can see
@@ -9033,36 +9409,7 @@ class UniversalRootImpl<Container, PublicInstance>
 			if (owner.root === this) batch.updates.delete(owner);
 		}
 		const visit = (owner: UniversalOwnerRecord): void => {
-			for (const [slot, queue] of owner.updates) {
-				const batches = queue.batches;
-				if (batches === undefined || !batches.includes(batch)) continue;
-				const values: unknown[] = [];
-				const remainingBatches: (UniversalTransitionBatch | null)[] = [];
-				const rebases: boolean[] = [];
-				for (let index = 0; index < queue.length; index++) {
-					if (batches[index] === batch) continue;
-					values.push(queue[index]);
-					remainingBatches.push(batches[index]);
-					rebases.push(queue.rebases?.[index] ?? false);
-				}
-				if (values.length === 0) {
-					owner.updates.delete(slot);
-				} else if (
-					remainingBatches.every((remaining) => remaining === null) &&
-					rebases.every(Boolean)
-				) {
-					// Every survivor is an urgent rebase already reflected in the committed
-					// hook. With no lane update left to replay, retaining them would apply the
-					// same urgent work twice.
-					owner.updates.delete(slot);
-				} else {
-					queue.length = 0;
-					queue.push(...values);
-					queue.batches = remainingBatches;
-					if (rebases.some(Boolean)) queue.rebases = rebases;
-					else delete queue.rebases;
-				}
-			}
+			discardUniversalTransitionBatchFromOwner(owner, batch);
 			for (const child of owner.children) visit(child);
 		};
 		if (this.owner !== null) visit(this.owner);
@@ -13162,46 +13509,7 @@ class UniversalRootImpl<Container, PublicInstance>
 					record.visibility = draft.visibility;
 					record.mounted = true;
 					record.disposed = false;
-					for (const [slot, applied] of draft.appliedUpdates) {
-						const queue = record.updates.get(slot);
-						if (queue !== applied.queue) continue;
-						if (!applied.lane) {
-							queue.splice(0, applied.consumed);
-							if (queue.batches !== undefined) {
-								queue.batches.splice(0, applied.consumed);
-								queue.rebases?.splice(0, applied.consumed);
-								queue.baseState = applied.baseState;
-							}
-							if (queue.length === 0) record.updates.delete(slot);
-							continue;
-						}
-						const appendedValues = queue.slice(applied.consumed);
-						const appendedBatches =
-							queue.batches?.slice(applied.consumed) ??
-							new Array<UniversalTransitionBatch | null>(appendedValues.length).fill(null);
-						const appendedRebases =
-							queue.rebases?.slice(applied.consumed) ??
-							new Array<boolean>(appendedValues.length).fill(false);
-						queue.length = 0;
-						queue.push(...applied.remainingValues, ...appendedValues);
-						queue.baseState = applied.baseState;
-						queue.batches = [...applied.remainingBatches, ...appendedBatches];
-						const rebases = [...applied.remainingRebases, ...appendedRebases];
-						if (rebases.some(Boolean)) queue.rebases = rebases;
-						else delete queue.rebases;
-						if (queue.length === 0) {
-							record.updates.delete(slot);
-						} else if (queue.batches.every((batch) => batch === null)) {
-							const pendingValues = queue.filter((_, index) => !rebases[index]);
-							queue.length = 0;
-							queue.push(...pendingValues);
-							delete queue.kind;
-							delete queue.baseState;
-							delete queue.batches;
-							delete queue.rebases;
-							if (queue.length === 0) record.updates.delete(slot);
-						}
-					}
+					publishAppliedUniversalHookUpdates(record, draft.appliedUpdates);
 					for (const hook of record.hooks.values()) {
 						if (hook.kind === 'effect-event') {
 							hook.cell.impl = hook.next;

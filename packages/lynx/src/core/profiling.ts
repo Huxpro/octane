@@ -75,6 +75,16 @@ export interface LynxWireProfile {
 	applyMs: number;
 	/** Main: acknowledgement handle computation + dispatch time. */
 	ackMs: number;
+	/** Block: highest queued state-render depth, whether immediately runnable or backpressured. */
+	blockRenderQueueMaxDepth: number;
+	/** Block: newer notifications folded into the one bounded pending render. */
+	blockRenderMerges: number;
+	/** Block: compiler-proved scalar preparations executed off the ACK queue. */
+	blockRenderPrepares: number;
+	/** Block: preparations that overlapped an unacknowledged host frame. */
+	blockRenderPreparesWhileAck: number;
+	/** Block: non-empty host round trips started, including rejected attempts. */
+	blockAckRoundTrips: number;
 	/** Profiling-only shadow commits fully expressible by the typed delta ABI. */
 	deltaCommits: number;
 	/** Profiling-only shadow commits that still require the command ABI. */
@@ -179,6 +189,14 @@ export interface LynxWireProfile {
 	programRunDriverRuns: number;
 	/** Main: row instances painted by resident straight-line run drivers. */
 	programRunDriverRows: number;
+	/** Main: physical hosts created by non-list compiled-program run attempts. */
+	programRunOwnedHosts: number;
+	/** Main: host references kept in those runs for later-observable nodes. */
+	programRunRetainedHostRefs: number;
+	/** Main: template-static host references omitted from long-lived run state. */
+	programRunReleasedHostRefs: number;
+	/** Main: retained host references still live in non-list compiled-program runs. */
+	programRunLiveRetainedHostRefs: number;
 	/** Main: eligible addressed runs that retained the descriptor interpreter. */
 	programRunDriverFallbacks: number;
 	/** Main: why the latest eligible addressed run retained the descriptor interpreter. */
@@ -187,6 +205,22 @@ export interface LynxWireProfile {
 	listProgramCellRuns: number;
 	/** Main: physical hosts painted by resident native-list cell drivers. */
 	listProgramCellHosts: number;
+	/** Main: later-observable host references retained by physical native-list cells. */
+	listProgramCellRetainedHostRefs: number;
+	/** Main: template-static host references released after native-list cell creation. */
+	listProgramCellReleasedHostRefs: number;
+	/** Main: retained host references still live in physical native-list cells. */
+	listProgramCellLiveRetainedHostRefs: number;
+	/** Main: logical native-list descriptors built after a per-instance cache miss. */
+	listProgramItemDescriptorBuilds: number;
+	/** Main: native-list descriptor plans built from immutable template metadata. */
+	listProgramItemDescriptorPlanBuilds: number;
+	/** Main: dynamic list metadata values read while building logical descriptors. */
+	listProgramItemDescriptorValueReads: number;
+	/** Main: physical cells resolved while settling an accepted logical-list delta. */
+	listProgramCellSettlementLookups: number;
+	/** Main: cell-scoped values arrays copied for legacy drivers or worklet rewriting. */
+	listProgramCellValueCopies: number;
 	/** Main: addressed native-list cells that retained generic materialization. */
 	listProgramCellFallbacks: number;
 	/** Main: why the latest addressed native-list cell retained the generic path. */
@@ -213,6 +247,11 @@ export function lynxWireProfile(): LynxWireProfile {
 		prepareMs: 0,
 		applyMs: 0,
 		ackMs: 0,
+		blockRenderQueueMaxDepth: 0,
+		blockRenderMerges: 0,
+		blockRenderPrepares: 0,
+		blockRenderPreparesWhileAck: 0,
+		blockAckRoundTrips: 0,
 		deltaCommits: 0,
 		deltaMisses: 0,
 		deltaOps: 0,
@@ -247,10 +286,22 @@ export function lynxWireProfile(): LynxWireProfile {
 		denseReleaseHostCount: 0,
 		programRunDriverRuns: 0,
 		programRunDriverRows: 0,
+		programRunOwnedHosts: 0,
+		programRunRetainedHostRefs: 0,
+		programRunReleasedHostRefs: 0,
+		programRunLiveRetainedHostRefs: 0,
 		programRunDriverFallbacks: 0,
 		programRunDriverFallback: null,
 		listProgramCellRuns: 0,
 		listProgramCellHosts: 0,
+		listProgramCellRetainedHostRefs: 0,
+		listProgramCellReleasedHostRefs: 0,
+		listProgramCellLiveRetainedHostRefs: 0,
+		listProgramItemDescriptorBuilds: 0,
+		listProgramItemDescriptorPlanBuilds: 0,
+		listProgramItemDescriptorValueReads: 0,
+		listProgramCellSettlementLookups: 0,
+		listProgramCellValueCopies: 0,
 		listProgramCellFallbacks: 0,
 		listProgramCellFallback: null,
 	});

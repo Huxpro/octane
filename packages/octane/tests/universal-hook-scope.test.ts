@@ -33,7 +33,10 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	useReducer,
 	useSyncExternalStore,
+	useTransition,
+	type UniversalContext,
 } from 'octane/universal/native';
 
 /** A scope plus the schedule calls it made, which is half of what is asserted. */
@@ -87,6 +90,143 @@ describe('universal hook scope', () => {
 		// rather than folding the increment into it a second time.
 		expect(pass(() => useState(1, 'count')[0])).toBe(2);
 		expect(scheduled).toEqual([1]);
+		scope.dispose();
+	});
+	it('projects named state and reducer queues without rerunning the component', () => {
+		const scheduled: unknown[] = [];
+		const accepted: (() => void)[] = [];
+		const lifecycle: string[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				scheduled.push(slot);
+			},
+			scheduleLayoutEffectCommit(task) {
+				accepted.push(task);
+			},
+		});
+		let setCount!: (value: number | ((previous: number) => number)) => void;
+		let addTotal!: (value: number) => void;
+
+		scope.render(() => {
+			const [, updateCount] = useState(1, 'count');
+			const [, dispatchTotal] = useReducer(
+				(state: number, value: number) => state + value,
+				10,
+				'total',
+			);
+			useLayoutEffect(
+				() => {
+					lifecycle.push('create');
+					return () => lifecycle.push('cleanup');
+				},
+				[],
+				'effect',
+			);
+			setCount = updateCount;
+			addTotal = dispatchTotal;
+		});
+		scope.commit();
+		accepted.shift()!();
+		expect(lifecycle).toEqual(['create']);
+
+		setCount((previous) => previous + 1);
+		addTotal(2);
+		addTotal(3);
+		expect(scheduled).toEqual(['count', 'total', 'total']);
+
+		let projected: readonly unknown[] = [];
+		expect(
+			scope.renderDirty(['count', 'total'], (sources) => {
+				projected = sources.map((read) => read());
+			}),
+		).toBe(true);
+		expect(projected).toEqual([2, 15]);
+		scope.abort();
+
+		// Abort retains both queues; the retry projects the same values and only
+		// its accepted transaction drains them.
+		expect(
+			scope.renderDirty(['count', 'total'], (sources) => {
+				projected = sources.map((read) => read());
+			}),
+		).toBe(true);
+		expect(projected).toEqual([2, 15]);
+		scope.commit();
+		expect(accepted).toEqual([]);
+		expect(lifecycle).toEqual(['create']);
+
+		const published = scope.render(() => [
+			useState(0, 'count')[0],
+			useReducer((state: number, value: number) => state + value, 0, 'total')[0],
+		]);
+		expect(published).toEqual([2, 15]);
+		scope.abort();
+
+		scope.dispose();
+		accepted.shift()!();
+		expect(lifecycle).toEqual(['create', 'cleanup']);
+	});
+
+	it('detaches a projected draft while an older host transaction is in flight', () => {
+		const { scope, pass } = scopeWithLog();
+		let set!: (value: number | ((previous: number) => number)) => void;
+		pass(() => {
+			const [, update] = useState(0, 'count');
+			set = update;
+		});
+
+		set((previous) => previous + 1);
+		let first = -1;
+		expect(
+			scope.renderDirty(['count'], (sources) => {
+				first = sources[0]!() as number;
+			}),
+		).toBe(true);
+
+		set((previous) => previous + 1);
+		let projected = -1;
+		const prepared = scope.prepareDirty(['count'], (sources) => {
+			projected = sources[0]!() as number;
+		});
+		expect(first).toBe(1);
+		expect(projected).toBe(2);
+
+		// This arrived after the detached boundary. Neither accepted transaction
+		// may consume it, even though both projected through the same queue object.
+		set((previous) => previous + 1);
+		scope.commit();
+		prepared!.commit();
+
+		let remaining = -1;
+		expect(
+			scope.renderDirty(['count'], (sources) => {
+				remaining = sources[0]!() as number;
+			}),
+		).toBe(true);
+		expect(remaining).toBe(3);
+		scope.commit();
+		expect(pass(() => useState(0, 'count')[0])).toBe(3);
+		scope.dispose();
+	});
+
+	it('refuses an unknown dirty slot before opening a transaction', () => {
+		const { scope, pass } = scopeWithLog();
+		let set!: (value: number) => void;
+		pass(() => {
+			const [, update] = useState(1, 'count');
+			set = update;
+		});
+		set(4);
+
+		let ran = false;
+		expect(
+			scope.renderDirty(['missing'], () => {
+				ran = true;
+			}),
+		).toBe(false);
+		expect(ran).toBe(false);
+		expect(pass(() => useState(0, 'count')[0])).toBe(4);
 		scope.dispose();
 	});
 
@@ -443,6 +583,77 @@ describe('universal hook scope', () => {
 		expect(lifecycle.slice(-2)).toEqual(['layout-cleanup:1', 'passive-cleanup:1']);
 	});
 
+	it('retains cells while Activity visibility disconnects and reconnects effects', () => {
+		const layout: (() => void)[] = [];
+		const passive: (() => void)[] = [];
+		const lifecycle: string[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleLayoutEffectCommit(task) {
+				layout.push(task);
+			},
+			schedulePassiveEffectCommit(task) {
+				passive.push(task);
+			},
+		});
+		let update!: (value: number) => void;
+		const render = (value: string) =>
+			scope.render(() => {
+				const [count, setCount] = useState(1, 'count');
+				update = setCount;
+				useLayoutEffect(
+					() => {
+						lifecycle.push(`layout:create:${value}:${count}`);
+						return () => lifecycle.push(`layout:cleanup:${value}:${count}`);
+					},
+					[value, count],
+					'layout',
+				);
+				useEffect(
+					() => {
+						lifecycle.push(`passive:create:${value}:${count}`);
+						return () => lifecycle.push(`passive:cleanup:${value}:${count}`);
+					},
+					[value, count],
+					'passive',
+				);
+				return count;
+			});
+
+		expect(render('hidden')).toBe(1);
+		scope.commit(false);
+		expect(layout).toEqual([]);
+		expect(passive).toEqual([]);
+
+		update(2);
+		expect(render('latest')).toBe(2);
+		scope.commit();
+		expect(layout).toEqual([]);
+		expect(passive).toEqual([]);
+
+		scope.commit(true);
+		layout.shift()!();
+		passive.shift()!();
+		expect(lifecycle).toEqual(['layout:create:latest:2', 'passive:create:latest:2']);
+
+		scope.commit(false);
+		layout.shift()!();
+		passive.shift()!();
+		expect(lifecycle).toEqual([
+			'layout:create:latest:2',
+			'passive:create:latest:2',
+			'layout:cleanup:latest:2',
+			'passive:cleanup:latest:2',
+		]);
+
+		scope.commit(true);
+		layout.shift()!();
+		passive.shift()!();
+		expect(lifecycle.slice(-2)).toEqual(['layout:create:latest:2', 'passive:create:latest:2']);
+		scope.dispose();
+	});
+
 	it('cleans up an effect in its previous phase when a slot changes phase', () => {
 		const layout: (() => void)[] = [];
 		const passive: (() => void)[] = [];
@@ -511,6 +722,27 @@ describe('universal hook scope', () => {
 		scope.dispose();
 	});
 
+	it('reads context through the adopting core service and observes later values', () => {
+		const Theme = createContext('light');
+		let value = 'dark';
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			readContext<T>(context: UniversalContext<T>): T {
+				return context === (Theme as unknown as UniversalContext<T>)
+					? (value as T)
+					: context.defaultValue;
+			},
+		});
+
+		expect(scope.render(() => useContext(Theme))).toBe('dark');
+		scope.commit();
+		value = 'blue';
+		expect(scope.render(() => useContext(Theme))).toBe('blue');
+		scope.abort();
+		scope.dispose();
+	});
+
 	it('keeps useId values distinct across scopes, as roots keep them across roots', () => {
 		const { scope, pass } = scopeWithLog();
 		const other = scopeWithLog();
@@ -537,6 +769,207 @@ describe('universal hook scope', () => {
 		});
 		expect(scheduled).toEqual([1]);
 		expect(pass(() => useState(0, 'count')[0])).toBe(5);
+		scope.dispose();
+	});
+
+	it('publishes pending around an adopting core transition without exposing its staged value', () => {
+		const urgent: unknown[] = [];
+		const transition: number[] = [];
+		const microtasks: (() => void)[] = [];
+		const layout: (() => void)[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				urgent.push(slot);
+			},
+			scheduleTransitionRender() {
+				transition.push(transition.length + 1);
+			},
+			scheduleMicrotask(task) {
+				microtasks.push(task);
+			},
+			scheduleLayoutEffectCommit(task) {
+				layout.push(task);
+			},
+		});
+		let begin!: () => void;
+		const render = (lane: 'urgent' | 'transition') =>
+			(lane === 'transition' ? scope.renderTransition : scope.render)(() => {
+				const [count, setCount] = useState(0, 'count');
+				const [pending, start] = useTransition('transition');
+				begin = () => start(() => setCount(1));
+				return [pending, count] as const;
+			});
+
+		expect(render('urgent')).toEqual([false, 0]);
+		scope.commit();
+		layout.shift()!();
+		begin();
+		// Pending is an urgent observable; the staged count is not.
+		expect(urgent).toHaveLength(1);
+		expect(render('urgent')).toEqual([true, 0]);
+		scope.commit();
+		expect(transition).toEqual([]);
+
+		microtasks.shift()!();
+		expect(transition).toEqual([1]);
+		expect(scope.hasTransitionWork()).toBe(true);
+		expect(render('transition')).toEqual([true, 1]);
+		scope.commit();
+		// Settling the accepted lane publishes pending=false urgently.
+		expect(urgent).toHaveLength(2);
+		expect(scope.hasTransitionWork()).toBe(false);
+		expect(render('urgent')).toEqual([false, 1]);
+		scope.commit();
+		scope.dispose();
+	});
+
+	it('holds an accepted transition lane until its adopting core reveals it', () => {
+		const urgent: unknown[] = [];
+		const transition: unknown[] = [];
+		const microtasks: (() => void)[] = [];
+		const layout: (() => void)[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				urgent.push(slot);
+			},
+			scheduleTransitionRender() {
+				transition.push('render');
+			},
+			scheduleMicrotask(task) {
+				microtasks.push(task);
+			},
+			scheduleLayoutEffectCommit(task) {
+				layout.push(task);
+			},
+		});
+		let begin!: () => void;
+		const read = (lane: 'urgent' | 'transition') =>
+			(lane === 'transition' ? scope.renderTransition : scope.render)(() => {
+				const [count, setCount] = useState(0, 'count');
+				const [pending, start] = useTransition('transition');
+				begin = () => start(() => setCount(1));
+				return [pending, count] as const;
+			});
+
+		expect(read('urgent')).toEqual([false, 0]);
+		scope.commit();
+		layout.shift()!();
+		begin();
+		expect(read('urgent')).toEqual([true, 0]);
+		scope.commit();
+		microtasks.shift()!();
+
+		expect(read('transition')).toEqual([true, 1]);
+		scope.commit(undefined, true);
+		expect(scope.hasTransitionWork()).toBe(true);
+		expect(urgent).toHaveLength(1);
+
+		// A Suspense-capable adopter may have accepted bookkeeping without
+		// revealing the staged frame. Only the eventual reveal settles pending.
+		scope.finishTransitions();
+		expect(scope.hasTransitionWork()).toBe(false);
+		expect(urgent).toHaveLength(2);
+		expect(read('urgent')).toEqual([false, 1]);
+		scope.commit();
+		scope.dispose();
+	});
+
+	it('rebases a later urgent scope update over an older transition lane', () => {
+		const urgent: unknown[] = [];
+		const transitions: unknown[] = [];
+		const microtasks: (() => void)[] = [];
+		const layout: (() => void)[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				urgent.push(slot);
+			},
+			scheduleTransitionRender() {
+				transitions.push('render');
+			},
+			scheduleMicrotask(task) {
+				microtasks.push(task);
+			},
+			scheduleLayoutEffectCommit(task) {
+				layout.push(task);
+			},
+		});
+		let set!: (value: number | ((previous: number) => number)) => void;
+		let begin!: () => void;
+		const read = (lane: 'urgent' | 'transition') =>
+			(lane === 'transition' ? scope.renderTransition : scope.render)(() => {
+				const [count, update] = useState(0, 'count');
+				const [pending, start] = useTransition('transition');
+				set = update;
+				begin = () => start(() => update(10));
+				return [pending, count] as const;
+			});
+
+		expect(read('urgent')).toEqual([false, 0]);
+		scope.commit();
+		layout.shift()!();
+		begin();
+		expect(read('urgent')).toEqual([true, 0]);
+		scope.commit();
+		microtasks.shift()!();
+		set((value) => value + 1);
+		expect(read('urgent')).toEqual([true, 1]);
+		scope.commit();
+
+		// The transition was older, so its replacement lands first and the later
+		// urgent functional update is replayed on top of it.
+		expect(read('transition')).toEqual([true, 11]);
+		scope.commit();
+		expect(read('urgent')).toEqual([false, 11]);
+		scope.commit();
+		expect(transitions).toEqual(['render']);
+		scope.dispose();
+	});
+
+	it('discards an unaccepted transition draft when its adopting core fails', () => {
+		const urgent: unknown[] = [];
+		const microtasks: (() => void)[] = [];
+		const layout: (() => void)[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				urgent.push(slot);
+			},
+			scheduleTransitionRender() {},
+			scheduleMicrotask(task) {
+				microtasks.push(task);
+			},
+			scheduleLayoutEffectCommit(task) {
+				layout.push(task);
+			},
+		});
+		let begin!: () => void;
+		const read = (lane: 'urgent' | 'transition') =>
+			(lane === 'transition' ? scope.renderTransition : scope.render)(() => {
+				const [count, setCount] = useState(0, 'count');
+				const [pending, start] = useTransition('transition');
+				begin = () => start(() => setCount(1));
+				return [pending, count] as const;
+			});
+
+		expect(read('urgent')).toEqual([false, 0]);
+		scope.commit();
+		layout.shift()!();
+		begin();
+		expect(read('urgent')).toEqual([true, 0]);
+		scope.commit();
+		microtasks.shift()!();
+		expect(read('transition')).toEqual([true, 1]);
+
+		// The adopting transaction failed before publishing this draft. Canceling
+		// it must drop the staged value as well as the pending batch root.
+		scope.finishTransitions();
+		expect(scope.hasTransitionWork()).toBe(false);
+		expect(read('urgent')).toEqual([false, 0]);
+		scope.commit();
+		expect(urgent).toHaveLength(2);
 		scope.dispose();
 	});
 

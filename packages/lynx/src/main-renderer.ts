@@ -33,6 +33,7 @@ import type {
 } from 'octane/universal/native';
 import { LynxFirstScreenRefusalError, LYNX_FIRST_SCREEN_REFUSED } from './core/first-screen.js';
 import { registerUniversalProgram } from './core/program-registry.js';
+import { LYNX_PROGRAM_ABI_VERSION } from './core/program-abi.js';
 import { hasOwnSymbolFields } from './core/own-symbols.js';
 import { isLynxNativeResource } from './resource.js';
 
@@ -345,6 +346,12 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 		});
 	}
 	if (node.kind === 'program') {
+		if (node.version !== undefined && node.version !== LYNX_PROGRAM_ABI_VERSION) {
+			throw rendererTypeError(
+				LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
+					`A compiled main-thread program expected program ABI version ${LYNX_PROGRAM_ABI_VERSION}, received ${String(node.version)}.`,
+			);
+		}
 		if (typeof node.bind !== 'function' || !Number.isSafeInteger(node.nodes) || node.nodes < 0) {
 			throw rendererTypeError(
 				LYNX_FIRST_SCREEN_RENDERER_DEVELOPMENT &&
@@ -435,6 +442,7 @@ function freezePlanNode(node: UniversalPlanNode): UniversalPlanNode {
 		return Object.freeze({
 			kind: 'program',
 			slots: Object.freeze([...node.slots]),
+			...(node.version === undefined ? null : { version: LYNX_PROGRAM_ABI_VERSION }),
 			nodes: node.nodes,
 			values: Object.freeze([...node.values]),
 			events: Object.freeze(node.events.map((event) => Object.freeze({ ...event }))),
@@ -787,13 +795,18 @@ export function universalActivity(
 export function defineUniversalComponent<P>(
 	renderer: string,
 	render: (props: P, context: UniversalRenderContext) => UniversalRenderable,
-	metadata?: { module?: string },
+	metadata?: { module?: string; hookScope?: boolean },
 ): UniversalComponent<P> {
 	assertRenderer(renderer);
 	Object.defineProperty(render, UNIVERSAL_COMPONENT, {
 		configurable: false,
 		enumerable: false,
-		value: Object.freeze({ id: renderer, module: metadata?.module, target: 'universal' }),
+		value: Object.freeze({
+			id: renderer,
+			module: metadata?.module,
+			...(typeof metadata?.hookScope === 'boolean' ? { hookScope: metadata.hookScope } : null),
+			target: 'universal',
+		}),
 	});
 	return render as UniversalComponent<P>;
 }
@@ -854,7 +867,7 @@ export function hmrUniversalComponent<P>(
 	const wrapper = defineUniversalComponent<P>(
 		renderer,
 		(props, context) => state.component(props, context),
-		{ module: metadata.module },
+		{ module: metadata.module, hookScope: true },
 	);
 	Object.defineProperty(wrapper, UNIVERSAL_HMR, { value: state });
 	if ((component as any).__warm !== undefined) (wrapper as any).__warm = (component as any).__warm;

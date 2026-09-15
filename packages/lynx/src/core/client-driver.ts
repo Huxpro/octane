@@ -1903,6 +1903,41 @@ export function invalidateLynxClientContainer(container: LynxClientContainer): v
 	if (hasError) throw firstError;
 }
 
+export interface LynxCompactPublicHandleInput {
+	readonly root: number;
+	readonly id: number;
+	readonly type: string;
+	readonly attached: boolean;
+}
+
+/** Shared Block seam; general handles are already published by their acknowledgement. */
+export function activateLynxCompactPublicHandle(
+	container: LynxClientContainer,
+	input: LynxCompactPublicHandleInput,
+): LynxPublicHandle {
+	const handle = container.getPublicHandle(input.id);
+	if (
+		handle === null ||
+		handle.root !== input.root ||
+		handle.type !== input.type ||
+		!handle.active ||
+		handle.attached !== input.attached
+	) {
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx Block ref could not resolve its acknowledged public handle.'
+				: 'Octane Lynx OL094',
+		);
+	}
+	return handle;
+}
+
+/* General transport handle deltas own retirement; the Block seam is intentionally inert. */
+export function releaseLynxCompactPublicHandle(
+	_container: LynxClientContainer,
+	_id: number,
+): void {}
+
 /** Apply one generation-gated native list attachment message and notify refs. */
 export function applyLynxHostAttachments(
 	container: LynxClientContainer,
@@ -2174,7 +2209,7 @@ export function createLynxClientDriver(
 						throw new TypeError(
 							typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
 								? `Octane Lynx ${JSON.stringify(context.name)} requires a compiler-transformed main-thread function.`
-								: 'Octane Lynx OL094',
+								: 'Octane Lynx OL502',
 						);
 					}
 					return {

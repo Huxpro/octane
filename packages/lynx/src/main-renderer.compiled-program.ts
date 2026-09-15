@@ -2,6 +2,7 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import type {
 	UniversalComponent,
+	UniversalContext,
 	UniversalEventListenerDescriptor,
 	UniversalKey,
 	UniversalProgramAddress,
@@ -18,8 +19,15 @@ const UNIVERSAL_PLAN = Symbol.for('octane.universal.plan');
 const UNIVERSAL_VALUE = Symbol.for('octane.universal.value');
 const UNIVERSAL_COMPONENT = Symbol.for('octane.universal.component');
 const UNIVERSAL_COMPONENT_VALUE = Symbol.for('octane.universal.component-value');
+const UNIVERSAL_CHILDREN = Symbol.for('octane.universal.children');
 const UNIVERSAL_PROPS = Symbol.for('octane.universal.props');
+const UNIVERSAL_IF = Symbol.for('octane.universal.if');
+const UNIVERSAL_SWITCH = Symbol.for('octane.universal.switch');
 const UNIVERSAL_FOR = Symbol.for('octane.universal.for');
+const UNIVERSAL_TRY = Symbol.for('octane.universal.try');
+const UNIVERSAL_CONTEXT = Symbol.for('octane.universal.context');
+const UNIVERSAL_ACTIVITY = Symbol.for('octane.universal.activity');
+const CONTEXT_TAG = Symbol.for('octane.context');
 const FIRST_SCREEN_EVENT = Symbol.for('octane.lynx.first-screen-event');
 const NO_CHILDREN = Symbol('octane.lynx.compiled-program.no-children');
 const NO_KEY = Symbol('octane.lynx.compiled-program.no-key');
@@ -49,6 +57,25 @@ interface ComponentValue {
 	readonly key: unknown;
 	readonly hasKey: boolean;
 }
+interface ChildrenValue {
+	readonly $$kind: symbol;
+	readonly renderer: string;
+	readonly render: () => UniversalRenderable;
+}
+
+interface IfValue {
+	readonly $$kind: symbol;
+	readonly condition: boolean;
+	readonly then: () => UniversalRenderable;
+	readonly else: (() => UniversalRenderable) | null;
+}
+
+interface SwitchValue {
+	readonly $$kind: symbol;
+	readonly value: unknown;
+	readonly cases: readonly (readonly [unknown, () => UniversalRenderable])[];
+	readonly default: (() => UniversalRenderable) | null;
+}
 
 interface ForValue {
 	readonly $$kind: symbol;
@@ -57,6 +84,43 @@ interface ForValue {
 	readonly render: (item: unknown, index: number) => UniversalRenderable;
 	readonly empty: (() => UniversalRenderable) | null;
 }
+interface TryValue {
+	readonly $$kind: symbol;
+	readonly body: () => UniversalRenderable;
+	readonly pending: (() => UniversalRenderable) | null;
+	readonly catch: ((error: unknown, reset: () => void) => UniversalRenderable) | null;
+}
+interface ContextValue {
+	readonly $$kind: symbol;
+	readonly context: UniversalContext<any>;
+	readonly value: unknown;
+	readonly children: UniversalRenderable | (() => UniversalRenderable);
+}
+interface ActivityValue {
+	readonly $$kind: symbol;
+	readonly mode: 'visible' | 'hidden';
+	readonly body: () => UniversalRenderable;
+}
+
+interface TrackedThenable<T = unknown> extends PromiseLike<T> {
+	status?: 'pending' | 'fulfilled' | 'rejected';
+	value?: T;
+	reason?: unknown;
+}
+
+class FirstScreenSuspense {
+	constructor(readonly thenable: PromiseLike<unknown>) {}
+}
+
+export interface NativeUniversalContext<T> extends UniversalContext<T> {
+	(props: {
+		value: T;
+		children?: UniversalRenderable | (() => UniversalRenderable);
+	}): UniversalRenderable;
+	readonly Provider: NativeUniversalContext<T>;
+}
+
+type CompactContexts = ReadonlyMap<UniversalContext<any>, unknown> | null;
 
 interface CompactProgramNode {
 	kind: 'program';
@@ -71,6 +135,7 @@ interface CompactProgramNode {
 	rangeIds: (number | undefined)[];
 	eventsAt: number;
 	eventsCount: number;
+	readonly visibility: 'visible' | 'hidden';
 }
 
 interface CompactRangeNode {
@@ -232,6 +297,39 @@ export function universalComponent(
 		hasKey: key !== NO_KEY || normalized.hasKey,
 	} as unknown as UniversalRenderable;
 }
+export function universalChildren(
+	renderer: string,
+	render: () => UniversalRenderable,
+): UniversalRenderable {
+	assertRenderer(renderer);
+	return { $$kind: UNIVERSAL_CHILDREN, renderer, render } as unknown as UniversalRenderable;
+}
+
+export function universalIf(
+	condition: unknown,
+	then: () => UniversalRenderable,
+	otherwise: (() => UniversalRenderable) | null = null,
+): UniversalRenderable {
+	return {
+		$$kind: UNIVERSAL_IF,
+		condition: !!condition,
+		then,
+		else: otherwise,
+	} as unknown as UniversalRenderable;
+}
+
+export function universalSwitch(
+	value: unknown,
+	cases: readonly (readonly [unknown, () => UniversalRenderable])[],
+	defaultValue: (() => UniversalRenderable) | null = null,
+): UniversalRenderable {
+	return {
+		$$kind: UNIVERSAL_SWITCH,
+		value,
+		cases,
+		default: defaultValue,
+	} as unknown as UniversalRenderable;
+}
 
 export function universalFor<T>(
 	items: Iterable<T>,
@@ -242,26 +340,98 @@ export function universalFor<T>(
 	return { $$kind: UNIVERSAL_FOR, items, key, render, empty } as unknown as UniversalRenderable;
 }
 
+export function universalTry(
+	body: () => UniversalRenderable,
+	pending: (() => UniversalRenderable) | null = null,
+	catchBody: ((error: unknown, reset: () => void) => UniversalRenderable) | null = null,
+): UniversalRenderable {
+	return {
+		$$kind: UNIVERSAL_TRY,
+		body,
+		pending,
+		catch: catchBody,
+	} as unknown as UniversalRenderable;
+}
+
+export function memo<P>(
+	component: UniversalComponent<P>,
+	_compare?: (previous: Readonly<P>, next: Readonly<P>) => boolean,
+): UniversalComponent<P> {
+	// This product renders only the first tree, so there is no previous owner or
+	// props pair against which a memo comparator could run.
+	return component;
+}
+
+export function universalContext<T>(
+	context: UniversalContext<T>,
+	value: T,
+	children: UniversalRenderable | (() => UniversalRenderable),
+): UniversalRenderable {
+	return { $$kind: UNIVERSAL_CONTEXT, context, value, children } as unknown as UniversalRenderable;
+}
+
+export function universalActivity(
+	mode: 'visible' | 'hidden' | string,
+	body: () => UniversalRenderable,
+): UniversalRenderable {
+	if (mode !== 'visible' && mode !== 'hidden') {
+		fail('requires Activity mode to be "visible" or "hidden"');
+	}
+	return { $$kind: UNIVERSAL_ACTIVITY, mode, body } as unknown as UniversalRenderable;
+}
+
+export function createContext<T>(defaultValue: T): NativeUniversalContext<T> {
+	const context = ((props: {
+		value: T;
+		children?: UniversalRenderable | (() => UniversalRenderable);
+	}) => universalContext(context, props.value, props.children)) as NativeUniversalContext<T>;
+	Object.defineProperties(context, {
+		$$kind: { value: CONTEXT_TAG, enumerable: true },
+		defaultValue: { value: defaultValue, enumerable: true },
+		Provider: { value: context, enumerable: true },
+		$$version: { value: 0, enumerable: true, writable: true },
+	});
+	return context;
+}
+
 export function defineUniversalComponent<P>(
 	renderer: string,
 	render: (props: P, context: UniversalRenderContext) => UniversalRenderable,
-	metadata?: { module?: string },
+	metadata?: { module?: string; hookScope?: boolean },
 ): UniversalComponent<P> {
 	assertRenderer(renderer);
 	Object.defineProperty(render, UNIVERSAL_COMPONENT, {
-		value: Object.freeze({ id: renderer, module: metadata?.module, target: 'universal' }),
+		value: Object.freeze({
+			id: renderer,
+			module: metadata?.module,
+			...(typeof metadata?.hookScope === 'boolean' ? { hookScope: metadata.hookScope } : null),
+			target: 'universal',
+		}),
 	});
 	return render as UniversalComponent<P>;
 }
 
 export const firstScreenEvent = FIRST_SCREEN_EVENT;
+function readContext<T>(context: UniversalContext<T>): T {
+	return renderingContexts?.has(context)
+		? (renderingContexts.get(context) as T)
+		: context.defaultValue;
+}
+
+function withContexts<T>(contexts: CompactContexts, run: () => T): T {
+	const previous = renderingContexts;
+	renderingContexts = contexts;
+	try {
+		return run();
+	} finally {
+		renderingContexts = previous;
+	}
+}
 
 function componentContext(): UniversalRenderContext {
 	return {
 		renderer: 'lynx',
-		readContext() {
-			return fail('received context after capability proof');
-		},
+		readContext,
 		insertionEffect() {},
 		layoutEffect() {},
 		effect() {},
@@ -328,7 +498,7 @@ function selectedProgramValues(
 	return Object.freeze(selected);
 }
 
-function program(value: PlanValue): CompactProgramNode {
+function program(value: PlanValue, visibility: 'visible' | 'hidden'): CompactProgramNode {
 	const plan = value.plan;
 	if (plan.kind !== 'program') fail('received an unaddressed plan at render time');
 	const children: CompactNode[] = [];
@@ -342,7 +512,7 @@ function program(value: PlanValue): CompactProgramNode {
 			continue;
 		}
 		texts.push(undefined);
-		const members = materialize(selected);
+		const members = materialize(selected, visibility);
 		spans.push(members.length);
 		for (const member of members) children.push(member);
 	}
@@ -359,23 +529,49 @@ function program(value: PlanValue): CompactProgramNode {
 		rangeIds: [],
 		eventsAt: 0,
 		eventsCount: 0,
+		visibility,
 	};
 }
 
-function renderComponent(value: ComponentValue): CompactRangeNode {
+function renderComponent(
+	value: ComponentValue,
+	visibility: 'visible' | 'hidden',
+): CompactRangeNode {
 	const metadata = (value.component as unknown as Record<PropertyKey, unknown>)[
 		UNIVERSAL_COMPONENT
 	] as { readonly id?: unknown } | undefined;
 	if (metadata?.id !== 'lynx') fail('received an uncompiled child component');
-	return range(materialize(value.component(value.props.props, componentContext())));
+	return range(materialize(value.component(value.props.props, componentContext()), visibility));
 }
 
-function materialize(value: unknown): CompactNode[] {
+function materialize(value: unknown, visibility: 'visible' | 'hidden' = 'visible'): CompactNode[] {
 	if (value == null || value === false || value === true) return [];
 	const record = value as Record<string, unknown>;
-	if (record?.$$kind === UNIVERSAL_VALUE) return [program(value as unknown as PlanValue)];
+	if (record?.$$kind === UNIVERSAL_VALUE)
+		return [program(value as unknown as PlanValue, visibility)];
 	if (record?.$$kind === UNIVERSAL_COMPONENT_VALUE) {
-		return [renderComponent(value as unknown as ComponentValue)];
+		return [renderComponent(value as unknown as ComponentValue, visibility)];
+	}
+	if (record?.$$kind === UNIVERSAL_CHILDREN) {
+		const children = value as unknown as ChildrenValue;
+		assertRenderer(children.renderer);
+		return materialize(children.render(), visibility);
+	}
+	if (record?.$$kind === UNIVERSAL_IF) {
+		const branch = value as unknown as IfValue;
+		const body = branch.condition ? branch.then : branch.else;
+		return body === null ? [] : [range(materialize(body(), visibility))];
+	}
+	if (record?.$$kind === UNIVERSAL_SWITCH) {
+		const branch = value as unknown as SwitchValue;
+		let selected = branch.default;
+		for (const entry of branch.cases) {
+			if (entry[0] === branch.value) {
+				selected = entry[1];
+				break;
+			}
+		}
+		return selected === null ? [] : [range(materialize(selected(), visibility))];
 	}
 	if (record?.$$kind === UNIVERSAL_FOR) {
 		const loop = value as unknown as ForValue;
@@ -386,14 +582,46 @@ function materialize(value: unknown): CompactNode[] {
 			const key = loop.key(item, index);
 			if (keys.has(key)) fail(`received duplicate key ${String(key)}`);
 			keys.add(key);
-			output.push(range(materialize(loop.render(item, index++))));
+			output.push(range(materialize(loop.render(item, index++), visibility)));
 		}
-		if (index === 0 && loop.empty !== null) return [range(materialize(loop.empty()))];
+		if (index === 0 && loop.empty !== null) return [range(materialize(loop.empty(), visibility))];
 		return output;
+	}
+	if (record?.$$kind === UNIVERSAL_TRY) {
+		const boundary = value as unknown as TryValue;
+		try {
+			return [range(materialize(boundary.body(), visibility))];
+		} catch (error) {
+			if (error instanceof FirstScreenSuspense) {
+				if (boundary.pending === null) throw error;
+				return [range(materialize(boundary.pending(), visibility))];
+			}
+			if (boundary.catch === null) throw error;
+			return [range(materialize(boundary.catch(error, NOOP_UPDATE), visibility))];
+		}
+	}
+	if (record?.$$kind === UNIVERSAL_CONTEXT) {
+		const provider = value as unknown as ContextValue;
+		const contexts = new Map(renderingContexts ?? []);
+		contexts.set(provider.context, provider.value);
+		return [
+			range(
+				withContexts(contexts, () => {
+					const children = provider.children;
+					return materialize(typeof children === 'function' ? children() : children, visibility);
+				}),
+			),
+		];
+	}
+	if (record?.$$kind === UNIVERSAL_ACTIVITY) {
+		const activity = value as unknown as ActivityValue;
+		const childVisibility =
+			visibility === 'hidden' || activity.mode === 'hidden' ? 'hidden' : 'visible';
+		return [range(materialize(activity.body(), childVisibility))];
 	}
 	if (Array.isArray(value)) {
 		const output: CompactNode[] = [];
-		for (const child of value) output.push(...materialize(child));
+		for (const child of value) output.push(...materialize(child, visibility));
 		return output;
 	}
 	return fail('received an unaddressed renderable');
@@ -453,6 +681,7 @@ function collectEvents(
 		}
 		hosts += node.plan.nodes;
 		node.eventsAt = events.length;
+		const visible = node.visibility === 'visible';
 		const ranges = node.plan.ranges;
 		const sites = node.plan.events;
 		let hole = 0;
@@ -475,7 +704,7 @@ function collectEvents(
 				const site = sites[event++]!;
 				const handler = node.values[site.slot];
 				const listener = next.listener++;
-				if (handler === FIRST_SCREEN_EVENT || typeof handler === 'function') {
+				if (visible && (handler === FIRST_SCREEN_EVENT || typeof handler === 'function')) {
 					events.push({
 						id: node.ids[host]!,
 						type: site.type,
@@ -491,6 +720,7 @@ function collectEvents(
 }
 
 let rendering = false;
+let renderingContexts: CompactContexts = null;
 let nextHookSlot = 0;
 const NOOP_UPDATE = () => {};
 
@@ -507,6 +737,7 @@ export function renderLynxFirstScreen<Props>(
 	try {
 		nodes = materialize(component(props, componentContext()));
 	} finally {
+		renderingContexts = null;
 		rendering = false;
 	}
 	const ids = { id: 1 };
@@ -560,6 +791,35 @@ export function useState<T>(
 
 export const __useStateWithGetter = useState;
 
+export function useReducer<S, A, I = S>(
+	_reducer: (state: S, action: A) => S,
+	initialArg: I,
+	initOrSlot?: ((value: I) => S) | unknown,
+	_maybeSlot?: unknown,
+): [S, (action: A) => void, () => S] {
+	requireRender();
+	const value =
+		typeof initOrSlot === 'function'
+			? (initOrSlot as (value: I) => S)(initialArg)
+			: (initialArg as unknown as S);
+	return [value, NOOP_UPDATE, () => value];
+}
+
+export const __useReducerWithGetter = useReducer;
+
+export function useLayoutEffect(): void {
+	requireRender();
+}
+
+export function useMemo<T>(
+	compute: () => T,
+	_deps?: readonly unknown[] | null,
+	_slot?: unknown,
+): T {
+	requireRender();
+	return compute();
+}
+
 export function useCallback<T extends (...args: any[]) => any>(
 	callback: T,
 	_deps?: readonly unknown[] | null,
@@ -577,6 +837,57 @@ export function useRef<T>(initial: T, _slot?: unknown): { current: T } {
 export function useEffect(): void {
 	requireRender();
 }
+export function useContext<T>(context: UniversalContext<T>): T {
+	requireRender();
+	return readContext(context);
+}
+
+function trackThenable<T>(thenable: TrackedThenable<T>): void {
+	if (
+		thenable.status === 'pending' ||
+		thenable.status === 'fulfilled' ||
+		thenable.status === 'rejected'
+	) {
+		return;
+	}
+	thenable.status = 'pending';
+	thenable.then(
+		(value) => {
+			thenable.status = 'fulfilled';
+			thenable.value = value;
+		},
+		(error) => {
+			thenable.status = 'rejected';
+			thenable.reason = error;
+		},
+	);
+}
+
+export function use<T>(usable: UniversalContext<T> | PromiseLike<T>): T {
+	requireRender();
+	if ((usable as UniversalContext<T>).$$kind === CONTEXT_TAG) {
+		return useContext(usable as UniversalContext<T>);
+	}
+	const thenable = usable as TrackedThenable<T>;
+	if (thenable.status === 'fulfilled') return thenable.value as T;
+	if (thenable.status === 'rejected') throw thenable.reason;
+	trackThenable(thenable);
+	throw new FirstScreenSuspense(thenable);
+}
+
+export function useBatch(items: readonly unknown[]): void {
+	requireRender();
+	let pending: TrackedThenable[] | null = null;
+	for (const item of items) {
+		if (item == null || typeof (item as { then?: unknown }).then !== 'function') continue;
+		const thenable = item as TrackedThenable;
+		trackThenable(thenable);
+		if (thenable.status === 'rejected') break;
+		if (thenable.status === 'pending') (pending ??= []).push(thenable);
+	}
+	if (pending === null) return;
+	throw new FirstScreenSuspense(pending.length === 1 ? pending[0]! : Promise.all(pending));
+}
 
 export function useSyncExternalStore<T>(
 	_subscribe: (onStoreChange: () => void) => () => void,
@@ -584,4 +895,16 @@ export function useSyncExternalStore<T>(
 ): T {
 	requireRender();
 	return getSnapshot();
+}
+
+export function useDeferredValue<T>(value: T, ..._initialValueAndSlot: unknown[]): T {
+	requireRender();
+	return value;
+}
+
+export function startTransition(_fn: () => void | Promise<unknown>): void {}
+
+export function useTransition(_slot?: unknown): [boolean, typeof startTransition] {
+	requireRender();
+	return [false, startTransition];
 }

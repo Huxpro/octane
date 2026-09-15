@@ -1592,12 +1592,13 @@ if (realpathSync(pluginRequest.resolve('@octanejs/rspack-plugin')) !== directRsp
 
 const toolchain = assertLynxToolchain(root);
 for (const [name, version] of Object.entries({
-	'@lynx-js/rspeedy': '0.16.0',
-	'@lynx-js/tasm': '0.0.39',
-	'@lynx-js/web-core': '0.22.2',
-	'@lynx-js/webpack-runtime-globals': '0.0.7',
-	'@rsbuild/core': '2.1.4',
-	'@rspack/core': '2.1.3',
+	'@lynx-js/rspeedy': '0.17.1',
+	'@lynx-js/rsbuild-plugin': '0.1.1',
+	'@lynx-js/tasm': '0.0.49',
+	'@lynx-js/web-core': '0.26.0',
+	'@lynx-js/webpack-runtime-globals': '0.0.8',
+	'@rsbuild/core': '2.2.3',
+	'@rspack/core': '2.2.2',
 })) {
 	if (toolchain[name].version !== version) {
 		throw new Error(name + ' resolved ' + toolchain[name].version + ', expected ' + version);

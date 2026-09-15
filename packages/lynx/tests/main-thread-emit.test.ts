@@ -32,6 +32,7 @@ import type {
 	UniversalHostBatch,
 	UniversalHostTemplateProgram,
 	UniversalHostTemplateProgramValue,
+	UniversalProgramCreate,
 } from 'octane/universal/native';
 
 import {
@@ -115,10 +116,8 @@ const RANGED_ROW_SITES: readonly LynxMainThreadProgramRange[] = [{ node: 1 }, { 
  *
  * The row cannot see *where* a compiled text is appended: every one of its
  * hosts holds the hole and nothing else, so any placement paints the same tree.
- * A hole is its host's last child by construction — the reduction declines a
- * program where a dropped hole is not the last entry naming its parent — and
- * the only way to break that is to append it before the node loop has placed
- * the siblings, which needs a host with one.
+ * A tail hole still appends after the node loop has assembled the static subtree.
+ * A non-tail hole uses the compiler-emitted sibling anchor pinned below.
  */
 const LINE: UniversalHostTemplateProgram = {
 	nodes: [
@@ -143,6 +142,28 @@ const RANGED_LINE: UniversalHostTemplateProgram = {
 };
 
 const RANGED_LINE_SITES: readonly LynxMainThreadProgramRange[] = [{ node: 1 }];
+
+/** A text hole followed by a retained raw-text sibling under the same host. */
+const NON_TAIL_LINE: UniversalHostTemplateProgram = {
+	nodes: [
+		{ type: 'view', parent: -1, props: { class: 'wrap' } },
+		{ type: 'text', parent: 0, props: { class: 'line' } },
+		{ type: '#text', parent: 1, props: {}, bindings: [{ name: 'value', valueIndex: 0 }] },
+		{ type: '#text', parent: 1, props: { value: ' tail' } },
+	],
+	events: [],
+};
+
+const RANGED_NON_TAIL_LINE: UniversalHostTemplateProgram = {
+	nodes: [
+		{ type: 'view', parent: -1, props: { class: 'wrap' } },
+		{ type: 'text', parent: 0, props: { class: 'line' } },
+		{ type: '#text', parent: 1, props: { value: ' tail' } },
+	],
+	events: [],
+};
+
+const RANGED_NON_TAIL_LINE_SITES: readonly LynxMainThreadProgramRange[] = [{ node: 1, before: 2 }];
 
 /** A keyed list: the range site an application actually has most of. */
 const LIST: UniversalHostTemplateProgram = {
@@ -208,6 +229,31 @@ const LIST_ITEM_SLOT_UPDATES: UniversalHostTemplateProgram = {
 				{ name: 'reuse-identifier', valueIndex: 5 },
 				{ name: 'recyclable', valueIndex: 6 },
 				{ name: 'defer', valueIndex: 7 },
+			],
+		},
+	],
+	events: [],
+};
+
+/** Every public scalar `<image>` attribute, plus its identity, all dynamic. */
+const IMAGE_SLOT_UPDATES: UniversalHostTemplateProgram = {
+	nodes: [
+		{
+			type: 'image',
+			parent: -1,
+			props: { class: 'avatar' },
+			bindings: [
+				{ name: 'id', valueIndex: 0 },
+				{ name: 'src', valueIndex: 1 },
+				{ name: 'mode', valueIndex: 2 },
+				{ name: 'placeholder', valueIndex: 3 },
+				{ name: 'blur-radius', valueIndex: 4 },
+				{ name: 'cap-insets', valueIndex: 5 },
+				{ name: 'cap-insets-scale', valueIndex: 6 },
+				{ name: 'loop-count', valueIndex: 7 },
+				{ name: 'auto-size', valueIndex: 8 },
+				{ name: 'autoplay', valueIndex: 9 },
+				{ name: 'tint-color', valueIndex: 10 },
 			],
 		},
 	],
@@ -743,6 +789,33 @@ describe('Lynx main-thread program emission', () => {
 		).toEqual([false, true, true]);
 	});
 
+	it('emits adjacent compiler ranges owned by one text host independently', () => {
+		const ranges = [{ node: 1 }, { node: 1 }] as const;
+		const emission = emitLynxMainThreadProgram(RANGED_ROW, {
+			name: 'createSiblingRanges',
+			ranges,
+		});
+		expect(emission).toMatchObject({ rangeCount: 2, paintsText: [true, true] });
+		const papi = createHost();
+		const page = papi.createPage('0', 0);
+		const create = instantiate(RANGED_ROW, 'createSiblingRanges', ranges)(papi);
+		const nodes = create(
+			...([papi.getUniqueId(page), 'row', undefined, undefined, 'first', 'second'] as never[]),
+		);
+		expect(shape(nodes[1] as never)).toEqual(
+			expect.objectContaining({
+				children: [
+					expect.objectContaining({ text: 'first' }),
+					expect.objectContaining({ text: 'second' }),
+				],
+			}),
+		);
+		expect(nodes.slice(RANGED_ROW.nodes.length)).toEqual([
+			expect.objectContaining({ text: 'first' }),
+			expect.objectContaining({ text: 'second' }),
+		]);
+	});
+
 	it('returns one entry per range site after its nodes, saying what it painted', () => {
 		// The trailing half of the create function's answer, and the reason it
 		// exists: the caller decided which holes to send a string for, this
@@ -815,11 +888,9 @@ describe('Lynx main-thread program emission', () => {
 		});
 
 		it('appends the text behind everything its host already holds', () => {
-			// A range hole is its host's last child by construction, so the compiled
-			// text has to land after the static sibling the node loop placed and
-			// after the whole subtree that loop built. `LINE` carries both, and it
-			// is the only fixture here that can tell a late append from an early
-			// one.
+			// This fixture uses a tail range, so its compiled text lands after the
+			// static sibling the node loop already placed. The adjacent non-tail
+			// fixture distinguishes that append from anchored insertion.
 			const interpretedLine = throughApplier(
 				LINE,
 				['tail'],
@@ -832,6 +903,23 @@ describe('Lynx main-thread program emission', () => {
 				['tail'],
 				(item) => [item],
 				RANGED_LINE_SITES,
+			);
+			expect(paintedTree(emittedLine)).toEqual(paintedTree(interpretedLine));
+		});
+
+		it('inserts compiled text before a retained static sibling', () => {
+			const interpretedLine = throughApplier(
+				NON_TAIL_LINE,
+				['Live'],
+				() => 1,
+				(item) => [item],
+			);
+			const emittedLine = throughEmission(
+				RANGED_NON_TAIL_LINE,
+				'createNonTailLine',
+				['Live'],
+				(item) => [item],
+				RANGED_NON_TAIL_LINE_SITES,
 			);
 			expect(paintedTree(emittedLine)).toEqual(paintedTree(interpretedLine));
 		});
@@ -966,7 +1054,7 @@ describe('Lynx main-thread program emission', () => {
 			],
 			[
 				'a host type with no intrinsic factory',
-				{ nodes: [{ type: 'list', parent: -1, props: {} }], events: [] },
+				{ nodes: [{ type: 'input', parent: -1, props: {} }], events: [] },
 				/host type this backend cannot construct/,
 			],
 			[
@@ -1144,10 +1232,10 @@ describe('Lynx main-thread program emission', () => {
 				/does not have/,
 			],
 			[
-				'two keyed ranges on one host, which no reduction produces',
+				'a keyed range whose anchor is not its parent’s child',
 				RANGED_ROW,
-				[{ node: 1 }, { node: 1 }],
-				/more than one keyed range/,
+				[{ node: 1, before: 2 }],
+				/outside node 1/,
 			],
 			[
 				'a keyed range on raw text, which holds no children at all',
@@ -1341,6 +1429,84 @@ describe('Lynx compiled value-slot updates', () => {
 		expect(shape(nodes[5] as never)).toEqual(expect.objectContaining({ text: 'raw after' }));
 	});
 
+	it('matches the generic applier for image creation and every direct scalar update', () => {
+		const initial = [
+			'image-1',
+			'one.png',
+			'aspectFill',
+			'placeholder.png',
+			'2px',
+			'1px 2px',
+			2,
+			3,
+			true,
+			false,
+			'#fff',
+		] as const;
+		const next = [null, 'two.png', 'center', null, null, null, null, 1, false, true, null] as const;
+		const names = [
+			'id',
+			'src',
+			'mode',
+			'placeholder',
+			'blur-radius',
+			'cap-insets',
+			'cap-insets-scale',
+			'loop-count',
+			'auto-size',
+			'autoplay',
+			'tint-color',
+		] as const;
+
+		const reference = createHost();
+		const container = createLynxHostContainer(reference, { root: 1 });
+		prepareLynxHostBatch(container, {
+			renderer: 'lynx',
+			version: 1,
+			commands: [
+				{
+					op: 'mount-template-run',
+					parent: null,
+					before: null,
+					program: IMAGE_SLOT_UPDATES,
+					firstId: 10,
+					firstListenerId: null,
+					count: 1,
+					values: initial,
+				},
+			],
+		}).apply();
+		prepareLynxHostBatch(container, {
+			renderer: 'lynx',
+			version: 2,
+			commands: [
+				{
+					op: 'update',
+					id: 10,
+					props: {
+						class: 'avatar',
+						...Object.fromEntries(names.map((name, slot) => [name, next[slot]])),
+					},
+				},
+			],
+		}).apply();
+
+		const candidate = createHost();
+		const page = candidate.createPage('0', 0);
+		const create = instantiateSlotCreate(IMAGE_SLOT_UPDATES, 'createImageSlotUpdates')(candidate);
+		const nodes = create(...([candidate.getUniqueId(page), ...initial] as never[]));
+		candidate.insertBefore(page, nodes[0] as never, null);
+		for (let slot = 0; slot < next.length; slot++) {
+			expect(create.set(nodes, slot, next[slot])).toBe(true);
+		}
+		expect(paintedTree(shape(candidate.pages[0]!))).toEqual(
+			paintedTree(shape(reference.pages[0]!)),
+		);
+		expect(shape(nodes[0] as never)).toEqual(
+			expect.objectContaining({ type: 'image', classes: 'avatar', id: null }),
+		);
+	});
+
 	it('updates one instance inside a flat dense-run output without slicing its nodes', () => {
 		const papi = createHost();
 		const page = papi.createPage('0', 0);
@@ -1434,6 +1600,42 @@ describe('Lynx main-thread program dense run driver', () => {
 				ranges: [{ node: 0 }, ...RANGED_ROW_SITES],
 			}).denseRun,
 		).toBe(false);
+	});
+
+	it('keeps dense run outputs while validating compiler-proved resident nodes', () => {
+		const resident = [0, 1, 2, 3, 5];
+		const emission = emitLynxMainThreadProgram(SLOT_UPDATES, {
+			name: 'createResidentRows',
+			residentNodes: resident,
+			slotUpdates: true,
+		});
+		const papi = createHost();
+		const page = papi.createPage('0', 0);
+		const create = new Function(`return (${emission.source});`)()(papi) as InstantiatedSlotCreate;
+		const values = ['first', 'ignored', 1, 'folded', 'raw'];
+		const stride = SLOT_UPDATES.nodes.length;
+		const outputs = new Array<unknown>(stride * 2);
+		create.run!(papi.getUniqueId(page), 2, [...values, ...values], [], [], outputs);
+
+		expect(outputs.filter((node) => node !== undefined)).toHaveLength(stride * 2);
+		expect(outputs[4]).toBeDefined();
+		expect(outputs[stride + 4]).toBeDefined();
+		papi.insertBefore(page, outputs[0] as never, null);
+		papi.insertBefore(page, outputs[stride] as never, null);
+		expect(page.children).toHaveLength(2);
+		expect((outputs[0] as { readonly children: readonly unknown[] }).children).toHaveLength(4);
+		expect(create.set(outputs, 4, 'updated', stride)).toBe(true);
+		expect(shape(outputs[stride + 5] as never)).toMatchObject({ text: 'updated' });
+	});
+
+	it('refuses a resident set that drops a later-observable node', () => {
+		expect(() =>
+			emitLynxMainThreadProgram(SLOT_UPDATES, {
+				name: 'createIncompleteResidentRows',
+				residentNodes: [0],
+				slotUpdates: true,
+			}),
+		).toThrow(/resident nodes omit value node/);
 	});
 
 	it('emits an explicit physical-stride driver for structural range outputs', () => {
@@ -1560,6 +1762,37 @@ describe('Lynx main-thread program dense run driver', () => {
 			'\t\t\tout[oi + 6] = t1;',
 			'\t\t\tvi += 1; ei += 2; ri += 2; oi += 7;',
 		]);
+	});
+
+	it('reads a driver value window only when the emission advertises the offset capability', () => {
+		const papi = createHost();
+		const page = papi.createPage('0', 0);
+		const create = instantiate(
+			LIST_ITEM,
+			'createOffsetListItem',
+		)(papi) as unknown as UniversalProgramCreate;
+		const out: unknown[] = new Array(LIST_ITEM.nodes.length);
+		expect(create.runValueOffset).toBe(true);
+		create.run!(
+			papi.getUniqueId(page),
+			1,
+			['ignored-key', 'Ignored', 'actual-key', 'Actual'],
+			[],
+			[],
+			out,
+			2,
+		);
+		expect(shape(out[0] as never)).toEqual(
+			expect.objectContaining({
+				attributes: expect.objectContaining({ 'item-key': 'actual-key' }),
+			}),
+		);
+		expect(shape(out[1] as never)).toEqual(
+			expect.objectContaining({ children: [expect.objectContaining({ text: 'Actual' })] }),
+		);
+		expect(instantiate(RANGED_ROW, 'createOrdinaryRow', RANGED_ROW_SITES)(papi)).not.toHaveProperty(
+			'runValueOffset',
+		);
 	});
 
 	it('leaves the created prefix in the output table when a later PAPI write throws', () => {

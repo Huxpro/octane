@@ -14,6 +14,8 @@ import { dirname, join } from 'node:path';
 import { mergeRsbuildConfig } from '@rsbuild/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { compile } from 'octane/compiler';
+import { signature as lynxElementTemplateBackendSignature } from '../../lynx/src/compiler-element-template.js';
+import { signature as lynxStructuralElementTemplateBackendSignature } from '../../lynx/src/compiler-element-template.structural.js';
 import { signature as lynxMainThreadProgramBackendSignature } from '../../lynx/src/compiler/index.js';
 
 import {
@@ -27,10 +29,12 @@ import {
 const temporaryRoots: string[] = [];
 const testRequire = createRequire(import.meta.url);
 const installedRspeedyRequire = createRequire(testRequire.resolve('@lynx-js/rspeedy/package.json'));
-const RSPEEDY_BUILD_PACKAGES = [
+const RSBUILD_PLUGIN_PACKAGES = [
 	'@lynx-js/cache-events-webpack-plugin',
 	'@lynx-js/chunk-loading-webpack-plugin',
 	'@lynx-js/debug-metadata-rsbuild-plugin',
+	'@lynx-js/runtime-wrapper-webpack-plugin',
+	'@lynx-js/template-webpack-plugin',
 	'@lynx-js/web-rsbuild-server-middleware',
 	'@lynx-js/webpack-dev-transport',
 	'@lynx-js/websocket',
@@ -38,15 +42,20 @@ const RSPEEDY_BUILD_PACKAGES = [
 	'@rsdoctor/rspack-plugin',
 ] as const;
 const RSPEEDY_DEPENDENCIES = {
-	'@lynx-js/cache-events-webpack-plugin': '^0.2.0',
-	'@lynx-js/chunk-loading-webpack-plugin': '^0.4.1',
-	'@lynx-js/debug-metadata-rsbuild-plugin': '^0.2.0',
-	'@lynx-js/web-rsbuild-server-middleware': '0.22.2',
-	'@lynx-js/webpack-dev-transport': '^0.3.0',
+	'@lynx-js/rsbuild-plugin': '0.1.1',
+	'@rsbuild/core': '2.2.3',
+	'@rsdoctor/rspack-plugin': '~1.6.1',
+} as const;
+const RSBUILD_PLUGIN_DEPENDENCIES = {
+	'@lynx-js/cache-events-webpack-plugin': '^0.2.1',
+	'@lynx-js/chunk-loading-webpack-plugin': '^0.4.2',
+	'@lynx-js/debug-metadata-rsbuild-plugin': '^0.2.2',
+	'@lynx-js/runtime-wrapper-webpack-plugin': '^0.2.4',
+	'@lynx-js/template-webpack-plugin': '^0.16.0',
+	'@lynx-js/web-rsbuild-server-middleware': '0.26.0',
+	'@lynx-js/webpack-dev-transport': '^0.4.0',
 	'@lynx-js/websocket': '^0.0.4',
-	'@rsbuild/core': '2.1.4',
-	'@rsbuild/plugin-css-minimizer': '2.0.0',
-	'@rsdoctor/rspack-plugin': '~1.5.6',
+	'@rsbuild/plugin-css-minimizer': '2.0.1',
 } as const;
 
 type BundlerChainCallback = (chain: unknown, context: unknown) => void;
@@ -109,10 +118,13 @@ function createToolchainRoot(): string {
 	const root = mkdtempSync(join(tmpdir(), 'octane-rspeedy-plugin-'));
 	temporaryRoots.push(root);
 	writeFileSync(join(root, 'package.json'), JSON.stringify({ private: true }), 'utf8');
-	writePackage(root, '@lynx-js/rspeedy', '0.16.0', { dependencies: RSPEEDY_DEPENDENCIES });
-	writePackage(root, '@rsbuild/core', '2.1.4');
-	writePackage(root, '@rspack/core', '2.1.3');
-	for (const packageName of RSPEEDY_BUILD_PACKAGES) {
+	writePackage(root, '@lynx-js/rspeedy', '0.17.1', { dependencies: RSPEEDY_DEPENDENCIES });
+	writePackage(root, '@lynx-js/rsbuild-plugin', '0.1.1', {
+		dependencies: RSBUILD_PLUGIN_DEPENDENCIES,
+	});
+	writePackage(root, '@rsbuild/core', '2.2.3');
+	writePackage(root, '@rspack/core', '2.2.2');
+	for (const packageName of RSBUILD_PLUGIN_PACKAGES) {
 		const target = packageDirectory(root, packageName);
 		mkdirSync(dirname(target), { recursive: true });
 		symlinkSync(installedPackageRoot(packageName), target, 'dir');
@@ -186,6 +198,7 @@ interface CompilerRendererOptions {
 	registry: {
 		lynx: {
 			module: string;
+			capabilities?: readonly string[];
 			validation: {
 				forbiddenGlobals: readonly string[];
 				forbiddenImports: readonly string[];
@@ -420,6 +433,48 @@ describe('@octanejs/rspeedy-plugin', () => {
 		);
 	});
 
+	it('selects a distinct cache-identified backend for experimental Element Templates', () => {
+		const configured = compilerOptions(
+			applyPlugin(
+				{ experimentalElementTemplate: true },
+				'lynx',
+				{},
+				{ app: ['./src/App.lynx.tsrx'] },
+			),
+		);
+		expect(configured.mainThreadProgramBackend).toMatchObject({
+			request: expect.stringMatching(
+				/packages[/\\]lynx[/\\]src[/\\]compiler-element-template\.ts$/,
+			),
+			signature: lynxElementTemplateBackendSignature,
+		});
+		expect(configured.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER].mainThreadProgramBackend).toBe(
+			configured.mainThreadProgramBackend,
+		);
+		const coverageOptions = applyPlugin(
+			{ experimentalElementTemplate: true },
+			'lynx',
+			{},
+			{ app: ['./src/App.lynx.tsrx'] },
+		).plugins.get('@octanejs/rspeedy-plugin:program-coverage')?.options;
+		expect(coverageOptions?.[3]).toBe(true);
+		expect(coverageOptions?.[4]).toMatchObject({
+			request: expect.stringMatching(
+				/packages[/\\]lynx[/\\]src[/\\]compiler-element-template\.structural\.ts$/,
+			),
+			signature: lynxStructuralElementTemplateBackendSignature,
+		});
+		expect(() =>
+			pluginOctane({ thread: 'main-thread', experimentalElementTemplate: true }),
+		).toThrow(/requires the two-layer application build/);
+		expect(() =>
+			pluginOctane({
+				experimentalElementTemplate: true,
+				mainThreadProgramBackend: false,
+			}),
+		).toThrow(/owns its main-thread program backend/);
+	});
+
 	it('gives both layers the backend once addressing is on, and only then', () => {
 		// #246 E1 turns the backend into more than an emitter. An address is
 		// positional, so the background has to decide which plans get one exactly
@@ -490,6 +545,7 @@ describe('@octanejs/rspeedy-plugin', () => {
 			],
 			true,
 			undefined,
+			false,
 		]);
 	});
 
@@ -1046,6 +1102,26 @@ export function App() @{ <view /> }
 					: './core/background-core-selection.js',
 			);
 		}
+	});
+
+	it('selects the compiler-program background renderer only for addressed core:block applications', () => {
+		const entries = { app: ['./src/App.lynx.tsrx'] };
+		const universal = compilerOptions(applyPlugin({ core: 'universal' }, 'lynx', {}, entries));
+		const block = compilerOptions(applyPlugin({ core: 'block' }, 'lynx', {}, entries));
+		const isolated = compilerOptions(
+			applyPlugin({ thread: 'background', core: 'block' }, 'lynx', {}, entries),
+		);
+		const unaddressed = compilerOptions(
+			applyPlugin({ core: 'block', programAddressing: false }, 'lynx', {}, entries),
+		);
+
+		expect(universal.renderers.registry.lynx.capabilities).not.toContain('compiler-program-ir');
+		expect(block.renderers.registry.lynx.capabilities).toContain('compiler-program-ir');
+		expect(isolated.renderers.registry.lynx.capabilities).not.toContain('compiler-program-ir');
+		expect(unaddressed.renderers.registry.lynx.capabilities).not.toContain('compiler-program-ir');
+		expect(block.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER]?.renderers).toBe(
+			universal.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER]?.renderers,
+		);
 	});
 
 	it('binds production diagnostics to compact identifiers in every graph', () => {

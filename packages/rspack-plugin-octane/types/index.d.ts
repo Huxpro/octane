@@ -119,14 +119,29 @@ export interface OctaneUniversalRuntimeOptions {
  * programs. `signature` names the emitted output's shape, and a build salts its
  * persistent transform cache with it.
  */
-export interface OctaneMainThreadProgramBackend {
+interface OctaneMainThreadProgramBackendBase {
 	readonly signature: string;
-	readonly deriveLynxMainThreadProgram: (planRoot: unknown) => unknown;
 	readonly emitLynxMainThreadProgram: (
 		program: unknown,
 		options: { readonly name: string },
 	) => { readonly source: string; readonly valueCount: number; readonly eventCount: number };
 }
+
+/**
+ * New backends derive the versioned, thread-neutral Lynx program IR. The legacy
+ * main-thread-named hook remains accepted while renderer integrations migrate.
+ */
+export type OctaneMainThreadProgramBackend = OctaneMainThreadProgramBackendBase &
+	(
+		| {
+				readonly deriveLynxProgramIR: (planRoot: unknown) => unknown;
+				readonly deriveLynxMainThreadProgram?: (planRoot: unknown) => unknown;
+		  }
+		| {
+				readonly deriveLynxProgramIR?: never;
+				readonly deriveLynxMainThreadProgram: (planRoot: unknown) => unknown;
+		  }
+	);
 
 /**
  * Serializable reference to a renderer-owned backend module. The loader reads
@@ -327,10 +342,14 @@ export interface OctaneLynxBlockTemplateFeatureRequirement {
 	readonly kind:
 		| 'activity'
 		| 'component'
+		| 'component-hole'
+		| 'local-component'
 		| 'fragment'
 		| 'host-ref'
 		| 'if'
+		| 'inline-render-prop'
 		| 'native-list'
+		| 'portal'
 		| 'program-root-event'
 		| 'renderable-hole'
 		| 'switch'
@@ -359,6 +378,18 @@ export interface OctaneRspackBuildInfo {
 		readonly total: number;
 		readonly addressed: number;
 	};
+	/** Compiler-proved native Template Definition coverage and visibility shape. */
+	lynxElementTemplateCoverage?: {
+		readonly total: number;
+		readonly lowered: number;
+		readonly visibilitySlots: number;
+	};
+	/** Native Template Definitions emitted out of band from main-thread JavaScript. */
+	lynxElementTemplates?: readonly {
+		readonly templateId: string;
+		readonly compiledTemplate: Readonly<Record<string, unknown>>;
+		readonly sourceFile: string;
+	}[];
 	/**
 	 * Module-local authored facts for a later Block-core graph selector. This is
 	 * not, by itself, a compatibility or selection decision.
@@ -389,3 +420,16 @@ export declare function inferRspackEnvironment(target: unknown): OctaneRspackEnv
 
 /** Read the serializable metadata emitted by the loader for app-level collectors. */
 export declare function getOctaneRspackBuildInfo(module: unknown): OctaneRspackBuildInfo | null;
+
+/**
+ * Select compiler options for one Rspack NormalModule's next build.
+ * Framework integrations use this after a whole-graph proof and then rebuild
+ * that exact module; unrelated graphs retain the configured compiler options.
+ */
+export declare function setOctaneRspackModuleCompilerOptions(
+	module: object,
+	options: {
+		readonly renderers?: OctaneRendererConfigOptions | OctaneResolvedRendererConfig;
+		readonly mainThreadProgramBackend?: OctaneMainThreadProgramBackendOption;
+	},
+): void;

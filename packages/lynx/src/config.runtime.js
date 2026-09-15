@@ -237,6 +237,12 @@ export const lynxBackgroundRenderer = {
 	validation: LYNX_BACKGROUND_VALIDATION,
 };
 
+/** Background renderer for the independent Block program artifact. */
+export const lynxBlockBackgroundRenderer = {
+	...lynxBackgroundRenderer,
+	capabilities: [...lynxBackgroundRenderer.capabilities, 'compiler-program-ir'],
+};
+
 /** Main-thread renderer that rejects APIs owned by the background runtime. */
 export const lynxMainThreadRenderer = {
 	module: '@octanejs/lynx/main-renderer',
@@ -267,6 +273,9 @@ export const lynxBackgroundRendererRegistry = {
 	[LYNX_RENDERER_ID]: lynxBackgroundRenderer,
 };
 
+export const lynxBlockBackgroundRendererRegistry = {
+	[LYNX_RENDERER_ID]: lynxBlockBackgroundRenderer,
+};
 export const lynxMainThreadRendererRegistry = {
 	[LYNX_RENDERER_ID]: lynxMainThreadRenderer,
 };
@@ -288,6 +297,12 @@ export const lynxRenderers = {
 /** Background native-app preset used by Rspeedy. */
 export const lynxRspeedyBackgroundRenderers = {
 	registry: lynxBackgroundRendererRegistry,
+	default: LYNX_RENDERER_ID,
+};
+
+/** Block-core background preset; the main-thread preset remains shared. */
+export const lynxBlockRspeedyBackgroundRenderers = {
+	registry: lynxBlockBackgroundRendererRegistry,
 	default: LYNX_RENDERER_ID,
 };
 

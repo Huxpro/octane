@@ -129,6 +129,10 @@ try {
 					result.create.itemRenders,
 					result.create.refSelectorInstalls,
 					result.create.createdSelectable,
+					result.create.programRunOwnedHosts,
+					result.create.programRunRetainedHostRefs,
+					result.create.programRunReleasedHostRefs,
+					result.create.programRunLiveRetainedHostRefs,
 				],
 				update10th: [result.update10th.commands, result.update10th.itemRenders],
 				select: [result.select.commands, result.select.bytes, result.select.itemRenders],
@@ -160,6 +164,13 @@ try {
 					result.selectStorm.commits,
 					result.selectStorm.commands,
 					result.selectStorm.itemRenders,
+				],
+				clearLiveRetainedHostRefs: result.clear.programRunLiveRetainedHostRefs,
+				recreateRetention: [
+					result.recreate.programRunOwnedHosts,
+					result.recreate.programRunRetainedHostRefs,
+					result.recreate.programRunReleasedHostRefs,
+					result.recreate.programRunLiveRetainedHostRefs,
 				],
 			});
 			if (signature === null) signature = nextSignature;
@@ -294,11 +305,49 @@ try {
 			createAnnouncedPublicInstances: result.create.commandOps['ensure-public-instance'] ?? 0,
 			createBytes: result.create.bytes,
 			createItemRenders: result.create.itemRenders,
+			programRunRetention: {
+				create: {
+					ownedHosts: result.create.programRunOwnedHosts,
+					retainedHostRefs: result.create.programRunRetainedHostRefs,
+					releasedHostRefs: result.create.programRunReleasedHostRefs,
+					liveRetainedHostRefs: result.create.programRunLiveRetainedHostRefs,
+				},
+				clearLiveRetainedHostRefs: result.clear.programRunLiveRetainedHostRefs,
+				recreate: {
+					ownedHosts: result.recreate.programRunOwnedHosts,
+					retainedHostRefs: result.recreate.programRunRetainedHostRefs,
+					releasedHostRefs: result.recreate.programRunReleasedHostRefs,
+					liveRetainedHostRefs: result.recreate.programRunLiveRetainedHostRefs,
+				},
+			},
 			update10thBytes: result.update10th.bytes,
 			updateStormBytes: result.updateStorm.bytes,
 			updateStormItemRenders: result.updateStorm.itemRenders,
 			selectStormBytes: result.selectStorm.bytes,
 			selectStormItemRenders: result.selectStorm.itemRenders,
+			ackPipeline: Object.fromEntries(
+				Object.entries({
+					create: result.create,
+					update10th: result.update10th,
+					select: result.select,
+					swap: result.swap,
+					updateStorm: result.updateStorm,
+					selectStorm: result.selectStorm,
+					clear: result.clear,
+					recreate: result.recreate,
+				}).map(([name, counters]) => [
+					name,
+					{
+						queueMaxDepth: counters.blockRenderQueueMaxDepth,
+						merges: counters.blockRenderMerges,
+						preparations: counters.blockRenderPrepares,
+						preparationsWhileAck: counters.blockRenderPreparesWhileAck,
+						roundTrips: counters.blockAckRoundTrips,
+						messagesToMain: counters.wireToMainMessages,
+						messagesToBackground: counters.wireToBackgroundMessages,
+					},
+				]),
+			),
 			swap: {
 				commands: result.swap.commands,
 				commandOps: result.swap.commandOps,
@@ -346,6 +395,7 @@ try {
 					synthesizedCommands: result.clear.synthesizedCommands,
 					papiRemoveCount: result.clear.papiRemoveCount,
 					denseReleaseHostCount: result.clear.denseReleaseHostCount,
+					liveRetainedHostRefs: result.clear.programRunLiveRetainedHostRefs,
 					stagesMs: {
 						prepare: result.clear.prepareMs,
 						apply: result.clear.applyMs,
@@ -359,6 +409,10 @@ try {
 					createdElements: result.recreate.createdElements,
 					itemRenders: result.recreate.itemRenders,
 					refSelectorInstalls: result.recreate.refSelectorInstalls,
+					ownedHosts: result.recreate.programRunOwnedHosts,
+					retainedHostRefs: result.recreate.programRunRetainedHostRefs,
+					releasedHostRefs: result.recreate.programRunReleasedHostRefs,
+					liveRetainedHostRefs: result.recreate.programRunLiveRetainedHostRefs,
 					stagesMs: {
 						prepare: result.recreate.prepareMs,
 						apply: result.recreate.applyMs,

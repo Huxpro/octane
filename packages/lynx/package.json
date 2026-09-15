@@ -49,6 +49,8 @@
     "./first-screen-compiled-program": "./src/first-screen.compiled-program.ts",
     "./block": "./src/block.ts",
     "./compiler": "./src/compiler/index.ts",
+    "./compiler/element-template": "./src/compiler-element-template.ts",
+    "./compiler/element-template/structural": "./src/compiler-element-template.structural.ts",
     "./intrinsics": "./src/intrinsics.ts",
     "./intrinsics/jsx-runtime": "./src/intrinsics.ts",
     "./main-thread": "./src/main-thread.ts",

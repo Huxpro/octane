@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getOctaneRspackBuildInfo, inferRspackEnvironment } from '../src/index.js';
+import {
+	getOctaneRspackBuildInfo,
+	inferRspackEnvironment,
+	setOctaneRspackModuleCompilerOptions,
+} from '../src/index.js';
+import { getOctaneRspackModuleCompilerOptions } from '../src/compiler-specialization.js';
 import { normalizeLoaderOptions, normalizePluginOptions } from '../src/shared.js';
 
 describe('inferRspackEnvironment', () => {
@@ -115,6 +120,27 @@ describe('declarative options', () => {
 		expect(normalizeLoaderOptions({ strong: false })).toEqual({ strong: false });
 	});
 
+	it('accepts the shared IR hook and the legacy derivation hook for live backends', () => {
+		const emitLynxMainThreadProgram = () => ({ source: '', valueCount: 0, eventCount: 0 });
+		const shared = {
+			signature: 'renderer-program/8',
+			deriveLynxProgramIR: () => null,
+			emitLynxMainThreadProgram,
+		};
+		const legacy = {
+			signature: 'renderer-program/7',
+			deriveLynxMainThreadProgram: () => null,
+			emitLynxMainThreadProgram,
+		};
+
+		expect(normalizePluginOptions({ mainThreadProgramBackend: shared })).toEqual({
+			mainThreadProgramBackend: shared,
+		});
+		expect(normalizePluginOptions({ mainThreadProgramBackend: legacy })).toEqual({
+			mainThreadProgramBackend: legacy,
+		});
+	});
+
 	it('copies and freezes serializable main-thread backend references', () => {
 		const reference = { request: '@renderer/compiler', signature: 'renderer-program/7' };
 		const options = normalizePluginOptions({ mainThreadProgramBackend: reference });
@@ -213,7 +239,18 @@ describe('declarative options', () => {
 			{ mainThreadProgramBackend: { request: '@renderer/compiler', signature: 'x', extra: true } },
 			/unknown.*extra/,
 		],
-		[{ mainThreadProgramBackend: { signature: 'x' } }, /deriveLynxMainThreadProgram/],
+		[{ mainThreadProgramBackend: { signature: 'x' } }, /deriveLynxProgramIR/],
+		[
+			{
+				mainThreadProgramBackend: {
+					signature: 'x',
+					deriveLynxProgramIR: true,
+					deriveLynxMainThreadProgram: () => null,
+					emitLynxMainThreadProgram: () => ({}),
+				},
+			},
+			/deriveLynxProgramIR.*function/,
+		],
 		[
 			{
 				mainThreadProgramBackend: {
@@ -235,6 +272,61 @@ describe('declarative options', () => {
 		[{ transform: () => {} }, /unknown option/],
 	] as const)('rejects invalid options %#', (value, message) => {
 		expect(() => normalizePluginOptions(value)).toThrow(message);
+	});
+});
+
+describe('module compiler specialization', () => {
+	it('normalizes a renderer override onto exactly one module', () => {
+		const selected = {};
+		const untouched = {};
+		const renderers = {
+			registry: {
+				lynx: {
+					module: '@octanejs/lynx/renderer',
+					target: 'universal',
+					capabilities: ['compiler-program-ir'],
+				},
+			},
+			default: 'lynx',
+		};
+
+		setOctaneRspackModuleCompilerOptions(selected, { renderers });
+		const options = getOctaneRspackModuleCompilerOptions(selected);
+		expect(options?.renderers.registry.lynx.capabilities).toContain('compiler-program-ir');
+		expect(options?.renderers.signature).toEqual(expect.any(String));
+		expect(Object.isFrozen(options)).toBe(true);
+		expect(getOctaneRspackModuleCompilerOptions(untouched)).toBeUndefined();
+	});
+
+	it('normalizes a main-thread backend override onto exactly one module', () => {
+		const selected = {};
+		const backend = { request: '/renderer/compiler.js', signature: 'renderer-program/2' };
+
+		setOctaneRspackModuleCompilerOptions(selected, { mainThreadProgramBackend: backend });
+
+		expect(getOctaneRspackModuleCompilerOptions(selected)).toEqual({
+			mainThreadProgramBackend: backend,
+		});
+		expect(Object.isFrozen(getOctaneRspackModuleCompilerOptions(selected))).toBe(true);
+	});
+
+	it.each([
+		[null, { renderers: {} }, /requires a module/],
+		[{}, null, /must be an object/],
+		[{}, {}, /require `renderers` or `mainThreadProgramBackend`/],
+		[
+			{},
+			{ mainThreadProgramBackend: { request: '', signature: 'backend/1' } },
+			/mainThreadProgramBackend\.request/,
+		],
+		[{}, { renderers: {}, runtime: 'other' }, /unknown module compiler option/],
+	] as const)('rejects an invalid specialization %#', (module, options, message) => {
+		expect(() =>
+			setOctaneRspackModuleCompilerOptions(
+				module as object,
+				options as Parameters<typeof setOctaneRspackModuleCompilerOptions>[1],
+			),
+		).toThrow(message);
 	});
 });
 
@@ -293,7 +385,12 @@ describe('getOctaneRspackBuildInfo', () => {
 								},
 							],
 							mainThreadProps: [{ name: 'main-thread:ref', line: 7, column: 8 }],
-							templateFeatures: [{ kind: 'component', name: 'Panel', line: 8, column: 2 }],
+							templateFeatures: [
+								{ kind: 'component', name: 'Panel', line: 8, column: 2 },
+								{ kind: 'component-hole', name: null, line: 8, column: 9 },
+								{ kind: 'local-component', name: 'Frame', line: 9, column: 2 },
+								{ kind: 'inline-render-prop', name: 'render', line: 9, column: 8 },
+							],
 							keyedRanges: [
 								{
 									line: 10,
@@ -343,7 +440,12 @@ describe('getOctaneRspackBuildInfo', () => {
 					},
 				],
 				mainThreadProps: [{ name: 'main-thread:ref', line: 7, column: 8 }],
-				templateFeatures: [{ kind: 'component', name: 'Panel', line: 8, column: 2 }],
+				templateFeatures: [
+					{ kind: 'component', name: 'Panel', line: 8, column: 2 },
+					{ kind: 'component-hole', name: null, line: 8, column: 9 },
+					{ kind: 'local-component', name: 'Frame', line: 9, column: 2 },
+					{ kind: 'inline-render-prop', name: 'render', line: 9, column: 8 },
+				],
 				keyedRanges: [
 					{
 						line: 10,
@@ -477,7 +579,14 @@ describe('getOctaneRspackBuildInfo', () => {
 				version: 2,
 				threadFunctions: [],
 				mainThreadProps: [],
-				templateFeatures: [{ kind: 'portal', name: null, line: 1, column: 0 }],
+				templateFeatures: [{ kind: 'unknown-feature', name: null, line: 1, column: 0 }],
+				keyedRanges: [],
+			},
+			{
+				version: 2,
+				threadFunctions: [],
+				mainThreadProps: [],
+				templateFeatures: [{ kind: 'local-component', name: null, line: 1, column: 0 }],
 				keyedRanges: [],
 			},
 			{
@@ -626,5 +735,42 @@ describe('getOctaneRspackBuildInfo', () => {
 			}),
 		).toBeNull();
 		expect(getOctaneRspackBuildInfo(null)).toBeNull();
+	});
+
+	it('validates Element Template visibility coverage as paired main-thread metadata', () => {
+		const template = {
+			templateId: '_et_0123456789ab',
+			compiledTemplate: { kind: 'element', type: 'view' },
+			sourceFile: '/src/App.tsrx',
+		};
+		const value = {
+			canonicalId: '/src/App.tsrx',
+			transformKind: 'compile' as const,
+			serverRpc: false,
+			universalRuntime: { runtime: 'lynx', thread: 'main-thread' as const },
+			lynxElementTemplateCoverage: { total: 2, lowered: 2, visibilitySlots: 0 },
+			lynxElementTemplates: [template],
+		};
+
+		expect(getOctaneRspackBuildInfo({ buildInfo: { octane: value } })).toBe(value);
+		for (const coverage of [
+			{ total: 2, lowered: 2 },
+			{ total: 2, lowered: 2, visibilitySlots: 3 },
+			{ total: 2, lowered: 1, visibilitySlots: 2 },
+			{ total: 2, lowered: 2, visibilitySlots: -1 },
+		]) {
+			expect(
+				getOctaneRspackBuildInfo({
+					buildInfo: {
+						octane: { ...value, lynxElementTemplateCoverage: coverage },
+					},
+				}),
+			).toBeNull();
+		}
+		expect(
+			getOctaneRspackBuildInfo({
+				buildInfo: { octane: { ...value, lynxElementTemplates: undefined } },
+			}),
+		).toBeNull();
 	});
 });

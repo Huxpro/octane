@@ -43,9 +43,9 @@ function backendDigest(): string {
 
 describe('the main-thread backend signature', () => {
 	it('names the emitter that is actually here', () => {
-		expect(signature).toBe('lynx-main-thread-program/20');
+		expect(signature).toBe('lynx-main-thread-program/34');
 		expect(backendDigest()).toBe(
-			'ac3a0666eab1114c2cfbe33971259ab0480748726d50596ea55edbf5d5b5bc74',
+			'f05bb979d15221d9ebcebc32b86aa7b544ffcadc70b6311e743eedd45b093a1b',
 		);
 	});
 
@@ -55,9 +55,12 @@ describe('the main-thread backend signature', () => {
 		// to prevent rather than a detail of how it is spelled.
 		const files = readdirSync(BACKEND_DIRECTORY).sort();
 		expect(files).toEqual([
+			'derive-element-template.ts',
 			'derive-main-thread-program.ts',
+			'derive-program.ts',
 			'emit-main-thread-program.ts',
 			'index.ts',
+			'ir.ts',
 		]);
 	});
 });

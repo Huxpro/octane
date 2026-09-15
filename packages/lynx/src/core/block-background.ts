@@ -25,13 +25,12 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  * runs its setup, lowers the plan it returns to a template program, and makes
  * its slot values the block's values. A keyed range in that plan is lifted out
  * of the template and becomes a range site on the host node that held it, so a
- * list is reconciled by the core rather than repainted. The page's setup runs
- * inside a hook scope of the universal core's own cells (item 1b), so a page
- * that holds state — and a tap that writes it — is an ordinary program here. A
- * hooked *row* is still refused there by name, because a bundle that silently
- * rendered nothing would be far worse than one that says which piece it lacks.
- * Deriving is what makes a number from this core a framework measurement rather
- * than a floor, for the shapes it reaches.
+ * list is reconciled by the core rather than repainted. Stateful pages and
+ * keyed rows get independent scopes backed by the universal hook kernel;
+ * compiler-proven stateless components allocate none. Those scopes publish or
+ * abort at this root's host acknowledgement boundary without creating Universal
+ * host records. Deriving is what makes a number from this core a framework
+ * measurement rather than a floor, for the shapes it reaches.
  *
  * Either way a single application entry — `root.render(App)` — is driven by the
  * universal core with the flag off and by the Block core with the flag on,
@@ -57,6 +56,7 @@ import type {
 	UniversalTransportEventMessage,
 } from 'octane/universal/native';
 import type { LynxComponent } from '../intrinsics.js';
+import type { LynxHostAttachmentChange } from './protocol.js';
 import { lynxClientTemplateRunsNegotiated, type LynxClientContainer } from './client-driver.js';
 import { createLynxBlockCore, type LynxBlockCore } from './block-core.js';
 import { lynxBlockProgramForComponent } from './block-component.js';
@@ -69,6 +69,7 @@ import {
 import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import type { LynxBackgroundTransport } from './transport.js';
 import type { LynxCompiledProgramBlockTransport } from './compiled-program-block-transport.js';
+import { LYNX_PROFILE, lynxWireProfile } from './profiling.js';
 
 /**
  * The members `root.ts` uses from whichever core the bundle carries.
@@ -84,6 +85,8 @@ export interface LynxBackgroundCore {
 	dispatchTransportEvent(message: UniversalTransportEventMessage): readonly unknown[];
 	/** Present on the Block facade selected with the compact native-event transport. */
 	acceptsNativeEvent?(listener: number, priority: UniversalEventPriority): boolean;
+	/** Present on the Block facade selected with the compact attachment wire. */
+	dispatchHostAttachments?(changes: readonly LynxHostAttachmentChange[]): void;
 }
 
 export interface LynxBlockBackgroundCoreOptions {
@@ -164,6 +167,9 @@ export function createLynxBlockBackgroundCore(
 		options.core ??
 		createLynxBlockCore({
 			templateRuns: () => lynxClientTemplateRunsNegotiated(container),
+			...('blockDeltaProducer' in transport
+				? { deltaProducer: transport.blockDeltaProducer }
+				: null),
 		});
 	const blockRoot = createLynxBlockRoot({
 		container,
@@ -177,6 +183,8 @@ export function createLynxBlockBackgroundCore(
 	let passiveTasks: (() => void)[] = [];
 	let passiveScheduled = false;
 	let attemptActive = false;
+	let commitsInFlight = 0;
+	let renderQueueDepth = 0;
 	const runTasks = (tasks: readonly (() => void)[]): void => {
 		let hasError = false;
 		let firstError: unknown;
@@ -272,19 +280,26 @@ export function createLynxBlockBackgroundCore(
 		}
 		throw error;
 	};
-	const publishAndContinue = (): void => {
+	const publishAndContinue = (publishRefs: () => void): void => {
 		// ACK closes the submitted draft synchronously. Open the next one before
 		// lifecycle publication: main may drain a native event before `complete`,
 		// and a hand-written handler is allowed to mutate then call commit().
 		attemptActive = false;
 		beginAttempt();
+		afterCommitTasks.push(publishRefs);
 		publishAccepted();
 	};
 	const commitAccepted = async (): Promise<UniversalHostBatch | null> => {
+		let frameInFlight = false;
 		try {
-			return await blockRoot.commit(publishAndContinue);
+			return await blockRoot.commit(publishAndContinue, () => {
+				frameInFlight = true;
+				commitsInFlight++;
+			});
 		} catch (error) {
 			return resumeAfterFailure(error);
+		} finally {
+			if (frameInFlight) commitsInFlight--;
 		}
 	};
 	const context: LynxBlockProgramContext = Object.freeze({
@@ -303,12 +318,37 @@ export function createLynxBlockBackgroundCore(
 		afterAbort(task: () => void): void {
 			afterAbortTasks.push(task);
 		},
+		schedulePreparation(work: (backpressured: boolean) => void): void {
+			options.scheduleMicrotask(() => {
+				const backpressured = commitsInFlight !== 0;
+				if (LYNX_PROFILE && backpressured) {
+					const profile = lynxWireProfile();
+					profile.blockRenderPrepares++;
+					profile.blockRenderPreparesWhileAck++;
+				}
+				work(backpressured);
+			});
+		},
+		scheduleMicrotask(work: () => void): void {
+			options.scheduleMicrotask(work);
+		},
+		noteRenderMerge(): void {
+			if (LYNX_PROFILE) lynxWireProfile().blockRenderMerges++;
+		},
 		scheduleRender(work: () => void): Promise<void> {
+			renderQueueDepth++;
+			if (LYNX_PROFILE) {
+				const profile = lynxWireProfile();
+				if (renderQueueDepth > profile.blockRenderQueueMaxDepth) {
+					profile.blockRenderQueueMaxDepth = renderQueueDepth;
+				}
+			}
 			// The same queue `renderAsync` takes its turn in, for the same
 			// reason: one render at a time, one commit in flight at a time. A
 			// program driving its own re-render out of band would otherwise
 			// overlap a caller's, and both would flush the core.
 			const run = renderQueue.then(async () => {
+				renderQueueDepth--;
 				beginAttempt();
 				try {
 					flushPassiveTasks();
@@ -434,6 +474,10 @@ export function createLynxBlockBackgroundCore(
 
 		dispatchTransportEvent(message: UniversalTransportEventMessage): readonly unknown[] {
 			return blockRoot.dispatchTransportEvent(message);
+		},
+
+		dispatchHostAttachments(changes: readonly LynxHostAttachmentChange[]): void {
+			blockRoot.dispatchHostAttachments(changes);
 		},
 
 		acceptsNativeEvent(listener: number, priority: UniversalEventPriority): boolean {

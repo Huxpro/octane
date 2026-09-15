@@ -112,14 +112,21 @@ describe('Lynx runtime compatibility evidence', () => {
 				// is what checks it. What this guard still owns is the thing it
 				// always owned: no main-thread-only module reaches the background.
 				'src/core/block-background.ts',
+				// Source-safe builds retain every Block semantic capability. A proved
+				// production graph statically replaces this default with the structural
+				// feature module, which is intentionally absent from this source walk.
+				'src/core/block-component-features.ts',
 				'src/core/block-component.ts',
 				'src/core/block-core.ts',
+				'src/core/block-delta-producer.ts',
 				'src/core/block-program.ts',
 				'src/core/block-root.ts',
 				'src/core/client-driver.ts',
+				'src/core/compiled-program-background-worklets.ts',
 				'src/core/compiled-program-block-transport.ts',
 				'src/core/compiled-program-transport.ts',
 				'src/core/compiled-program-wire.ts',
+				'src/core/compiler-program.ts',
 				'src/core/delta-protocol.ts',
 				'src/core/delta-shadow.ts',
 				'src/core/environment.ts',
@@ -134,6 +141,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/plain-object.ts',
 				'src/core/portal.ts',
 				'src/core/profiling.ts',
+				'src/core/program-abi.ts',
 				'src/core/protocol.ts',
 				'src/core/renderer-id.ts',
 				// Issue #246 E1: both threads ask what program an addressed run names,
@@ -176,6 +184,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/plain-object.ts',
 				'src/core/portal.ts',
 				'src/core/profiling.ts',
+				'src/core/program-abi.ts',
 				// Issue #246 E1: the main thread's resident compiled programs, and the
 				// only thing that can turn an address back into the plan it names. It
 				// imports no runtime value from the core — the `packages: []` below is

@@ -191,10 +191,10 @@ describe('@octanejs/lynx delta protocol', () => {
 		});
 	});
 
-	// Header-only validation is only sound once every value is a scalar: a
-	// structured value would have to be walked to be checked, which is the
-	// recursive cost the specialized path exists to delete.
-	describe('values are scalars so the frame can be checked by header alone', () => {
+	// Ordinary scalars retain the exact flat frame. Only a tagged direct worklet/ref
+	// value pays the recursive clone-safe codec and the decoder never walks an
+	// untagged hostile object.
+	describe('values keep the scalar hot path and escape direct descriptors', () => {
 		it('carries every scalar type a slot can hold', () => {
 			const operations: readonly LynxDeltaOperation[] = [
 				{ op: 'set', instance: 1, slot: 0, value: 'text' },
@@ -205,11 +205,25 @@ describe('@octanejs/lynx delta protocol', () => {
 			expect(roundTrip(operations)).toEqual(operations);
 		});
 
+		it('round-trips undefined and clone-safe direct descriptors behind one escape', () => {
+			const values = [
+				undefined,
+				{ _wvid: 'row:ref', _initValue: undefined },
+				{ _wkltId: 'row:tap', _c: { ref: { _wvid: 'row:ref' }, value: 3 } },
+			] as const;
+			const operations = values.map((value, slot) => ({
+				op: 'set' as const,
+				instance: 1,
+				slot,
+				value,
+			}));
+			expect(roundTrip(operations)).toEqual(operations);
+		});
+
 		it.each([
 			['an object', {}],
 			['an array', []],
 			['a function', () => {}],
-			['undefined', undefined],
 			['NaN', Number.NaN],
 			['Infinity', Number.POSITIVE_INFINITY],
 			['negative Infinity', Number.NEGATIVE_INFINITY],

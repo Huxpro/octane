@@ -1,4 +1,5 @@
 import { provideLynxMainThreadWorkletFeature } from './core/main-thread-worklet-feature.js';
+import { createLynxCompiledProgramWorkletStore } from './core/compiled-program-worklets.js';
 import {
 	createLynxMainThreadRefDescriptor,
 	createLynxMainThreadWorkletRegistry,
@@ -11,6 +12,7 @@ import {
 import { useId, useMemo } from './main-renderer.js';
 
 const MAIN_THREAD_WORKLET_FEATURE = Object.freeze({
+	createCompiledProgramStore: createLynxCompiledProgramWorkletStore,
 	createRegistry: createLynxMainThreadWorkletRegistry,
 	installRegistry: installLynxMainThreadWorkletRegistry,
 	installCallBridge: installMainThreadCallBridge,

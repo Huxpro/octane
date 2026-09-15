@@ -48,18 +48,33 @@ export function createLynxListItemDescriptor(
 	if (type !== 'list-item') {
 		throw listError(`<list> child ${id} must be a <list-item>, received <${type}>.`);
 	}
-	const itemKey = props['item-key'];
+	return createLynxListItemDescriptorFromMetadata(
+		id,
+		props['item-key'],
+		props['reuse-identifier'],
+		props.recyclable,
+		props.defer,
+	);
+}
+
+/** Validate already-selected native-list metadata without materializing a props table. */
+export function createLynxListItemDescriptorFromMetadata(
+	id: number,
+	itemKey: unknown,
+	reuseIdentifier: unknown,
+	recyclable: unknown,
+	defer: unknown,
+): LynxListItemDescriptor {
 	if (typeof itemKey !== 'string' || itemKey.length === 0) {
 		throw listError(`<list-item> ${id} requires a non-empty string item-key.`);
 	}
-	const reuseIdentifier = props['reuse-identifier'];
 	if (reuseIdentifier !== undefined && typeof reuseIdentifier !== 'string') {
 		throw listError(`<list-item> ${id} reuse-identifier must be a string when present.`);
 	}
-	if (props.recyclable !== undefined && typeof props.recyclable !== 'boolean') {
+	if (recyclable !== undefined && typeof recyclable !== 'boolean') {
 		throw listError(`<list-item> ${id} recyclable must be a boolean when present.`);
 	}
-	if (props.defer !== undefined && typeof props.defer !== 'boolean') {
+	if (defer !== undefined && typeof defer !== 'boolean') {
 		throw listError(
 			`<list-item> ${id} defer must be a boolean when present; ` +
 				'the object form is intentionally unsupported because Octane retains logical component state and effects while native cells recycle.',
@@ -67,11 +82,11 @@ export function createLynxListItemDescriptor(
 	}
 	return Object.freeze({
 		id,
-		type,
+		type: 'list-item',
 		itemKey,
 		reuseIdentifier: reuseIdentifier ?? '',
-		recyclable: props.recyclable !== false,
-		defer: props.defer === true,
+		recyclable: recyclable !== false,
+		defer: defer === true,
 	});
 }
 

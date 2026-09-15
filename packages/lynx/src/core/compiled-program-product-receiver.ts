@@ -10,7 +10,24 @@ import {
 	LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT,
 } from './compiled-program-wire.js';
 import { createLynxCompiledProgramStore } from './compiled-program-store.js';
+import type {
+	LynxCompiledProgramAdoptionSource,
+	LynxCompiledProgramStore,
+} from './compiled-program-store.js';
 import type { LynxElementRef } from './papi.js';
+import {
+	createReplaceableLynxMainThreadWorkletRegistry,
+	createUnavailableLynxMainThreadWorkletRegistry,
+	subscribeLynxMainThreadWorkletFeature,
+	type LynxMainThreadWorkletFeature,
+} from './main-thread-worklet-feature.js';
+import type {
+	LynxActivatedMainThreadWorklet,
+	LynxBackgroundFunctionDescriptor,
+	LynxMainThreadWorkletDescriptor,
+	LynxMainThreadWorkletRegistry,
+	LynxWorkletValue,
+} from './worklets.js';
 import type {
 	InstallLynxCompiledProgramReceiverOptions,
 	LynxCompiledProgramReceiver,
@@ -27,11 +44,49 @@ const DEVELOPMENT =
 const CODE = 'Octane Lynx OL495';
 const MAX_CLOSE_CLEANUP_ATTEMPTS = 3;
 
+interface PendingBackgroundCall {
+	readonly identity: UniversalTransportIdentity;
+	readonly promise: Promise<unknown>;
+	resolve(value: unknown): void;
+	reject(error: unknown): void;
+}
+
+interface RunningMainCall {
+	readonly identity: UniversalTransportIdentity;
+	readonly active: LynxActivatedMainThreadWorklet;
+	cancelled: boolean;
+}
+
+/** Native-owner seam for compact stores that do not operate on ordinary ElementRefs. */
+export interface InstallLynxCompiledProgramProductHostOptions<Node extends object> {
+	readonly context: InstallLynxCompiledProgramReceiverOptions<object>['context'];
+	readonly page: Node;
+	readonly resolveProgram: InstallLynxCompiledProgramReceiverOptions<object>['resolveProgram'];
+	readonly adoption?: Pick<
+		LynxCompiledProgramAdoptionSource<Node>,
+		'firstListener' | 'verify' | 'finish' | 'dispose'
+	>;
+	readonly pageReady?: boolean;
+	readonly onReady?: () => void;
+	readonly onDiagnostic?: (error: Error) => void;
+	createStore(
+		root: number,
+		onCallbackFault: (error: unknown) => void,
+		worklets: LynxMainThreadWorkletRegistry,
+	): LynxCompiledProgramStore<Node>;
+	flush(): void;
+}
+
 /** Generated-build receiver with framing, settlement, and page ownership in one closure. */
-export function installLynxCompiledProgramProductReceiver<Node extends LynxElementRef>(
-	options: InstallLynxCompiledProgramReceiverOptions<Node>,
+export function installLynxCompiledProgramProductReceiver<Node extends object>(
+	options:
+		| InstallLynxCompiledProgramReceiverOptions<Node>
+		| InstallLynxCompiledProgramProductHostOptions<Node>,
 ): LynxCompiledProgramReceiver {
-	const { context, page, papi } = options;
+	const { context, page } = options;
+	const ordinaryPapi = 'papi' in options ? options.papi : null;
+	const flush =
+		'flush' in options ? options.flush : () => ordinaryPapi!.flush(page as Node & LynxElementRef);
 	if (
 		context === null ||
 		typeof context !== 'object' ||
@@ -41,12 +96,11 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 	) {
 		throw new TypeError(DEVELOPMENT ? 'Invalid compact ContextProxy.' : CODE);
 	}
-
 	const inbound = createLynxTransportFrameState();
 	let sequence = 1;
 	let readiness = options.pageReady === true ? 1 : 0;
 	let readyRequest: number | null = null;
-	let store = null as ReturnType<typeof createLynxCompiledProgramStore<Node>> | null;
+	let store = null as LynxCompiledProgramStore<Node> | null;
 	let active: UniversalTransportIdentity | null = null;
 	let aborted: UniversalTransportIdentity | null = null;
 	let disposed: UniversalTransportIdentity | null = null;
@@ -54,6 +108,22 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 	let faulted = false;
 	let closed = false;
 	let pendingAdoption = options.adoption;
+	let workletFeature: LynxMainThreadWorkletFeature | null = null;
+	let worklets: LynxMainThreadWorkletRegistry = createUnavailableLynxMainThreadWorkletRegistry();
+	const hostWorklets = createReplaceableLynxMainThreadWorkletRegistry(worklets);
+	let uninstallWorkletRegistry: (() => void) | null = null;
+	let uninstallCallBridge: (() => void) | null = null;
+	let unsubscribeWorkletFeature: (() => void) | null = null;
+	const hostGlobals = globalThis as unknown as Record<string, unknown>;
+	const previousRunWorklet = hostGlobals.runWorklet;
+	const hostOwnedRunWorklet = Object.prototype.hasOwnProperty.call(hostGlobals, 'runWorklet');
+	const installedRunWorklet = (
+		descriptor: LynxMainThreadWorkletDescriptor,
+		args?: readonly unknown[],
+	): unknown => hostWorklets.runWorklet(descriptor, args);
+	const pendingBackgroundCalls = new Map<number, PendingBackgroundCall>();
+	const runningMainCalls = new Map<number, RunningMainCall>();
+	let nextCall = 1;
 
 	const report = (value: unknown): Error => {
 		const error =
@@ -67,7 +137,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		for (let attempt = 0; attempt < MAX_CLOSE_CLEANUP_ATTEMPTS; attempt++) {
 			try {
 				candidate.dispose();
-				papi.flush(page);
+				flush();
 				return;
 			} catch (error) {
 				report(error);
@@ -108,6 +178,119 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			}
 		}
 	};
+	const onStoreCallbackFault = (value: unknown): void => {
+		if (closed || faulted) return;
+		faulted = true;
+		const error = report(value);
+		if (active !== null) send({ ...active, type: 'fault', error });
+	};
+	function callBackground<Result>(
+		fn: LynxBackgroundFunctionDescriptor,
+		args: readonly LynxWorkletValue[],
+	): { readonly promise: Promise<Result>; cancel(reason?: unknown): void } {
+		let resolve!: (value: unknown) => void;
+		let reject!: (error: unknown) => void;
+		const promise = new Promise<unknown>((onResolve, onReject) => {
+			resolve = onResolve;
+			reject = onReject;
+		});
+		void promise.catch(() => {});
+		if (active === null || closed || faulted) {
+			reject(new Error(DEVELOPMENT ? 'Compact background call requires an active root.' : CODE));
+			return { promise: promise as Promise<Result>, cancel() {} };
+		}
+		const call = nextCall++;
+		if (!Number.isSafeInteger(call)) {
+			reject(new Error(DEVELOPMENT ? 'Compact background call ids are exhausted.' : CODE));
+			return { promise: promise as Promise<Result>, cancel() {} };
+		}
+		const entry: PendingBackgroundCall = {
+			identity: Object.freeze({ ...active }),
+			promise,
+			resolve,
+			reject,
+		};
+		pendingBackgroundCalls.set(call, entry);
+		if (
+			!send({
+				...entry.identity,
+				type: 'call-background',
+				call,
+				fn: fn as never,
+				args: args as never,
+			})
+		) {
+			pendingBackgroundCalls.delete(call);
+			reject(new Error(CODE));
+		}
+		return {
+			promise: promise as Promise<Result>,
+			cancel(reason?: unknown) {
+				if (pendingBackgroundCalls.get(call) !== entry) return;
+				pendingBackgroundCalls.delete(call);
+				send({ ...entry.identity, type: 'cancel-background', call });
+				const error =
+					reason instanceof Error
+						? reason
+						: new Error(
+								reason === undefined ? 'Compact background call was cancelled.' : String(reason),
+							);
+				if (reason === undefined) error.name = 'AbortError';
+				reject(error);
+			},
+		};
+	}
+	const installWorkletFeature = (feature: LynxMainThreadWorkletFeature): void => {
+		if (workletFeature === feature) return;
+		if (workletFeature !== null)
+			throw new Error(DEVELOPMENT ? 'Compact worklet feature changed after install.' : CODE);
+		const registry = feature.createRegistry({
+			callBackground: (fn, args) => callBackground(fn, args).promise,
+		});
+		let uninstall: (() => void) | null = null;
+		let uninstallBridge: (() => void) | null = null;
+		try {
+			uninstall = feature.installRegistry(registry);
+			uninstallBridge = feature.installCallBridge({ callBackground });
+			workletFeature = feature;
+			worklets = registry;
+			hostWorklets.replace(registry);
+			uninstallWorkletRegistry = uninstall;
+			uninstallCallBridge = uninstallBridge;
+		} catch (error) {
+			uninstallBridge?.();
+			uninstall?.();
+			registry.close();
+			throw error;
+		}
+	};
+	const cancelCalls = (reason: Error, notifyBackground: boolean): void => {
+		for (const [call, entry] of pendingBackgroundCalls) {
+			if (notifyBackground) send({ ...entry.identity, type: 'cancel-background', call });
+			entry.reject(reason);
+		}
+		pendingBackgroundCalls.clear();
+		for (const entry of runningMainCalls.values()) {
+			entry.cancelled = true;
+			worklets.release(entry.active);
+		}
+		runningMainCalls.clear();
+	};
+	const closeWorklets = (): void => {
+		unsubscribeWorkletFeature?.();
+		unsubscribeWorkletFeature = null;
+		cancelCalls(new Error(DEVELOPMENT ? 'Compact worklet receiver closed.' : CODE), false);
+		uninstallCallBridge?.();
+		uninstallCallBridge = null;
+		uninstallWorkletRegistry?.();
+		uninstallWorkletRegistry = null;
+		worklets.close();
+		if (hostGlobals.runWorklet === installedRunWorklet) {
+			if (hostOwnedRunWorklet) hostGlobals.runWorklet = previousRunWorklet;
+			else delete hostGlobals.runWorklet;
+		}
+	};
+
 	const onMessage = (event: LynxContextProxyEvent): void => {
 		if (closed) return;
 		let message;
@@ -129,6 +312,135 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		}
 		if (readiness !== 4) {
 			report(CODE);
+			return;
+		}
+		if (message.type === 'call-background-result' || message.type === 'call-background-error') {
+			const entry = pendingBackgroundCalls.get(message.call);
+			if (
+				entry === undefined ||
+				message.root !== entry.identity.root ||
+				message.version !== entry.identity.version
+			) {
+				report(CODE);
+				return;
+			}
+			pendingBackgroundCalls.delete(message.call);
+			if (message.type === 'call-background-result') entry.resolve(message.value);
+			else {
+				const error = new Error(message.error.message);
+				error.name = message.error.name;
+				entry.reject(error);
+			}
+			return;
+		}
+		if (message.type === 'cancel-main') {
+			const running = runningMainCalls.get(message.call);
+			if (
+				running !== undefined &&
+				message.root === running.identity.root &&
+				message.version === running.identity.version
+			) {
+				running.cancelled = true;
+				runningMainCalls.delete(message.call);
+				worklets.release(running.active);
+			}
+			return;
+		}
+		if (message.type === 'call-main') {
+			if (active === null || !same(active, message) || runningMainCalls.has(message.call)) {
+				report(
+					DEVELOPMENT
+						? new Error(
+								active === null
+									? 'Compact main call requires an active root.'
+									: runningMainCalls.has(message.call)
+										? 'Compact main call id is already running.'
+										: 'Compact main call targets ' +
+											message.root +
+											':' +
+											message.version +
+											', but ' +
+											active.root +
+											':' +
+											active.version +
+											' is active.',
+							)
+						: CODE,
+				);
+				return;
+			}
+			let activated: LynxActivatedMainThreadWorklet;
+			try {
+				activated = worklets.activate(message.worklet as LynxMainThreadWorkletDescriptor);
+			} catch (error) {
+				const failure = report(error);
+				send({
+					...message,
+					type: 'call-main-error',
+					error: { name: failure.name, message: failure.message },
+				});
+				return;
+			}
+			const running: RunningMainCall = {
+				identity: Object.freeze({ ...active }),
+				active: activated,
+				cancelled: false,
+			};
+			runningMainCalls.set(message.call, running);
+			let result: unknown;
+			try {
+				result = worklets.runWorklet(activated, message.args);
+			} catch (error) {
+				runningMainCalls.delete(message.call);
+				worklets.release(activated);
+				const failure = report(error);
+				send({
+					...running.identity,
+					type: 'call-main-error',
+					call: message.call,
+					error: { name: failure.name, message: failure.message },
+				});
+				return;
+			}
+			void Promise.resolve(result).then(
+				(value) => {
+					if (runningMainCalls.get(message.call) !== running || running.cancelled || closed) return;
+					runningMainCalls.delete(message.call);
+					worklets.release(activated);
+					try {
+						const isolated = workletFeature!.isolateValue(
+							value as LynxWorkletValue,
+							'compact main call result',
+						);
+						send({
+							...running.identity,
+							type: 'call-main-result',
+							call: message.call,
+							value: isolated as never,
+						});
+					} catch (error) {
+						const failure = report(error);
+						send({
+							...running.identity,
+							type: 'call-main-error',
+							call: message.call,
+							error: { name: failure.name, message: failure.message },
+						});
+					}
+				},
+				(error) => {
+					if (runningMainCalls.get(message.call) !== running || running.cancelled || closed) return;
+					runningMainCalls.delete(message.call);
+					worklets.release(activated);
+					const failure = report(error);
+					send({
+						...running.identity,
+						type: 'call-main-error',
+						call: message.call,
+						error: { name: failure.name, message: failure.message },
+					});
+				},
+			);
 			return;
 		}
 		if (message.type === 'abort') {
@@ -166,7 +478,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			try {
 				if (store !== null) {
 					store.dispose();
-					papi.flush(page);
+					flush();
 				}
 			} catch (error) {
 				busy = false;
@@ -179,6 +491,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 				return;
 			}
 			busy = false;
+			cancelCalls(new Error(DEVELOPMENT ? 'Compact root was disposed.' : CODE), true);
 			store = null;
 			active = null;
 			aborted = null;
@@ -205,13 +518,18 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 		}
 		const candidate =
 			store ??
-			createLynxCompiledProgramStore(
-				papi,
-				papi.getUniqueId(page),
-				message.root,
-				pendingAdoption?.firstListener,
-				pendingAdoption?.resolveSeed,
-			);
+			('createStore' in options
+				? options.createStore(message.root, onStoreCallbackFault, hostWorklets)
+				: createLynxCompiledProgramStore(
+						ordinaryPapi!,
+						ordinaryPapi!.getUniqueId(page),
+						message.root,
+						pendingAdoption?.firstListener,
+						options.adoption?.resolveSeed,
+						onStoreCallbackFault,
+						undefined,
+						hostWorklets,
+					));
 		busy = true;
 		try {
 			applyLynxCompiledProgramFrame(candidate, page, options.resolveProgram, message.frame, () => {
@@ -223,7 +541,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 				pendingAdoption?.verify();
 				// ContextProxy delivery does not publish Element PAPI writes. Flush
 				// before committing so a failed publication remains retryable.
-				papi.flush(page);
+				flush();
 				if (closed) throw new Error(CODE);
 				if (aborted !== null && same(aborted, message)) {
 					aborted = null;
@@ -234,7 +552,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			busy = false;
 			let rollbackFlushError: unknown = null;
 			try {
-				papi.flush(page);
+				flush();
 			} catch (flushError) {
 				rollbackFlushError = flushError;
 			}
@@ -287,6 +605,13 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			publishReady();
 		}
 	};
+	try {
+		unsubscribeWorkletFeature = subscribeLynxMainThreadWorkletFeature(installWorkletFeature);
+		hostGlobals.runWorklet = installedRunWorklet;
+	} catch (error) {
+		closeWorklets();
+		throw error;
+	}
 	context.addEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
 	return {
 		markProgramsReady: () => mark(2),
@@ -303,17 +628,19 @@ export function installLynxCompiledProgramProductReceiver<Node extends LynxEleme
 			active = null;
 			aborted = null;
 			context.removeEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
+			closeWorklets();
 		},
 		close() {
 			if (closed || busy) return;
 			if (store !== null) {
 				store.dispose();
-				papi.flush(page);
+				flush();
 			}
 			pendingAdoption?.dispose();
 			pendingAdoption = undefined;
 			closed = true;
 			context.removeEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
+			closeWorklets();
 		},
 	};
 }

@@ -18,7 +18,7 @@ import { assertLynxToolchain, LYNX_TOOLCHAIN_LANES } from '../src/index.js';
 const temporaryRoots: string[] = [];
 const testRequire = createRequire(import.meta.url);
 const installedRspeedyRequire = createRequire(testRequire.resolve('@lynx-js/rspeedy/package.json'));
-const RSPEEDY_BUILD_PACKAGES = [
+const RSBUILD_PLUGIN_PACKAGES = [
 	'@lynx-js/cache-events-webpack-plugin',
 	'@lynx-js/chunk-loading-webpack-plugin',
 	'@lynx-js/debug-metadata-rsbuild-plugin',
@@ -31,15 +31,20 @@ const RSPEEDY_BUILD_PACKAGES = [
 	'webpack',
 ] as const;
 const RSPEEDY_DEPENDENCIES = {
-	'@lynx-js/cache-events-webpack-plugin': '^0.2.0',
-	'@lynx-js/chunk-loading-webpack-plugin': '^0.4.1',
-	'@lynx-js/debug-metadata-rsbuild-plugin': '^0.2.0',
-	'@lynx-js/web-rsbuild-server-middleware': '0.22.2',
-	'@lynx-js/webpack-dev-transport': '^0.3.0',
+	'@lynx-js/rsbuild-plugin': '0.1.1',
+	'@rsbuild/core': '2.2.3',
+	'@rsdoctor/rspack-plugin': '~1.6.1',
+} as const;
+const RSBUILD_PLUGIN_DEPENDENCIES = {
+	'@lynx-js/cache-events-webpack-plugin': '^0.2.1',
+	'@lynx-js/chunk-loading-webpack-plugin': '^0.4.2',
+	'@lynx-js/debug-metadata-rsbuild-plugin': '^0.2.2',
+	'@lynx-js/runtime-wrapper-webpack-plugin': '^0.2.4',
+	'@lynx-js/template-webpack-plugin': '^0.16.0',
+	'@lynx-js/web-rsbuild-server-middleware': '0.26.0',
+	'@lynx-js/webpack-dev-transport': '^0.4.0',
 	'@lynx-js/websocket': '^0.0.4',
-	'@rsbuild/core': '2.1.4',
-	'@rsbuild/plugin-css-minimizer': '2.0.0',
-	'@rsdoctor/rspack-plugin': '~1.5.6',
+	'@rsbuild/plugin-css-minimizer': '2.0.1',
 } as const;
 
 function installedPackageRoot(request: NodeRequire, packageName: string): string {
@@ -88,14 +93,17 @@ function writePackage(
 	return packageRoot;
 }
 
-function createToolchain(rspackVersion = '2.1.3'): string {
+function createToolchain(rspackVersion = '2.2.2'): string {
 	const root = mkdtempSync(join(tmpdir(), 'octane-lynx-toolchain-'));
 	temporaryRoots.push(root);
 	writeFileSync(join(root, 'package.json'), JSON.stringify({ private: true }), 'utf8');
-	writePackage(root, '@lynx-js/rspeedy', '0.16.0', { dependencies: RSPEEDY_DEPENDENCIES });
-	writePackage(root, '@rsbuild/core', '2.1.4');
+	writePackage(root, '@lynx-js/rspeedy', '0.17.1', { dependencies: RSPEEDY_DEPENDENCIES });
+	writePackage(root, '@lynx-js/rsbuild-plugin', '0.1.1', {
+		dependencies: RSBUILD_PLUGIN_DEPENDENCIES,
+	});
+	writePackage(root, '@rsbuild/core', '2.2.3');
 	writePackage(root, '@rspack/core', rspackVersion);
-	for (const packageName of RSPEEDY_BUILD_PACKAGES) linkInstalledPackage(root, packageName);
+	for (const packageName of RSBUILD_PLUGIN_PACKAGES) linkInstalledPackage(root, packageName);
 	return root;
 }
 
@@ -106,16 +114,17 @@ afterEach(() => {
 describe('Milestone 9 Lynx toolchain guard', () => {
 	it('publishes immutable minimum and current atomic lanes', () => {
 		expect(LYNX_TOOLCHAIN_LANES.minimum.packages['@lynx-js/cache-events-webpack-plugin']).toBe(
-			'0.2.0',
+			'0.2.1',
 		);
-		expect(LYNX_TOOLCHAIN_LANES.minimum.packages['@rspack/core']).toBe('2.1.3');
+		expect(LYNX_TOOLCHAIN_LANES.minimum.packages['@rspack/core']).toBe('2.2.2');
 		expect(LYNX_TOOLCHAIN_LANES.minimum.packages['@lynx-js/types']).toBe('4.1.0');
+		expect(LYNX_TOOLCHAIN_LANES.minimum.elementTemplateTargetSdk).toBe('3.2');
 		expect(LYNX_TOOLCHAIN_LANES.minimum.packages.webpack).toBe('5.108.4');
-		expect(LYNX_TOOLCHAIN_LANES.current.packages['@rspack/core']).toBe('2.1.5');
+		expect(LYNX_TOOLCHAIN_LANES.current.packages['@rspack/core']).toBe('2.2.3');
 		expect(LYNX_TOOLCHAIN_LANES.current.packages['@lynx-js/types']).toBe('4.1.0');
-		expect(LYNX_TOOLCHAIN_LANES.current.packages['@rsbuild/core']).toBe('2.1.4');
-		expect(LYNX_TOOLCHAIN_LANES.current.packages['@lynx-js/tasm']).toBe('0.0.39');
-		expect(LYNX_TOOLCHAIN_LANES.current.packages['@rsdoctor/rspack-plugin']).toBe('1.5.18');
+		expect(LYNX_TOOLCHAIN_LANES.current.packages['@rsbuild/core']).toBe('2.2.3');
+		expect(LYNX_TOOLCHAIN_LANES.current.packages['@lynx-js/tasm']).toBe('0.0.49');
+		expect(LYNX_TOOLCHAIN_LANES.current.packages['@rsdoctor/rspack-plugin']).toBe('1.6.4');
 		expect(LYNX_TOOLCHAIN_LANES.current.packages.webpack).toBe(
 			LYNX_TOOLCHAIN_LANES.minimum.packages.webpack,
 		);
@@ -130,34 +139,35 @@ describe('Milestone 9 Lynx toolchain guard', () => {
 	it('accepts the minimum single physical compatibility graph', () => {
 		const result = assertLynxToolchain(createToolchain(), 'minimum');
 
-		expect(result['@lynx-js/rspeedy'].version).toBe('0.16.0');
-		expect(result['@rsbuild/core'].version).toBe('2.1.4');
-		expect(result['@rspack/core'].version).toBe('2.1.3');
-		expect(result['@lynx-js/tasm'].version).toBe('0.0.39');
-		expect(result['@lynx-js/web-core'].version).toBe('0.22.2');
-		expect(result['@lynx-js/webpack-runtime-globals'].version).toBe('0.0.7');
+		expect(result['@lynx-js/rspeedy'].version).toBe('0.17.1');
+		expect(result['@lynx-js/rsbuild-plugin'].version).toBe('0.1.1');
+		expect(result['@rsbuild/core'].version).toBe('2.2.3');
+		expect(result['@rspack/core'].version).toBe('2.2.2');
+		expect(result['@lynx-js/tasm'].version).toBe('0.0.49');
+		expect(result['@lynx-js/web-core'].version).toBe('0.26.0');
+		expect(result['@lynx-js/webpack-runtime-globals'].version).toBe('0.0.8');
 	});
 
-	it('accepts the current Rspack patch within Rsbuild 2.1.4 constraints', () => {
-		const result = assertLynxToolchain(createToolchain('2.1.5'), 'current');
+	it('accepts the current Rspack patch within Rsbuild 2.2.3 constraints', () => {
+		const result = assertLynxToolchain(createToolchain('2.2.3'), 'current');
 
-		expect(result['@lynx-js/rspeedy'].version).toBe('0.16.0');
-		expect(result['@rsbuild/core'].version).toBe('2.1.4');
-		expect(result['@rspack/core'].version).toBe('2.1.5');
+		expect(result['@lynx-js/rspeedy'].version).toBe('0.17.1');
+		expect(result['@rsbuild/core'].version).toBe('2.2.3');
+		expect(result['@rspack/core'].version).toBe('2.2.3');
 	});
 
 	it('rejects a cross-lane graph instead of mixing its packages', () => {
-		expect(() => assertLynxToolchain(createToolchain('2.1.5'), 'minimum')).toThrow(
-			/minimum.*@rspack\/core@2\.1\.3/,
+		expect(() => assertLynxToolchain(createToolchain('2.2.3'), 'minimum')).toThrow(
+			/minimum.*@rspack\/core@2\.2\.2/,
 		);
 	});
 
 	it('rejects a version outside every supported atomic lane', () => {
 		const root = createToolchain();
-		writePackage(root, '@rsbuild/core', '2.1.7');
+		writePackage(root, '@rsbuild/core', '2.2.4');
 
 		expect(() => assertLynxToolchain(root)).toThrow(
-			/@rsbuild\/core@2\.1\.7.*supported atomic lanes/,
+			/@rsbuild\/core@2\.2\.4.*supported atomic lanes/,
 		);
 	});
 
@@ -167,18 +177,18 @@ describe('Milestone 9 Lynx toolchain guard', () => {
 		);
 	});
 
-	it('rejects a second core resolved only from Rspeedy', () => {
+	it('rejects a second core resolved only from Rsbuild', () => {
 		const root = createToolchain();
-		const rspeedy = join(root, 'node_modules', '@lynx-js', 'rspeedy');
-		writePackage(rspeedy, '@rspack/core', '2.1.3');
+		const rsbuild = join(root, 'node_modules', '@rsbuild', 'core');
+		writePackage(rsbuild, '@rspack/core', '2.2.2');
 
 		expect(() => assertLynxToolchain(root)).toThrow(/duplicate @rspack\/core instances/);
 	});
 
-	it('rejects a second development transport resolved only from Rspeedy', () => {
+	it('rejects a second development transport resolved only from the Rsbuild plugin', () => {
 		const root = createToolchain();
-		const rspeedy = join(root, 'node_modules', '@lynx-js', 'rspeedy');
-		writePackage(rspeedy, '@lynx-js/webpack-dev-transport', '0.3.0');
+		const rsbuildPlugin = join(root, 'node_modules', '@lynx-js', 'rsbuild-plugin');
+		writePackage(rsbuildPlugin, '@lynx-js/webpack-dev-transport', '0.4.0');
 
 		expect(() => assertLynxToolchain(root)).toThrow(
 			/duplicate @lynx-js\/webpack-dev-transport instances/,

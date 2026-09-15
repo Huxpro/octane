@@ -1,4 +1,8 @@
-import type { OctaneRspackLoaderOptions, OctaneRspackPluginOptions } from './index.js';
+import type {
+	OctaneMainThreadProgramBackend,
+	OctaneRspackLoaderOptions,
+	OctaneRspackPluginOptions,
+} from './index.js';
 
 const loaderOptions: OctaneRspackLoaderOptions = {
 	strong: true,
@@ -32,6 +36,23 @@ const pluginOptions: OctaneRspackPluginOptions = {
 
 const serialPluginOptions: OctaneRspackPluginOptions = { parallel: false };
 
+const emitLynxMainThreadProgram = () => ({ source: '', valueCount: 0, eventCount: 0 });
+const sharedIRBackend: OctaneMainThreadProgramBackend = {
+	signature: 'renderer-program/8',
+	deriveLynxProgramIR: () => null,
+	emitLynxMainThreadProgram,
+};
+const legacyBackend: OctaneMainThreadProgramBackend = {
+	signature: 'renderer-program/7',
+	deriveLynxMainThreadProgram: () => null,
+	emitLynxMainThreadProgram,
+};
+// @ts-expect-error A backend must derive the shared IR or expose the legacy derivation hook.
+const missingDerivationBackend: OctaneMainThreadProgramBackend = {
+	signature: 'renderer-program/0',
+	emitLynxMainThreadProgram,
+};
+
 const unsupportedLoaderRuntime: OctaneRspackLoaderOptions = {
 	layerSpecializations: {
 		'native:main': {
@@ -49,5 +70,8 @@ const unsupportedLoaderParallel: OctaneRspackLoaderOptions = {
 void loaderOptions;
 void pluginOptions;
 void serialPluginOptions;
+void sharedIRBackend;
+void legacyBackend;
+void missingDerivationBackend;
 void unsupportedLoaderRuntime;
 void unsupportedLoaderParallel;

@@ -3,10 +3,13 @@ import type { TextTypeFacts } from './typescript.js';
 
 export type { TextTypeFacts } from './typescript.js';
 
+/** Renderer lowering selected by the compiler registry. */
+export type CompileRendererTarget = 'dom' | 'universal' | 'lynx' | 'valdi';
+
 export interface CompileRenderer {
 	id: string;
 	module: string;
-	target: 'dom' | 'universal' | 'valdi';
+	target: CompileRendererTarget;
 	server?: string;
 	/** Additional normalized renderer capabilities. */
 	[option: string]: unknown;
@@ -89,7 +92,7 @@ export interface CompileOptions {
 	renderer?: CompileRenderer;
 	rendererBoundaries?: Readonly<Record<string, Readonly<Record<string, CompileRendererBoundary>>>>;
 	rendererRegistry?: Readonly<
-		Record<string, { module: string; target: 'dom' | 'universal' | 'valdi'; server?: string }>
+		Record<string, { module: string; target: CompileRendererTarget; server?: string }>
 	>;
 	universalRuntime?: { runtime: string; thread: 'background' | 'main-thread' };
 	clientOnlyImports?: readonly unknown[];

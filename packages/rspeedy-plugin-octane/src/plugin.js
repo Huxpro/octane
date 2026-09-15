@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import {
+	lynxBlockRspeedyBackgroundRenderers,
 	lynxRspeedyBackgroundRenderers,
 	lynxRspeedyMainThreadRenderers,
 } from '@octanejs/lynx/config';
@@ -12,6 +12,8 @@ import {
 	applyLynxBackgroundCore,
 	applyLynxDiagnosticMode,
 	exposeLynxTemplatePlugin,
+	LYNX_ELEMENT_TEMPLATE_TARGET_SDK_VERSION,
+	LYNX_TARGET_SDK_VERSION,
 } from './application.js';
 import { configureLynxCSS } from './css.js';
 import {
@@ -22,6 +24,10 @@ import {
 } from './layers.js';
 import { assertLynxToolchain } from './toolchain.js';
 import { selectedLynxApplication } from './application-selection.js';
+import {
+	DEFAULT_MAIN_THREAD_PROGRAM_BACKEND,
+	ELEMENT_TEMPLATE_MAIN_THREAD_PROGRAM_BACKEND,
+} from './program-backends.js';
 
 const PLUGIN_NAME = '@octanejs/rspeedy-plugin';
 const MAIN_THREAD_FACADE_PLUGIN = `${PLUGIN_NAME}:main-thread-facade`;
@@ -38,13 +44,6 @@ const lynxProductMainThreadRenderers = Object.freeze({
 	}),
 });
 
-// A serializable reference keeps Octane's default Rspack worker path available.
-// The loader verifies this cache identity against the loaded renderer backend,
-// and the backend signature test forces both constants to move together.
-const DEFAULT_MAIN_THREAD_PROGRAM_BACKEND = Object.freeze({
-	request: fileURLToPath(import.meta.resolve('@octanejs/lynx/compiler')),
-	signature: 'lynx-main-thread-program/20',
-});
 /**
  * What the main-thread layer compiles differently from the background one.
  *
@@ -74,7 +73,7 @@ class LynxMainThreadFacadePlugin {
 		new NormalModuleReplacementPlugin(LYNX_PACKAGE_ROOT, (resource) => {
 			if (resource.contextInfo?.issuerLayer === LYNX_MAIN_THREAD_LAYER) {
 				resource.request =
-					selectedLynxApplication(compiler) === 'compiled-program'
+					selectedLynxApplication(compiler) !== 'general'
 						? '@octanejs/lynx/first-screen-compiled-program'
 						: '@octanejs/lynx/first-screen';
 			}
@@ -100,6 +99,7 @@ function normalizeOptions(value) {
 		'dev',
 		'environments',
 		'exclude',
+		'experimentalElementTemplate',
 		'hmr',
 		'mainThreadProgramBackend',
 		'parallel',
@@ -114,7 +114,14 @@ function normalizeOptions(value) {
 	if (options.core !== undefined && options.core !== 'universal' && options.core !== 'block') {
 		throw new TypeError(`${PLUGIN_NAME}: \`core\` must be 'universal' or 'block'.`);
 	}
-	for (const key of ['dev', 'hmr', 'profile', 'programAddressing', 'requireDirective']) {
+	for (const key of [
+		'dev',
+		'experimentalElementTemplate',
+		'hmr',
+		'profile',
+		'programAddressing',
+		'requireDirective',
+	]) {
 		if (options[key] !== undefined && typeof options[key] !== 'boolean') {
 			throw new TypeError(`${PLUGIN_NAME}: \`${key}\` must be a boolean.`);
 		}
@@ -126,7 +133,24 @@ function normalizeOptions(value) {
 		options.mainThreadProgramBackend === false
 			? undefined
 			: (options.mainThreadProgramBackend ??
-				(application ? DEFAULT_MAIN_THREAD_PROGRAM_BACKEND : undefined));
+				(application
+					? options.experimentalElementTemplate === true
+						? ELEMENT_TEMPLATE_MAIN_THREAD_PROGRAM_BACKEND
+						: DEFAULT_MAIN_THREAD_PROGRAM_BACKEND
+					: undefined));
+	if (options.experimentalElementTemplate === true && !application) {
+		throw new TypeError(
+			`${PLUGIN_NAME}: \`experimentalElementTemplate\` requires the two-layer application build.`,
+		);
+	}
+	if (
+		options.experimentalElementTemplate === true &&
+		options.mainThreadProgramBackend !== undefined
+	) {
+		throw new TypeError(
+			`${PLUGIN_NAME}: \`experimentalElementTemplate\` owns its main-thread program backend.`,
+		);
+	}
 	// Issue #246 §6.3. An address is positional, so it is only sound when one
 	// configuration sees both compiles of a module and can fail the build when
 	// they disagree about its plan order. An isolated `thread` graph is one
@@ -160,7 +184,11 @@ function normalizeOptions(value) {
 		core: options.core ?? (application ? undefined : 'universal'),
 		thread,
 		renderers:
-			thread === 'main-thread' ? lynxRspeedyMainThreadRenderers : lynxRspeedyBackgroundRenderers,
+			thread === 'main-thread'
+				? lynxRspeedyMainThreadRenderers
+				: programAddressing && options.core === 'block'
+					? lynxBlockRspeedyBackgroundRenderers
+					: lynxRspeedyBackgroundRenderers,
 		...(application
 			? { layerSpecializations: applicationLayerSpecializations(mainThreadProgramBackend) }
 			: null),
@@ -188,6 +216,9 @@ function normalizeOptions(value) {
 			: null),
 		...(options.dev === undefined ? null : { dev: options.dev }),
 		...(options.hmr === undefined ? null : { hmr: options.hmr }),
+		...(options.experimentalElementTemplate === undefined
+			? null
+			: { experimentalElementTemplate: options.experimentalElementTemplate }),
 		...(options.profile === undefined ? null : { profile: options.profile }),
 		...(options.requireDirective === undefined
 			? null
@@ -224,7 +255,13 @@ export function pluginOctane(value) {
 				(!options.application || /^(?:lynx|web)(?:-|$)/.test(environment.name));
 			if (options.application) {
 				exposeLynxTemplatePlugin(api);
-				configureLynxCSS(api, options.environments);
+				configureLynxCSS(
+					api,
+					options.environments,
+					options.experimentalElementTemplate === true
+						? LYNX_ELEMENT_TEMPLATE_TARGET_SDK_VERSION
+						: LYNX_TARGET_SDK_VERSION,
+				);
 				api.modifyEnvironmentConfig?.((config, { name, mergeEnvironmentConfig }) => {
 					if (!appliesToEnvironment({ name })) return;
 					return mergeEnvironmentConfig(config, {

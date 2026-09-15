@@ -4,10 +4,14 @@ const CLIENT_TARGETS = new Set(['web', 'webworker', 'electron-renderer', 'browse
 const LYNX_BLOCK_TEMPLATE_FEATURE_KINDS = new Set([
 	'activity',
 	'component',
+	'component-hole',
+	'inline-render-prop',
+	'local-component',
 	'fragment',
 	'host-ref',
 	'if',
 	'native-list',
+	'portal',
 	'program-root-event',
 	'renderable-hole',
 	'switch',
@@ -90,7 +94,7 @@ const LAYER_SPECIALIZATION_KEYS = new Set([
  * object identity cannot be salted, and the presence of *a* backend is too weak
  * a key: two backends that both exist are not the same backend.
  */
-function normalizeMainThreadProgramBackend(value, label) {
+export function normalizeMainThreadProgramBackend(value, label) {
 	if (value === undefined) return undefined;
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
 		throw new TypeError(
@@ -113,10 +117,27 @@ function normalizeMainThreadProgramBackend(value, label) {
 			);
 		}
 	} else {
-		for (const name of ['deriveLynxMainThreadProgram', 'emitLynxMainThreadProgram']) {
-			if (typeof value[name] !== 'function') {
-				throw new TypeError(`@octanejs/rspack-plugin: \`${label}.${name}\` must be a function.`);
-			}
+		if (
+			value.deriveLynxProgramIR !== undefined &&
+			typeof value.deriveLynxProgramIR !== 'function'
+		) {
+			throw new TypeError(
+				`@octanejs/rspack-plugin: \`${label}.deriveLynxProgramIR\` must be a function.`,
+			);
+		}
+		if (
+			typeof value.deriveLynxProgramIR !== 'function' &&
+			typeof value.deriveLynxMainThreadProgram !== 'function'
+		) {
+			throw new TypeError(
+				`@octanejs/rspack-plugin: \`${label}\` must expose a deriveLynxProgramIR ` +
+					`function (or the legacy deriveLynxMainThreadProgram function).`,
+			);
+		}
+		if (typeof value.emitLynxMainThreadProgram !== 'function') {
+			throw new TypeError(
+				`@octanejs/rspack-plugin: \`${label}.emitLynxMainThreadProgram\` must be a function.`,
+			);
 		}
 	}
 	if (
@@ -469,13 +490,15 @@ function lynxBlockFeatureRequirementsValid(requirements) {
 			(feature) =>
 				sourcePositionValid(feature) &&
 				LYNX_BLOCK_TEMPLATE_FEATURE_KINDS.has(feature.kind) &&
-				(feature.kind === 'component'
-					? feature.name === null || (typeof feature.name === 'string' && feature.name.length > 0)
-					: feature.kind === 'host-ref' || feature.kind === 'program-root-event'
-						? typeof feature.name === 'string' && feature.name.length > 0
-						: feature.kind === 'native-list'
-							? feature.name === 'list' || feature.name === 'list-item'
-							: feature.name === null),
+				(feature.kind === 'local-component' || feature.kind === 'inline-render-prop'
+					? typeof feature.name === 'string' && feature.name.length > 0
+					: feature.kind === 'component'
+						? feature.name === null || (typeof feature.name === 'string' && feature.name.length > 0)
+						: feature.kind === 'host-ref' || feature.kind === 'program-root-event'
+							? typeof feature.name === 'string' && feature.name.length > 0
+							: feature.kind === 'native-list'
+								? feature.name === 'list' || feature.name === 'list-item'
+								: feature.name === null),
 		) &&
 		Array.isArray(requirements.keyedRanges) &&
 		requirements.keyedRanges.every(
@@ -512,6 +535,31 @@ export function getOctaneRspackBuildInfo(module) {
 		Number.isSafeInteger(value.mainThreadProgramCoverage.addressed) &&
 		value.mainThreadProgramCoverage.addressed >= 0 &&
 		value.mainThreadProgramCoverage.addressed <= value.mainThreadProgramCoverage.total;
+	const lynxElementTemplateCoverageValid =
+		value?.lynxElementTemplateCoverage !== null &&
+		typeof value?.lynxElementTemplateCoverage === 'object' &&
+		Number.isSafeInteger(value.lynxElementTemplateCoverage.total) &&
+		value.lynxElementTemplateCoverage.total >= 0 &&
+		Number.isSafeInteger(value.lynxElementTemplateCoverage.lowered) &&
+		value.lynxElementTemplateCoverage.lowered >= 0 &&
+		value.lynxElementTemplateCoverage.lowered <= value.lynxElementTemplateCoverage.total &&
+		Number.isSafeInteger(value.lynxElementTemplateCoverage.visibilitySlots) &&
+		value.lynxElementTemplateCoverage.visibilitySlots >= 0 &&
+		value.lynxElementTemplateCoverage.visibilitySlots <= value.lynxElementTemplateCoverage.lowered;
+	const lynxElementTemplatesValid =
+		Array.isArray(value?.lynxElementTemplates) &&
+		value.lynxElementTemplates.every(
+			(template) =>
+				template !== null &&
+				typeof template === 'object' &&
+				typeof template.templateId === 'string' &&
+				template.templateId.length > 0 &&
+				template.compiledTemplate !== null &&
+				typeof template.compiledTemplate === 'object' &&
+				!Array.isArray(template.compiledTemplate) &&
+				typeof template.sourceFile === 'string' &&
+				template.sourceFile.length > 0,
+		);
 	if (
 		value &&
 		typeof value === 'object' &&
@@ -526,6 +574,20 @@ export function getOctaneRspackBuildInfo(module) {
 			(value.transformKind === 'compile' &&
 				universalRuntimeValid &&
 				mainThreadProgramCoverageValid)) &&
+		(value.lynxElementTemplateCoverage === undefined ||
+			(value.transformKind === 'compile' &&
+				universalRuntimeValid &&
+				value.universalRuntime.runtime === 'lynx' &&
+				value.universalRuntime.thread === 'main-thread' &&
+				lynxElementTemplateCoverageValid)) &&
+		(value.lynxElementTemplates === undefined ||
+			(value.transformKind === 'compile' &&
+				universalRuntimeValid &&
+				value.universalRuntime.runtime === 'lynx' &&
+				value.universalRuntime.thread === 'main-thread' &&
+				lynxElementTemplatesValid)) &&
+		(value.lynxElementTemplateCoverage === undefined) ===
+			(value.lynxElementTemplates === undefined) &&
 		(value.lynxBlockSemanticRequirements === undefined ||
 			(value.transformKind === 'compile' &&
 				universalRuntimeValid &&

@@ -2,8 +2,13 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import type { UniversalProgramPlan } from 'octane/universal/native';
 
-import { LYNX_DELTA_PROTOCOL_VERSION } from './delta-protocol.js';
+import {
+	decodeLynxDeltaValue,
+	isLynxDeltaValue,
+	LYNX_DELTA_PROTOCOL_VERSION,
+} from './delta-protocol.js';
 import type { LynxCompiledProgramStore } from './compiled-program-store.js';
+import type { LynxCompiledProgramRangeIdentity } from './compiled-program-store.js';
 import type { LynxElementRef } from './papi.js';
 
 const enum Opcode {
@@ -14,6 +19,7 @@ const enum Opcode {
 	Move = 5,
 	Visibility = 6,
 	Define = 7,
+	RefRun = 8,
 }
 
 const END_INSTANCE = 0;
@@ -71,7 +77,9 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 
 	store.begin();
 	try {
-		const range = (at: number): Node => {
+		const range = (
+			at: number,
+		): { readonly parent: Node; readonly identity?: LynxCompiledProgramRangeIdentity } => {
 			const handle = input[at];
 			const slot = input[at + 1];
 			if (handle === ROOT_INSTANCE) {
@@ -80,9 +88,32 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 						(typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__) &&
 							'requires root range slot 0',
 					);
-				return page;
+				return { parent: page };
 			}
-			return store.range(handle as number, slot as number);
+			return {
+				parent: store.range(handle as number, slot as number),
+				identity: { owner: handle as number, slot: slot as number },
+			};
+		};
+		const anchor = (at: number): { before: number | null; anchor: Node | null } => {
+			const handle = input[at];
+			const slot = index(
+				input[at + 1],
+				LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a non-negative anchor slot',
+			);
+			if (handle === END_INSTANCE) {
+				if (slot !== 0) {
+					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'END anchor must use slot 0');
+				}
+				return { before: null, anchor: null };
+			}
+			const instance = count(
+				handle,
+				LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a positive anchor instance',
+			);
+			return slot === 0
+				? { before: instance, anchor: null }
+				: { before: null, anchor: store.node(instance, slot) };
 		};
 		let cursor = 1;
 		while (cursor < input.length) {
@@ -135,9 +166,7 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 							LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && `cannot resolve RUN template ${template}`,
 						);
 					const parent = range(cursor + 1);
-					const beforeInstance = input[cursor + 3] as number;
-					if (input[cursor + 4] !== 0)
-						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a root RUN anchor');
+					const before = anchor(cursor + 3);
 					const firstHandle = input[cursor + 5] as number;
 					if (firstHandle === ROOT_INSTANCE)
 						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'reserves instance 1 for the root');
@@ -149,21 +178,38 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 					if (!Number.isSafeInteger(valueCount) || arity !== RUN_HEADER_FIELDS + valueCount) {
 						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'received the wrong RUN value arity');
 					}
+					const firstValue = cursor + RUN_HEADER_FIELDS;
+					let values: readonly unknown[] = input;
+					let valueOffset = firstValue;
+					for (let at = firstValue; at < end; at++) {
+						if (isLynxDeltaValue(input[at])) continue;
+						values = input
+							.slice(firstValue, end)
+							.map((value, index) => decodeLynxDeltaValue(value, 'RUN value ' + index));
+						valueOffset = 0;
+						break;
+					}
 					store.mount({
-						before: beforeInstance === END_INSTANCE ? null : beforeInstance,
+						before: before.before,
+						anchor: before.anchor,
 						count: runCount,
 						firstHandle,
-						parent,
+						parent: parent.parent,
+						range: parent.identity,
 						plan,
-						valueOffset: cursor + RUN_HEADER_FIELDS,
-						values: input,
+						valueOffset,
+						values,
 					});
 					break;
 				}
 				case Opcode.Set: {
 					if (arity !== 3)
 						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'SET requires three fields');
-					store.set(input[cursor] as number, input[cursor + 1] as number, input[cursor + 2]);
+					store.set(
+						input[cursor] as number,
+						input[cursor + 1] as number,
+						decodeLynxDeltaValue(input[cursor + 2], 'SET value'),
+					);
 					break;
 				}
 				case Opcode.Remove: {
@@ -183,7 +229,8 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 				case Opcode.Clear: {
 					if (arity !== 2)
 						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'CLEAR requires two fields');
-					store.clear(range(cursor));
+					const parent = range(cursor);
+					store.clear(parent.parent, parent.identity);
 					break;
 				}
 				case Opcode.Move: {
@@ -191,10 +238,8 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'MOVE requires five fields');
 					const handle = input[cursor] as number;
 					const parent = range(cursor + 1);
-					const before = input[cursor + 3] as number;
-					if (input[cursor + 4] !== 0)
-						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a root MOVE anchor');
-					store.move(handle, parent, before === END_INSTANCE ? null : before);
+					const before = anchor(cursor + 3);
+					store.move(handle, parent.parent, before.before, before.anchor, parent.identity);
 					break;
 				}
 				case Opcode.Visibility: {
@@ -208,11 +253,24 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 					store.visibility(input[cursor] as number, visible === 1);
 					break;
 				}
+				case Opcode.RefRun: {
+					if (arity !== 3)
+						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'REF-RUN requires three fields');
+					store.refs(
+						input[cursor] as number,
+						input[cursor + 1] as number,
+						input[cursor + 2] as number,
+					);
+					break;
+				}
 				default:
 					fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && `does not support opcode ${opcode}`);
 			}
 			cursor = end;
 		}
+		// Native-list metadata must be staged before the page flush so the flush
+		// publishes the same candidate whose logical frame is being accepted.
+		store.prepareCommit();
 		// A ContextProxy abort can re-enter while Element PAPI work is in
 		// progress. Give the owning receiver one last boundary before publication:
 		// throwing here rolls the entire frame back through the same journal as a

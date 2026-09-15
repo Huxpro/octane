@@ -1362,6 +1362,52 @@ export function Scene({ onTap, handlers }) @{
 		expect(values[2]).toMatchObject({ type: 'Identifier', name: firstScreenEvent });
 	});
 
+	it('prunes module-local helper chains used only by main-thread-erased effects', () => {
+		const source = `
+import { useEffect, useState } from 'octane';
+
+function publishSelection(value) {
+  console.log('background-effect-helper', value);
+}
+const publishSelectionChain = (value) => publishSelection(value);
+function retainedHelper(value) {
+  return 'retained:' + value;
+}
+function sharedHelper(value) {
+  return 'shared:' + value;
+}
+
+export function useSelection(initialValue) {
+  const [value, setValue] = useState(initialValue);
+  useEffect(() => publishSelectionChain(sharedHelper(value)), [value]);
+  return [retainedHelper(sharedHelper(value)), setValue];
+}`;
+		const firstScreenRenderer = {
+			...renderer,
+			capabilities: ['main-thread-render-only'],
+			firstScreenEvents: ['bind*', 'catch*'],
+		} as const;
+		const background = compile(source, '/src/custom-hooks.ts', {
+			hmr: false,
+			renderer: firstScreenRenderer,
+			universalRuntime: { runtime: 'object', thread: 'background' },
+		});
+		const mainThread = compile(source, '/src/custom-hooks.ts', {
+			hmr: false,
+			renderer: firstScreenRenderer,
+			universalRuntime: { runtime: 'object', thread: 'main-thread' },
+		});
+
+		expect(background.code).toContain('background-effect-helper');
+		expect(background.code).toContain('publishSelectionChain');
+		expect(mainThread.code).not.toContain('background-effect-helper');
+		expect(mainThread.code).not.toContain('publishSelectionChain');
+		expect(mainThread.code).toContain('retainedHelper');
+		expect(mainThread.code).toContain('sharedHelper');
+		expect(mainThread.code).toContain('useSelection');
+		expect(() => parseModule(mainThread.code, '/dist/custom-hooks.js')).not.toThrow();
+	});
+
 	it('rejects host spreads only in the main-thread render-only specialization', () => {
 		const source = `
 export function Scene({ hostProps }) @{

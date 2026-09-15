@@ -1,0 +1,84 @@
+{
+  "protocol": "octane-383-native-clone-diagnostic-v1",
+  "generatedAt": "2026-09-14T02:22:43.223Z",
+  "classification": "archive-only-partial-diagnostic",
+  "candidate": {
+    "sourceBaseCommit": "7fd6b4605333ec6e6ad346d5d1ec0c9e14cd8555",
+    "retained": false,
+    "hypothesis": "For later instances of a fixed-shape compiled run, deep-clone the first resolved native subtree, recover its descendants with __GetChildren, then overwrite every dynamic value and event.",
+    "nativePrimitives": [
+      "__CloneElement(element, { depth: 2, cloneResolvedProps: true })",
+      "__GetChildren(element)"
+    ],
+    "eligibility": "dense or structural run with no structural ranges and no list host",
+    "fallback": "existing per-node create program when either native primitive is absent"
+  },
+  "bundle": {
+    "entry": "octane-native-clone-diagnostic",
+    "configuration": "production automatic core plus uncommitted native-clone experiment",
+    "rows": 0,
+    "path": "rows-0/main.lynx.bundle",
+    "bytes": 247248,
+    "sha256": "c84a3ccd581cba870973e541b3d40e6cd431bc1bdd9154c470c79232b2f13403"
+  },
+  "platformLane": {
+    "platform": "Android",
+    "osVersion": "10",
+    "deviceModel": "ByteDance aries_10",
+    "explorerRelease": "4.1.0",
+    "explorerApkBytes": 173293606,
+    "explorerApkSha256": "6ae29787a2166974c29c2f23d87f3b20a137abcf9a8c17903ad19f3fb7f00cb6",
+    "explorerSource": "https://github.com/lynx-family/lynx/releases/download/4.1.0/LynxExplorer-noasan-release.apk",
+    "agentLynxVersion": "0.14.12",
+    "runnerBaseCommit": "429c9f958ed32157078c2297300a1911df796589"
+  },
+  "request": {
+    "issueId": "octane-383-native-clone-20260914",
+    "suite": "table",
+    "case": "create",
+    "scales": [1000, 3000, 5000],
+    "repetitionsPerCell": 5,
+    "transientAttempts": 1,
+    "explorerRecycleEveryPages": 5,
+    "explorerLaunchSettleMs": 100,
+    "publishable": false
+  },
+  "preflight": {
+    "batteryTemperatureC": 35,
+    "thermalStatus": 0,
+    "deviceConnected": true,
+    "leaseExpiredAt": 1789355859295,
+    "serialSha256": "c77ed1f5ce1ec09b0011c453e47a171210ff16f435f12366bcbd2c38d43c0381",
+    "rawSerialPersisted": false
+  },
+  "outcome": {
+    "status": "rejected-native-crash",
+    "requestedCells": 3,
+    "completedCells": 0,
+    "completedSamples": 0,
+    "failedScale": 1000,
+    "runnerResult": null,
+    "reason": "The first create workload crashed LynxExplorer before the runner could persist a semantic or timing record."
+  },
+  "nativeCrash": {
+    "deviceLocalTimestamp": "09-14 10:17:43.883",
+    "process": "com.lynx.explorer",
+    "signal": "SIGSEGV",
+    "code": "SEGV_MAPERR",
+    "faultAddress": "0xf0",
+    "precedingErrors": [
+      "element_inspector.h(71): inspector_attribute is null",
+      "element_inspector.h(161): inspector_attribute is null"
+    ],
+    "topFrames": ["liblynxdevtool.so+0xbee58", "liblynxdevtool.so+0xbbc14", "base.apk+0x3cadd0"],
+    "interpretation": "The public deep clone produced descendants without the inspector metadata required by this Explorer/DevTool lane. Applying events and observing the cloned tree then dereferenced that missing state."
+  },
+  "cleanup": {
+    "runnerInterruptedAfterCrash": true,
+    "explorerForceStopped": true,
+    "adbDisconnected": true,
+    "leaseReleased": true,
+    "candidateSourceReverted": true
+  },
+  "decision": "Do not expose or use the deep-clone path. Unit-level structural equivalence cannot make an SDK primitive safe when the supported production Explorer crashes on the first device workload."
+}

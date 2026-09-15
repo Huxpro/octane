@@ -16,6 +16,10 @@ import {
 	selectLayerCompilerOptions,
 } from './shared.js';
 import {
+	COMPILER_OPTIONS_CONTEXT_KEY,
+	getOctaneRspackModuleCompilerOptions,
+} from './compiler-specialization.js';
+import {
 	crossCheckProgramAddresses,
 	PROGRAM_ADDRESSES_BUILD_INFO_KEY,
 } from './program-addresses.js';
@@ -71,13 +75,30 @@ function loadMainThreadProgramBackend(value, root) {
 			{ cause: error },
 		);
 	}
-	for (const name of ['deriveLynxMainThreadProgram', 'emitLynxMainThreadProgram']) {
-		if (typeof loaded?.[name] !== 'function') {
-			throw new TypeError(
-				`@octanejs/rspack-plugin: main-thread program backend ` +
-					`${JSON.stringify(value.request)} must export a ${name} function.`,
-			);
-		}
+	if (
+		loaded?.deriveLynxProgramIR !== undefined &&
+		typeof loaded.deriveLynxProgramIR !== 'function'
+	) {
+		throw new TypeError(
+			`@octanejs/rspack-plugin: main-thread program backend ${JSON.stringify(value.request)} ` +
+				'must export deriveLynxProgramIR as a function when provided.',
+		);
+	}
+	if (
+		typeof loaded?.deriveLynxProgramIR !== 'function' &&
+		typeof loaded?.deriveLynxMainThreadProgram !== 'function'
+	) {
+		throw new TypeError(
+			`@octanejs/rspack-plugin: main-thread program backend ` +
+				`${JSON.stringify(value.request)} must export a deriveLynxProgramIR function ` +
+				`(or the legacy deriveLynxMainThreadProgram function).`,
+		);
+	}
+	if (typeof loaded?.emitLynxMainThreadProgram !== 'function') {
+		throw new TypeError(
+			`@octanejs/rspack-plugin: main-thread program backend ` +
+				`${JSON.stringify(value.request)} must export an emitLynxMainThreadProgram function.`,
+		);
 	}
 	if (loaded.signature !== value.signature) {
 		throw new Error(
@@ -161,10 +182,16 @@ export default function octaneLoader(source, inputSourceMap) {
 			environment === 'client' &&
 			(options.dev ?? (this.mode === undefined || this.mode !== 'production'));
 		const profile = environment === 'client' && options.profile === true;
-		const compilerOptions =
+		const layerCompilerOptions =
 			options.layerSpecializations === undefined
 				? options
 				: selectLayerCompilerOptions(options, this._module);
+		const moduleCompilerOptions =
+			this[COMPILER_OPTIONS_CONTEXT_KEY] ?? getOctaneRspackModuleCompilerOptions(this._module);
+		const compilerOptions =
+			moduleCompilerOptions === undefined
+				? layerCompilerOptions
+				: { ...layerCompilerOptions, ...moduleCompilerOptions };
 		const mainThreadProgramBackend = loadMainThreadProgramBackend(
 			compilerOptions.mainThreadProgramBackend,
 			root,
@@ -243,6 +270,12 @@ export default function octaneLoader(source, inputSourceMap) {
 					...(result.mainThreadProgramCoverage === undefined
 						? null
 						: { mainThreadProgramCoverage: result.mainThreadProgramCoverage }),
+					...(result.lynxElementTemplates === undefined
+						? null
+						: { lynxElementTemplates: result.lynxElementTemplates }),
+					...(result.lynxElementTemplateCoverage === undefined
+						? null
+						: { lynxElementTemplateCoverage: result.lynxElementTemplateCoverage }),
 					...(result.lynxBlockSemanticRequirements === undefined
 						? null
 						: { lynxBlockSemanticRequirements: result.lynxBlockSemanticRequirements }),

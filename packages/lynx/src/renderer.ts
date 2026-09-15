@@ -13,6 +13,18 @@ import {
 } from './core/worklets.js';
 
 export * from 'octane/universal/native';
+export {
+	isLynxCompilerProgram,
+	isLynxCompilerProgramValue,
+	lynxProgram,
+	lynxProgramValue,
+	LYNX_COMPILER_PROGRAM_VERSION,
+	type LynxCompilerProgram,
+	type LynxCompilerProgramDefinition,
+	type LynxCompilerProgramComputation,
+	type LynxCompilerProgramValue,
+} from './core/compiler-program.js';
+export { enableLynxCompilerProgramRefs } from './core/compact-host-refs.js';
 
 export {
 	attachThreadFunction,

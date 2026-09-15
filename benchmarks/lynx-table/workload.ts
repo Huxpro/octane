@@ -21,7 +21,11 @@ import type {
 import type { LynxElementEventListener } from '../../packages/lynx/src/core/papi.js';
 import { LYNX_NODES_REF_ATTRIBUTE } from '../../packages/lynx/src/core/nodes-ref.js';
 import type { LynxWireProfile } from '../../packages/lynx/src/core/profiling.js';
-import { decodeLynxTransportValue } from '../../packages/lynx/src/core/transport-codec.js';
+import {
+	acceptLynxTransportFrame,
+	createLynxTransportFrameState,
+	decodeLynxTransportValue,
+} from '../../packages/lynx/src/core/transport-codec.js';
 import { App } from './app/src/App.lynx.tsrx';
 
 export interface FakeNode {
@@ -71,69 +75,74 @@ export function createContextPair(): {
 		own: Map<string, Listener[]>,
 		other: Map<string, Listener[]>,
 		direction: WireMessageSnapshot['direction'],
-	): LynxContextProxy => ({
-		addEventListener(type, listener) {
-			const list = own.get(type);
-			if (list === undefined) own.set(type, [listener]);
-			else list.push(listener);
-		},
-		removeEventListener(type, listener) {
-			const list = own.get(type);
-			if (list === undefined) return;
-			const index = list.indexOf(listener);
-			if (index !== -1) list.splice(index, 1);
-			if (list.length === 0) own.delete(type);
-		},
-		dispatchEvent(event) {
-			// The transport encodes, so what crosses is a string. Observing it
-			// means decoding it, the same as the receiver does — reading
-			// `event.data` directly would silently report every message as
-			// `<unknown>` with no commands, which is a measurement that looks
-			// like a result.
-			const data = decodeLynxTransportValue(event.data) as {
-				type?: unknown;
-				ack?: unknown;
-				instances?: unknown;
-				capabilities?: unknown;
-				batch?: { commands?: readonly { op?: unknown }[] };
-				handles?: readonly { op?: unknown }[];
-			};
-			const commandOps: Record<string, number> = {};
-			for (const command of data.batch?.commands ?? []) {
-				const op = typeof command.op === 'string' ? command.op : '<unknown>';
-				commandOps[op] = (commandOps[op] ?? 0) + 1;
-			}
-			const handleOps: Record<string, number> = {};
-			for (const handle of data.handles ?? []) {
-				const op = typeof handle.op === 'string' ? handle.op : '<unknown>';
-				handleOps[op] = (handleOps[op] ?? 0) + 1;
-			}
-			let bytes = 0;
-			try {
-				bytes = JSON.stringify(data).length;
-			} catch {
-				// Protocol validation owns serialization failures. The observer must
-				// not alter delivery while measuring a rejected message.
-			}
-			messages.push({
-				direction,
-				type: typeof data.type === 'string' ? data.type : '<unknown>',
-				bytes,
-				commandOps,
-				handleOps,
-				ack: typeof data.ack === 'string' ? data.ack : null,
-				instances: typeof data.instances === 'string' ? data.instances : null,
-				announces: typeof data.announces === 'string' ? data.announces : null,
-				capabilities:
-					data.capabilities !== null && typeof data.capabilities === 'object'
-						? (data.capabilities as Record<string, unknown>)
-						: null,
-			});
-			const list = other.get(event.type);
-			if (list === undefined) return;
-			for (const listener of list.slice()) listener(event);
-		},
-	});
+	): LynxContextProxy => {
+		const frames = createLynxTransportFrameState();
+		let framedBytes = 0;
+		return {
+			addEventListener(type, listener) {
+				const list = own.get(type);
+				if (list === undefined) own.set(type, [listener]);
+				else list.push(listener);
+			},
+			removeEventListener(type, listener) {
+				const list = own.get(type);
+				if (list === undefined) return;
+				const index = list.indexOf(listener);
+				if (index !== -1) list.splice(index, 1);
+				if (list.length === 0) own.delete(type);
+			},
+			dispatchEvent(event) {
+				// Observe one logical message, after the same ordered reassembly the
+				// production receiver performs. The real listeners still receive each
+				// physical ContextProxy event and own their independent frame state.
+				if (typeof event.data === 'string') framedBytes += event.data.length;
+				try {
+					const encoded = acceptLynxTransportFrame(event.data, frames);
+					if (encoded !== null) {
+						const data = decodeLynxTransportValue(encoded) as {
+							type?: unknown;
+							ack?: unknown;
+							instances?: unknown;
+							capabilities?: unknown;
+							batch?: { commands?: readonly { op?: unknown }[] };
+							handles?: readonly { op?: unknown }[];
+						};
+						const commandOps: Record<string, number> = {};
+						for (const command of data.batch?.commands ?? []) {
+							const op = typeof command.op === 'string' ? command.op : '<unknown>';
+							commandOps[op] = (commandOps[op] ?? 0) + 1;
+						}
+						const handleOps: Record<string, number> = {};
+						for (const handle of data.handles ?? []) {
+							const op = typeof handle.op === 'string' ? handle.op : '<unknown>';
+							handleOps[op] = (handleOps[op] ?? 0) + 1;
+						}
+						messages.push({
+							direction,
+							type: typeof data.type === 'string' ? data.type : '<unknown>',
+							bytes: framedBytes,
+							commandOps,
+							handleOps,
+							ack: typeof data.ack === 'string' ? data.ack : null,
+							instances: typeof data.instances === 'string' ? data.instances : null,
+							announces: typeof data.announces === 'string' ? data.announces : null,
+							capabilities:
+								data.capabilities !== null && typeof data.capabilities === 'object'
+									? (data.capabilities as Record<string, unknown>)
+									: null,
+						});
+						framedBytes = 0;
+					}
+				} catch (error) {
+					framedBytes = 0;
+					throw error;
+				}
+				const list = other.get(event.type);
+				if (list === undefined) return;
+				for (const listener of list.slice()) listener(event);
+			},
+		};
+	};
 	return {
 		background: end(backgroundListeners, mainListeners, 'background-to-main'),
 		main: end(mainListeners, backgroundListeners, 'main-to-background'),
@@ -391,6 +400,11 @@ export function profileSnapshot(): {
 	prepareMs: number;
 	applyMs: number;
 	ackMs: number;
+	blockRenderQueueMaxDepth: number;
+	blockRenderMerges: number;
+	blockRenderPrepares: number;
+	blockRenderPreparesWhileAck: number;
+	blockAckRoundTrips: number;
 	deltaCommits: number;
 	deltaMisses: number;
 	deltaOps: number;
@@ -406,6 +420,10 @@ export function profileSnapshot(): {
 	denseReleaseHostCount: number;
 	firstTreeProgramOwnershipRuns: number;
 	firstTreeProgramOwnershipHosts: number;
+	programRunOwnedHosts: number;
+	programRunRetainedHostRefs: number;
+	programRunReleasedHostRefs: number;
+	programRunLiveRetainedHostRefs: number;
 } {
 	const profile = (globalThis as ProfileGlobals).__OCTANE_LYNX_PROF;
 	// Both fake threads share this realm, so the main-thread receiver also
@@ -417,6 +435,11 @@ export function profileSnapshot(): {
 		bytes: profile?.bytes ?? 0,
 		itemRenders: (globalThis as ProfileGlobals).__BENCH_ROW_RENDERS__ ?? 0,
 		selfcheckMs: profile?.selfcheckMs ?? 0,
+		blockRenderQueueMaxDepth: profile?.blockRenderQueueMaxDepth ?? 0,
+		blockRenderMerges: profile?.blockRenderMerges ?? 0,
+		blockRenderPrepares: profile?.blockRenderPrepares ?? 0,
+		blockRenderPreparesWhileAck: profile?.blockRenderPreparesWhileAck ?? 0,
+		blockAckRoundTrips: profile?.blockAckRoundTrips ?? 0,
 		dispatchMs: profile?.dispatchMs ?? 0,
 		validateMs: profile?.validateMs ?? 0,
 		prepareMs: profile?.prepareMs ?? 0,
@@ -437,6 +460,10 @@ export function profileSnapshot(): {
 		denseReleaseHostCount: profile?.denseReleaseHostCount ?? 0,
 		firstTreeProgramOwnershipRuns: profile?.firstTreeProgramOwnershipRuns ?? 0,
 		firstTreeProgramOwnershipHosts: profile?.firstTreeProgramOwnershipHosts ?? 0,
+		programRunOwnedHosts: profile?.programRunOwnedHosts ?? 0,
+		programRunRetainedHostRefs: profile?.programRunRetainedHostRefs ?? 0,
+		programRunReleasedHostRefs: profile?.programRunReleasedHostRefs ?? 0,
+		programRunLiveRetainedHostRefs: profile?.programRunLiveRetainedHostRefs ?? 0,
 	};
 }
 
@@ -657,6 +684,11 @@ export interface OpCounters {
 	readonly prepareMs: number;
 	readonly applyMs: number;
 	readonly ackMs: number;
+	readonly blockRenderQueueMaxDepth: number;
+	readonly blockRenderMerges: number;
+	readonly blockRenderPrepares: number;
+	readonly blockRenderPreparesWhileAck: number;
+	readonly blockAckRoundTrips: number;
 	readonly deltaCommits: number;
 	readonly deltaMisses: number;
 	readonly deltaOps: number;
@@ -675,6 +707,10 @@ export interface OpCounters {
 	readonly papiRemoveCount: number;
 	readonly denseReleaseHostCount: number;
 	readonly firstTreeProgramOwnershipRuns: number;
+	readonly programRunOwnedHosts: number;
+	readonly programRunRetainedHostRefs: number;
+	readonly programRunReleasedHostRefs: number;
+	readonly programRunLiveRetainedHostRefs: number;
 	readonly firstTreeProgramOwnershipHosts: number;
 }
 
@@ -784,6 +820,12 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 				itemRenders: after.itemRenders - before.itemRenders,
 				...summarizeWire(harness.wireMessages.slice(wireStart)),
 				selfcheckMs: after.selfcheckMs - before.selfcheckMs,
+				blockRenderQueueMaxDepth: after.blockRenderQueueMaxDepth,
+				blockRenderMerges: after.blockRenderMerges - before.blockRenderMerges,
+				blockRenderPrepares: after.blockRenderPrepares - before.blockRenderPrepares,
+				blockRenderPreparesWhileAck:
+					after.blockRenderPreparesWhileAck - before.blockRenderPreparesWhileAck,
+				blockAckRoundTrips: after.blockAckRoundTrips - before.blockAckRoundTrips,
 				dispatchMs: after.dispatchMs - before.dispatchMs,
 				validateMs: after.validateMs - before.validateMs,
 				prepareMs: after.prepareMs - before.prepareMs,
@@ -806,6 +848,12 @@ export async function runTable(rows: number): Promise<TableRunResult> {
 					after.firstTreeProgramOwnershipRuns - before.firstTreeProgramOwnershipRuns,
 				firstTreeProgramOwnershipHosts:
 					after.firstTreeProgramOwnershipHosts - before.firstTreeProgramOwnershipHosts,
+				programRunOwnedHosts: after.programRunOwnedHosts - before.programRunOwnedHosts,
+				programRunRetainedHostRefs:
+					after.programRunRetainedHostRefs - before.programRunRetainedHostRefs,
+				programRunReleasedHostRefs:
+					after.programRunReleasedHostRefs - before.programRunReleasedHostRefs,
+				programRunLiveRetainedHostRefs: after.programRunLiveRetainedHostRefs,
 			};
 		};
 

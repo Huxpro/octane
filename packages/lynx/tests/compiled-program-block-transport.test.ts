@@ -1,13 +1,34 @@
-import type { UniversalHostTemplateProgram, UniversalProgramPlan } from 'octane/universal/native';
+import {
+	defineUniversalComponent,
+	universalFor,
+	universalPlan,
+	type UniversalHostTemplateProgram,
+	type UniversalPreparedAttempt,
+	type UniversalProgramPlan,
+	type UniversalTransaction,
+} from 'octane/universal/native';
 import { describe, expect, it } from 'vitest';
 
 import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-program.js';
+import { deriveLynxProgramIR } from '../src/compiler/derive-program.js';
 import { compileLynxBlockTemplate, createLynxBlockCore } from '../src/core/block-core.js';
+import {
+	createLynxBlockBackgroundCore,
+	type LynxBackgroundCore,
+} from '../src/core/block-background.js';
 import { createLynxBlockRoot } from '../src/core/block-root.js';
+import {
+	createLynxBlockDeltaProducer,
+	preparedLynxBlockDeltaBatch,
+} from '../src/core/block-delta-producer.js';
 import { createLynxClientContainer } from '../src/core/client-driver.js';
-import { createLynxCompiledProgramBlockTransport } from '../src/core/compiled-program-block-transport.js';
+import {
+	createLynxCompiledProgramBlockTransport,
+	type LynxCompiledProgramBlockTransport,
+} from '../src/core/compiled-program-block-transport.js';
 import { installLynxCompiledProgramReceiver } from '../src/core/compiled-program-receiver.js';
 import { LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT } from '../src/core/compiled-program-wire.js';
+import { lynxProgram, lynxProgramValue } from '../src/core/compiler-program.js';
 import type { LynxElementPAPI } from '../src/core/papi.js';
 import type { LynxContextProxy, LynxContextProxyEvent } from '../src/core/protocol.js';
 import { createFakePAPI, type FakeNode, shape } from './_fixtures/fake-element-papi.js';
@@ -49,6 +70,193 @@ function emittedPlan(): UniversalProgramPlan {
 		ranges: [],
 		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
 	};
+}
+const APPLICATION_MODULE = 'tests/CompactBlockApplication.lynx.tsrx';
+const APPLICATION_PLAN = universalPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	bindings: [['class', 0]],
+	children: [
+		{
+			kind: 'host',
+			type: 'text',
+			props: {},
+			children: [{ kind: 'text', slot: 1 }],
+		},
+	],
+});
+const APPLICATION_IR = deriveLynxProgramIR(APPLICATION_PLAN.root as never)!;
+const APPLICATION_PROGRAM = lynxProgram('lynx', {
+	...APPLICATION_IR,
+	address: {
+		module: APPLICATION_MODULE,
+		index: 0,
+		digest: '0123456789abcdef',
+	},
+});
+const CompilerApplication = defineUniversalComponent(
+	'lynx',
+	({ className, label }: { readonly className: string; readonly label: string }) =>
+		lynxProgramValue(APPLICATION_PROGRAM, [className, label]) as never,
+);
+
+function emittedApplicationPlan(): UniversalProgramPlan {
+	const emission = emitLynxMainThreadProgram(APPLICATION_IR.wire, {
+		name: 'createCompactBlockApplication',
+		ranges: APPLICATION_IR.ranges,
+		slotUpdates: true,
+		structuralRuns: true,
+	});
+	return {
+		kind: 'program',
+		slots: ['p:class', 'c'],
+		nodes: APPLICATION_IR.wire.nodes.length,
+		values: [0, 1],
+		events: [],
+		ranges: [],
+		wire: APPLICATION_IR.wire,
+		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
+	};
+}
+interface RangeRow {
+	readonly id: number;
+	readonly label: string;
+}
+
+const RANGE_PARENT_MODULE = 'tests/CompactRangePage.lynx.tsrx';
+const RANGE_ROW_MODULE = 'tests/CompactRangeRow.lynx.tsrx';
+const RANGE_PARENT_SOURCE = universalPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	props: { class: 'rows' },
+	children: [{ kind: 'slot', slot: 0 }],
+});
+const RANGE_ROW_SOURCE = universalPlan('lynx', {
+	kind: 'host',
+	type: 'view',
+	bindings: [['class', 0]],
+	children: [
+		{
+			kind: 'host',
+			type: 'text',
+			props: {},
+			children: [{ kind: 'text', slot: 1 }],
+		},
+	],
+});
+const RANGE_PARENT_IR = deriveLynxProgramIR(RANGE_PARENT_SOURCE.root as never)!;
+const RANGE_ROW_IR = deriveLynxProgramIR(RANGE_ROW_SOURCE.root as never)!;
+const RANGE_PARENT_PROGRAM = lynxProgram('lynx', {
+	...RANGE_PARENT_IR,
+	address: {
+		module: RANGE_PARENT_MODULE,
+		index: 0,
+		digest: '1111111111111111',
+	},
+});
+const RANGE_ROW_PROGRAM = lynxProgram('lynx', {
+	...RANGE_ROW_IR,
+	address: {
+		module: RANGE_ROW_MODULE,
+		index: 0,
+		digest: '2222222222222222',
+	},
+});
+const RangeApplication = defineUniversalComponent(
+	'lynx',
+	({ rows }: { readonly rows: readonly RangeRow[] }) =>
+		lynxProgramValue(RANGE_PARENT_PROGRAM, [
+			universalFor(
+				rows,
+				(row: RangeRow) => row.id,
+				(row: RangeRow) => lynxProgramValue(RANGE_ROW_PROGRAM, ['row', row.label]) as never,
+			),
+		]) as never,
+	{ hookScope: false },
+);
+
+interface NestedRangeGroup {
+	readonly id: number;
+	readonly rows: readonly RangeRow[];
+}
+
+const NestedRangeApplication = defineUniversalComponent(
+	'lynx',
+	({ groups }: { readonly groups: readonly NestedRangeGroup[] }) =>
+		lynxProgramValue(RANGE_PARENT_PROGRAM, [
+			universalFor(
+				groups,
+				(group: NestedRangeGroup) => group.id,
+				(group: NestedRangeGroup) =>
+					lynxProgramValue(RANGE_PARENT_PROGRAM, [
+						universalFor(
+							group.rows,
+							(row: RangeRow) => row.id,
+							(row: RangeRow) => lynxProgramValue(RANGE_ROW_PROGRAM, ['row', row.label]) as never,
+						),
+					]) as never,
+			),
+		]) as never,
+	{ hookScope: false },
+);
+
+function emittedRangeParentPlan(): UniversalProgramPlan {
+	const emission = emitLynxMainThreadProgram(RANGE_PARENT_IR.wire, {
+		name: 'createCompactRangePage',
+		ranges: RANGE_PARENT_IR.ranges,
+		slotUpdates: true,
+		structuralRuns: true,
+	});
+	return {
+		kind: 'program',
+		slots: ['r'],
+		nodes: RANGE_PARENT_IR.wire.nodes.length,
+		values: [],
+		events: [],
+		ranges: [{ ...RANGE_PARENT_IR.ranges[0]!, id: 1 }],
+		wire: RANGE_PARENT_IR.wire,
+		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
+	};
+}
+
+function emittedRangeRowPlan(): UniversalProgramPlan {
+	const emission = emitLynxMainThreadProgram(RANGE_ROW_IR.wire, {
+		name: 'createCompactRangeRow',
+		ranges: RANGE_ROW_IR.ranges,
+		slotUpdates: true,
+		structuralRuns: true,
+	});
+	return {
+		kind: 'program',
+		slots: ['p:class', 'c'],
+		nodes: RANGE_ROW_IR.wire.nodes.length,
+		values: [0, 1],
+		events: [],
+		ranges: [],
+		wire: RANGE_ROW_IR.wire,
+		bind: new Function(`return (${emission.source});`)() as UniversalProgramPlan['bind'],
+	};
+}
+
+function transaction(attempt: UniversalPreparedAttempt): UniversalTransaction {
+	if (!('batch' in attempt)) throw new Error('Compact transport test unexpectedly suspended.');
+	return attempt;
+}
+
+function bindTransportRoot(
+	transport: LynxCompiledProgramBlockTransport,
+	background: LynxBackgroundCore,
+): void {
+	const acceptsNativeEvent = background.acceptsNativeEvent;
+	const dispatchHostAttachments = background.dispatchHostAttachments;
+	if (acceptsNativeEvent === undefined || dispatchHostAttachments === undefined) {
+		throw new Error('Compact Block core did not publish its native transport capabilities.');
+	}
+	transport.bindRoot({
+		acceptsNativeEvent,
+		dispatchHostAttachments,
+		dispatchTransportEvent: background.dispatchTransportEvent,
+	});
 }
 
 function emittedHost(): LynxElementPAPI<FakeNode> {
@@ -115,13 +323,289 @@ function setup(
 	});
 	const container = createLynxClientContainer();
 	const transport = createLynxCompiledProgramBlockTransport(context, container);
-	const core = createLynxBlockCore({ templateRuns: () => true });
+	const core = createLynxBlockCore({
+		templateRuns: () => true,
+		deltaProducer: transport.blockDeltaProducer,
+	});
 	const root = createLynxBlockRoot({ container, transport, transportRoot: 91, core });
 	transport.bindRoot(root);
 	return { context, page, receiver, container, transport, core, root };
 }
 
 describe('Lynx compact compiled-program Block transport', () => {
+	it('drives an ordinary compiler component through producer-native frames', async () => {
+		const context = new HeldReplyContext();
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const receiver = installLynxCompiledProgramReceiver({
+			context,
+			page,
+			papi,
+			resolveProgram: (module, index) =>
+				module === APPLICATION_MODULE && index === 0 ? emittedApplicationPlan() : undefined,
+		});
+		const container = createLynxClientContainer();
+		let registryCreations = 0;
+		const transport = createLynxCompiledProgramBlockTransport(context, container, {
+			createBackgroundFunctionRegistry() {
+				registryCreations++;
+				throw new Error('ordinary compact frames must not initialize background worklets');
+			},
+		});
+		const background = createLynxBlockBackgroundCore({
+			container,
+			transport,
+			scheduleMicrotask: (callback) => void Promise.resolve().then(callback),
+			transportRoot: 92,
+		});
+		bindTransportRoot(transport, background);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		const first = transaction(
+			await background.renderAsync(CompilerApplication, { className: 'row', label: 'before' }),
+		);
+		expect(first.batch.commands).toEqual([]);
+		expect(preparedLynxBlockDeltaBatch(first.batch)?.operations).toEqual([
+			expect.objectContaining({
+				op: 'run',
+				parent: { instance: 1, slot: 0 },
+				firstInstance: 2,
+				count: 1,
+				values: ['row', 'before'],
+			}),
+		]);
+		expect(shape(page)).toMatchObject({
+			type: 'page',
+			children: [
+				{
+					type: 'view',
+					classes: 'row',
+					children: [{ type: 'text', children: [{ type: 'raw-text', text: 'before' }] }],
+				},
+			],
+		});
+
+		const second = transaction(
+			await background.renderAsync(CompilerApplication, { className: 'row', label: 'after' }),
+		);
+		expect(second.batch.commands).toEqual([]);
+		expect(registryCreations).toBe(0);
+		expect(preparedLynxBlockDeltaBatch(second.batch)?.operations).toEqual([
+			{ op: 'set', instance: 2, slot: 1, value: 'after' },
+		]);
+		expect(page.children[0]!.children[0]!.children[0]!.text).toBe('after');
+		expect(transport.preparationCount()).toBe(2);
+		expect(transport.directPreparationCount()).toBe(2);
+
+		await background.unmountAsync();
+		expect(page.children).toEqual([]);
+		transport.close();
+		receiver.close();
+	});
+	it('applies mixed keyed range deltas while retaining survivor identity', async () => {
+		const context = new HeldReplyContext();
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const receiver = installLynxCompiledProgramReceiver({
+			context,
+			page,
+			papi,
+			resolveProgram: (module, index) => {
+				if (index !== 0) return undefined;
+				if (module === RANGE_PARENT_MODULE) return emittedRangeParentPlan();
+				if (module === RANGE_ROW_MODULE) return emittedRangeRowPlan();
+				return undefined;
+			},
+		});
+		const container = createLynxClientContainer();
+		const transport = createLynxCompiledProgramBlockTransport(context, container);
+		const background = createLynxBlockBackgroundCore({
+			container,
+			transport,
+			scheduleMicrotask: (callback) => void Promise.resolve().then(callback),
+			transportRoot: 93,
+		});
+		bindTransportRoot(transport, background);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		const render = async (rows: readonly RangeRow[]) =>
+			transaction(await background.renderAsync(RangeApplication, { rows }));
+		const mounted = await render([
+			{ id: 1, label: 'one' },
+			{ id: 2, label: 'two' },
+			{ id: 3, label: 'three' },
+		]);
+		const mountOperations = preparedLynxBlockDeltaBatch(mounted.batch)!.operations;
+		expect(mountOperations.map((operation) => operation.op)).toEqual(['run', 'run']);
+		expect(mountOperations[1]).toMatchObject({
+			op: 'run',
+			parent: { instance: 2, slot: 0 },
+			firstInstance: 3,
+			count: 3,
+		});
+		const rowsHost = page.children[0]!;
+		const initial = new Map(
+			rowsHost.children.map((row) => [row.children[0]!.children[0]!.text, row.uid]),
+		);
+
+		const updated = await render([
+			{ id: 3, label: 'three' },
+			{ id: 1, label: 'one edited' },
+			{ id: 4, label: 'four' },
+		]);
+		const updateOperations = preparedLynxBlockDeltaBatch(updated.batch)!.operations;
+		expect(updateOperations.map((operation) => operation.op)).toEqual(
+			expect.arrayContaining(['remove', 'run', 'set', 'move']),
+		);
+		expect(updateOperations).toEqual(
+			expect.arrayContaining([
+				{ op: 'remove', firstInstance: 4, count: 1 },
+				expect.objectContaining({
+					op: 'run',
+					parent: { instance: 2, slot: 0 },
+					firstInstance: 6,
+					count: 1,
+					values: ['row', 'four'],
+				}),
+				{ op: 'set', instance: 3, slot: 1, value: 'one edited' },
+			]),
+		);
+		expect(rowsHost.children.map((row) => row.children[0]!.children[0]!.text)).toEqual([
+			'three',
+			'one edited',
+			'four',
+		]);
+		expect(rowsHost.children[0]!.uid).toBe(initial.get('three'));
+		expect(rowsHost.children[1]!.uid).toBe(initial.get('one'));
+		expect([...initial.values()]).not.toContain(rowsHost.children[2]!.uid);
+
+		const cleared = await render([]);
+		expect(preparedLynxBlockDeltaBatch(cleared.batch)?.operations).toEqual([
+			{ op: 'clear', parent: { instance: 2, slot: 0 } },
+		]);
+		expect(rowsHost.children).toEqual([]);
+
+		await background.unmountAsync();
+		expect(page.children).toEqual([]);
+		expect(transport.directPreparationCount()).toBe(4);
+		transport.close();
+		receiver.close();
+	});
+
+	it('keeps nested range RUN and CLEAR ownership entirely in compact instance space', async () => {
+		const context = new HeldReplyContext();
+		const papi = emittedHost();
+		const page = papi.createPage('0', 0);
+		const receiver = installLynxCompiledProgramReceiver({
+			context,
+			page,
+			papi,
+			resolveProgram: (module, index) => {
+				if (index !== 0) return undefined;
+				if (module === RANGE_PARENT_MODULE) return emittedRangeParentPlan();
+				if (module === RANGE_ROW_MODULE) return emittedRangeRowPlan();
+				return undefined;
+			},
+		});
+		const container = createLynxClientContainer();
+		const transport = createLynxCompiledProgramBlockTransport(context, container);
+		const background = createLynxBlockBackgroundCore({
+			container,
+			transport,
+			scheduleMicrotask: (callback) => void Promise.resolve().then(callback),
+			transportRoot: 94,
+		});
+		bindTransportRoot(transport, background);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+
+		const render = async (groups: readonly NestedRangeGroup[]) =>
+			transaction(await background.renderAsync(NestedRangeApplication, { groups }));
+		const mounted = await render([
+			{
+				id: 1,
+				rows: [
+					{ id: 11, label: 'one' },
+					{ id: 12, label: 'two' },
+				],
+			},
+			{ id: 2, rows: [{ id: 21, label: 'three' }] },
+		]);
+		expect(mounted.batch.commands).toEqual([]);
+		expect(preparedLynxBlockDeltaBatch(mounted.batch)!.operations).toEqual([
+			expect.objectContaining({
+				op: 'run',
+				parent: { instance: 1, slot: 0 },
+				firstInstance: 2,
+				count: 1,
+			}),
+			expect.objectContaining({
+				op: 'run',
+				parent: { instance: 2, slot: 0 },
+				firstInstance: 3,
+				count: 2,
+			}),
+			expect.objectContaining({
+				op: 'run',
+				parent: { instance: 3, slot: 0 },
+				firstInstance: 5,
+				count: 2,
+			}),
+			expect.objectContaining({
+				op: 'run',
+				parent: { instance: 4, slot: 0 },
+				firstInstance: 7,
+				count: 1,
+			}),
+		]);
+		const groupOne = page.children[0]!.children[0]!;
+		const oneUid = groupOne.children[0]!.uid;
+
+		const updated = await render([
+			{
+				id: 2,
+				rows: [
+					{ id: 21, label: 'three' },
+					{ id: 22, label: 'four' },
+				],
+			},
+			{
+				id: 1,
+				rows: [
+					{ id: 12, label: 'two' },
+					{ id: 11, label: 'one edited' },
+				],
+			},
+		]);
+		expect(updated.batch.commands).toEqual([]);
+		expect(
+			preparedLynxBlockDeltaBatch(updated.batch)!.operations.map((operation) => operation.op),
+		).toEqual(expect.arrayContaining(['move', 'run', 'set']));
+		expect(page.children[0]!.children[1]!.children[1]!.uid).toBe(oneUid);
+		expect(page.children[0]!.children[1]!.children[1]!.children[0]!.children[0]!.text).toBe(
+			'one edited',
+		);
+
+		const cleared = await render([]);
+		expect(cleared.batch.commands).toEqual([]);
+		expect(preparedLynxBlockDeltaBatch(cleared.batch)!.operations).toEqual([
+			{ op: 'clear', parent: { instance: 3, slot: 0 } },
+			{ op: 'clear', parent: { instance: 4, slot: 0 } },
+			{ op: 'clear', parent: { instance: 2, slot: 0 } },
+		]);
+		expect(page.children[0]!.children).toEqual([]);
+		expect(transport.directPreparationCount()).toBe(3);
+
+		await background.unmountAsync();
+		expect(page.children).toEqual([]);
+		transport.close();
+		receiver.close();
+	});
 	it('cancels an unsent root while compact readiness is pending', async () => {
 		const { receiver, transport, core, root } = setup();
 		root.beginAttempt();
@@ -325,7 +809,7 @@ describe('Lynx compact compiled-program Block transport', () => {
 		receiver.close();
 	});
 
-	it('publishes the shadow before accepted lifecycle prepares a reentrant commit', async () => {
+	it('publishes producer state before accepted lifecycle prepares a reentrant commit', async () => {
 		const { page, receiver, transport, core, root } = setup();
 		receiver.markProgramsReady();
 		receiver.markPageReady();
@@ -375,6 +859,32 @@ describe('Lynx compact compiled-program Block transport', () => {
 		receiver.close();
 	});
 
+	it("refuses another transport's producer-native batch before crossing ContextProxy", () => {
+		const { context, receiver, container, transport } = setup();
+		const foreign = createLynxBlockDeltaProducer();
+		foreign.run({
+			address: ADDRESS,
+			parent: { instance: 1, slot: 0 },
+			before: null,
+			count: 1,
+			values: ['row', 'foreign'],
+		});
+		const batch = foreign.flush(1)!;
+		const before = context.events.length;
+
+		expect(() =>
+			transport.prepareBatch(container, batch, {
+				protocol: 1,
+				renderer: 'lynx',
+				root: 91,
+				version: 1,
+			}),
+		).toThrow('producer-native delta batch');
+		expect(context.events).toHaveLength(before);
+
+		transport.close();
+		receiver.close();
+	});
 	it('refuses an unaddressed Block batch before it crosses ContextProxy', async () => {
 		const { context, receiver, transport, core, root } = setup();
 		receiver.markProgramsReady();
@@ -383,8 +893,9 @@ describe('Lynx compact compiled-program Block transport', () => {
 		const before = context.events.length;
 
 		root.beginAttempt();
-		core.mount(null, null, compileLynxBlockTemplate(PROGRAM), ['row', 'unaddressed']);
-		await expect(root.commit()).rejects.toThrow('fully addressed scalar program batch');
+		expect(() =>
+			core.mount(null, null, compileLynxBlockTemplate(PROGRAM), ['row', 'unaddressed']),
+		).toThrow('requires an addressed program');
 		expect(context.events).toHaveLength(before);
 		expect(root.abortAttempt()).toBe(true);
 

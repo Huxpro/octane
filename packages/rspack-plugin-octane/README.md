@@ -61,6 +61,11 @@ is loaded and signature-checked in each loader process, so it preserves worker
 compilation; a live module contains functions and therefore uses the serial
 loader. Positional program digests derived by workers return to the main
 compilation and are cross-checked there before output is accepted.
+New live backends expose `deriveLynxProgramIR`; Octane requires its successful
+result to use the supported IR version before either thread emits or addresses
+it. The original `deriveLynxMainThreadProgram` hook remains a compatibility
+fallback for experimental integrations, but the renderer-owned default derives
+the shared IR for both compiles.
 
 Set `strong: true` to opt application code into Strong mode's immutable
 render-snapshot and pure-render contract. The compiler rejects detectable state,
@@ -205,9 +210,20 @@ The class plugin is recommended unless another integration owns those concerns.
 ## App-level metadata
 
 Transformed Rspack modules receive a serializable `buildInfo.octane` record
-containing `canonicalId`, `transformKind`, and `serverRpc`. App integrations can
+containing `canonicalId`, `transformKind`, and `serverRpc`. Compiler-specialized
+modules can also report program and Element Template coverage, including the
+number of definitions with a synthetic visibility slot. App integrations can
 read the validated value with `getOctaneRspackBuildInfo(module)` without
-depending on compiler output parsing for module identity.
+depending on compiler output parsing for module identity or native-template
+shape.
+
+Proof-aware integrations can call
+`setOctaneRspackModuleCompilerOptions(module, { renderers })` or provide a
+`mainThreadProgramBackend` before `compilation.rebuildModule(module, callback)`.
+The override applies only to that module's next and subsequent builds, and
+parallel workers receive the same normalized compiler options through loader
+pitch data. This lets a complete graph proof select a stricter compiler artifact
+without changing the conservative first pass or unrelated compilation graphs.
 
 When a renderer is declared `server: 'client-only'`, client compilations also
 emit `octane-client-references.json`. Its stable reference IDs map each omitted

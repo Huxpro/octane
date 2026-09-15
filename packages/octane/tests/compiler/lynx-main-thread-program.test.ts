@@ -19,6 +19,8 @@ import { describe, expect, it } from 'vitest';
 
 import { compile } from '../../src/compiler/compile.js';
 import { lynxMainThreadRenderer } from '../../../lynx/src/config.js';
+import * as ElementTemplateBackend from '../../../lynx/src/compiler-element-template.js';
+import * as StructuralElementTemplateBackend from '../../../lynx/src/compiler-element-template.structural.js';
 import * as Backend from '../../../lynx/src/compiler/index.js';
 import {
 	compileLynxBlockTemplate,
@@ -31,6 +33,7 @@ import {
 import {
 	createFakePAPI,
 	shape,
+	type FakeNode,
 	withoutAllocatorIdentity,
 } from '../../../lynx/tests/_fixtures/fake-element-papi.js';
 
@@ -83,10 +86,33 @@ export function Card(props: { items: readonly { id: number; label: string }[] })
 }
 `;
 
+/** Two independently keyed structural levels, each with an empty arm. */
+const NESTED_STRUCTURAL_ADDRESSABLE_CARD = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+interface Group { readonly id: number; readonly labels: readonly string[] }
+
+export function Card(props: { groups: readonly Group[] }) @{
+	<view class="page">
+		@for (const group of props.groups; key group.id) {
+			<view class="group">
+				@for (const label of group.labels; key label) {
+					<text>{label as string}</text>
+				} @empty {
+					<text>none</text>
+				}
+			</view>
+		} @empty {
+			<view class="empty"><text>no groups</text></view>
+		}
+	</view>
+}
+`;
+
 type CompileShape = {
 	readonly target?: 'lynx' | 'universal';
 	readonly thread?: 'main-thread' | 'background';
 	readonly backend?: unknown;
+	/** Emit the compiler-owned background program consumed by the Block core. */
+	readonly backgroundProgram?: boolean;
 	/**
 	 * The package-relative module id an addressing build assigns (issue #246
 	 * §6.2). Its presence is what turns the addressing on, in both compiles.
@@ -100,7 +126,14 @@ function compileCard(
 ): {
 	code: string;
 	map: any;
+	programAddresses?: readonly unknown[];
 	mainThreadProgramCoverage?: { total: number; addressed: number };
+	lynxElementTemplates?: readonly {
+		templateId: string;
+		compiledTemplate: Readonly<Record<string, unknown>>;
+		sourceFile: string;
+	}[];
+	lynxElementTemplateCoverage?: { total: number; lowered: number; visibilitySlots: number };
 	lynxBlockSemanticRequirements?: {
 		version: number;
 		runtimeUses: readonly { name: string; line: number; column: number }[];
@@ -140,17 +173,34 @@ function compileCard(
 		}[];
 	};
 } {
-	const { target = 'lynx', thread = 'main-thread', backend, module } = options;
+	const { target = 'lynx', thread = 'main-thread', backend, module, backgroundProgram } = options;
 	return compile(source, '/src/Card.lynx.tsrx', {
 		hmr: false,
-		renderer: { ...lynxMainThreadRenderer, target, id: 'lynx' },
+		renderer: {
+			...lynxMainThreadRenderer,
+			target,
+			id: 'lynx',
+			...(backgroundProgram
+				? {
+						module: '@octanejs/lynx/renderer',
+						capabilities: [...lynxMainThreadRenderer.capabilities, 'compiler-program-ir'],
+					}
+				: null),
+		},
 		universalRuntime: { runtime: 'lynx', thread },
 		...(backend === undefined ? null : { mainThreadProgramBackend: backend }),
 		...(module === undefined ? null : { programModuleId: module }),
 	}) as {
 		code: string;
 		map: any;
+		programAddresses?: readonly unknown[];
 		mainThreadProgramCoverage?: { total: number; addressed: number };
+		lynxElementTemplates?: readonly {
+			templateId: string;
+			compiledTemplate: Readonly<Record<string, unknown>>;
+			sourceFile: string;
+		}[];
+		lynxElementTemplateCoverage?: { total: number; lowered: number; visibilitySlots: number };
 		lynxBlockSemanticRequirements?: {
 			version: number;
 			runtimeUses: readonly { name: string; line: number; column: number }[];
@@ -239,8 +289,14 @@ interface EvaluatedModule {
 	readonly roots: readonly any[];
 	/** The address each of those plans was declared with, `undefined` for none. */
 	readonly addresses: readonly any[];
+	readonly componentMetadata: readonly unknown[];
 	/** The module's `Card`, which returns its plan and that plan's value array. */
-	readonly card: (props: unknown) => { readonly values: readonly unknown[] };
+	readonly card: (props: unknown) => {
+		readonly plan?: unknown;
+		readonly program?: unknown;
+		readonly values: readonly unknown[];
+		readonly computations?: readonly any[];
+	};
 }
 
 /**
@@ -256,6 +312,20 @@ interface EvaluatedModule {
 function evaluate(code: string): EvaluatedModule {
 	const roots: any[] = [];
 	const addresses: any[] = [];
+	const componentMetadata: unknown[] = [];
+	const useState = (initial: unknown) => {
+		let value = typeof initial === 'function' ? (initial as () => unknown)() : initial;
+		return [
+			value,
+			(next: unknown) => (value = typeof next === 'function' ? (next as any)(value) : next),
+			() => value,
+		] as const;
+	};
+	const useReducer = (reducer: (state: unknown, action: unknown) => unknown, initial: unknown) => {
+		let value = initial;
+		return [value, (action: unknown) => (value = reducer(value, action)), () => value] as const;
+	};
+
 	const renderer = {
 		universalPlan: (_renderer: string, root: unknown, address?: unknown) => {
 			roots.push(root);
@@ -263,18 +333,37 @@ function evaluate(code: string): EvaluatedModule {
 			return root;
 		},
 		universalValue: (plan: unknown, values: readonly unknown[]) => ({ plan, values }),
-		defineUniversalComponent: (_renderer: string, render: unknown) => render,
+		enableLynxCompilerProgramRefs: () => {},
+		lynxProgram: (_renderer: string, program: any) => {
+			roots.push(program);
+			addresses.push(program.address);
+			return program;
+		},
+		lynxProgramValue: (
+			program: unknown,
+			values: readonly unknown[],
+			computations: readonly any[] = [],
+		) => ({ program, values, computations }),
+		useState,
+		useReducer,
+		__useStateWithGetter: useState,
+		defineUniversalComponent: (_renderer: string, render: unknown, metadata: unknown) => {
+			componentMetadata.push(metadata);
+			return render;
+		},
 		firstScreenEvent: Symbol('firstScreenEvent'),
+		__useReducerWithGetter: useReducer,
+		hookSlots: () => 0,
 	};
 	const rewritten = code
 		.replace(
-			/import\s*\{([\s\S]*?)\}\s*from\s*["']@octanejs\/lynx\/main-renderer["'];/g,
+			/import\s*\{([\s\S]*?)\}\s*from\s*["']@octanejs\/lynx\/(?:main-)?renderer["'];/g,
 			(_match, specifiers: string) =>
 				`const {${specifiers.replace(/\s+as\s+/g, ': ')}} = __renderer;`,
 		)
 		.replace('export const Card =', 'const Card =');
 	const card = new Function('__renderer', `${rewritten}\nreturn Card;`)(renderer);
-	return { roots, addresses, card: card as EvaluatedModule['card'] };
+	return { roots, addresses, componentMetadata, card: card as EvaluatedModule['card'] };
 }
 
 /** The fake host with the intrinsic factories a real PAPI always publishes. */
@@ -320,7 +409,7 @@ function throughCompiledProgram(root: any, values: readonly unknown[]): unknown 
 
 /** The same instance, painted by the dense applier from the same plan. */
 function throughApplier(planRoot: unknown, values: readonly unknown[]): unknown {
-	const derived = Backend.deriveLynxMainThreadProgram(planRoot as never)!;
+	const derived = Backend.deriveLynxProgramIR(planRoot as never)!;
 	const papi = createHost();
 	const container = createLynxHostContainer(papi, { root: 1 });
 	const core = createLynxBlockCore();
@@ -334,8 +423,479 @@ function throughApplier(planRoot: unknown, values: readonly unknown[]): unknown 
 	if (batch !== null) prepareLynxHostBatch(container, batch).apply();
 	return shape(papi.pages[0]!);
 }
-
 describe('emitting a compiled create function from the lynx main-thread compile', () => {
+	it('emits Element Template metadata out of band from the same shared IR', () => {
+		const result = compileCard(ADDRESSABLE_CARD, {
+			backend: ElementTemplateBackend,
+			module: 'src/Card.lynx.tsrx',
+		});
+		const { roots } = evaluate(result.code);
+		expect(result.lynxElementTemplateCoverage).toEqual({
+			total: 1,
+			lowered: 1,
+			visibilitySlots: 1,
+		});
+		expect(result.lynxElementTemplates).toEqual([
+			{
+				templateId: expect.stringMatching(/^_et_[0-9a-f]{12}$/),
+				compiledTemplate: expect.objectContaining({
+					kind: 'element',
+					type: 'view',
+					attributesArray: expect.any(Array),
+					children: expect.any(Array),
+				}),
+				sourceFile: '/src/Card.lynx.tsrx',
+			},
+		]);
+		expect(roots[0]).toMatchObject({
+			elementTemplate: {
+				templateId: result.lynxElementTemplates![0]!.templateId,
+				attributeSlots: 6,
+				childSlots: 0,
+				visibilitySlot: 5,
+			},
+		});
+	});
+
+	it('emits structural Element Template arity without a synthetic visibility field', () => {
+		const result = compileCard(ADDRESSABLE_CARD, {
+			backend: StructuralElementTemplateBackend,
+			module: 'src/Card.lynx.tsrx',
+		});
+		const sourceSafe = compileCard(ADDRESSABLE_CARD, {
+			backend: ElementTemplateBackend,
+			module: 'src/Card.lynx.tsrx',
+		});
+		const { roots } = evaluate(result.code);
+		const definition = result.lynxElementTemplates![0]!.compiledTemplate as {
+			readonly attributesArray: readonly { readonly key?: string }[];
+		};
+
+		expect(definition.attributesArray.some((attribute) => attribute.key === 'hidden')).toBe(false);
+		expect(result.lynxElementTemplateCoverage).toEqual({
+			total: 1,
+			lowered: 1,
+			visibilitySlots: 0,
+		});
+		expect(result.lynxElementTemplates![0]!.templateId).not.toBe(
+			sourceSafe.lynxElementTemplates![0]!.templateId,
+		);
+		expect(roots[0]).toMatchObject({
+			elementTemplate: {
+				templateId: result.lynxElementTemplates![0]!.templateId,
+				attributeSlots: 5,
+				childSlots: 0,
+			},
+		});
+		expect(roots[0].elementTemplate).not.toHaveProperty('visibilitySlot');
+	});
+
+	it('rejects a structural Element Template backend whose plan and definition arity drift', () => {
+		const invalidBackend = {
+			...StructuralElementTemplateBackend,
+			deriveLynxElementTemplateProgram(derived: never) {
+				const lowered = StructuralElementTemplateBackend.deriveLynxElementTemplateProgram(derived)!;
+				return { ...lowered, attributeSlots: lowered.attributeSlots + 1 };
+			},
+		};
+
+		expect(() =>
+			compileCard(ADDRESSABLE_CARD, {
+				backend: invalidBackend,
+				module: 'src/Card.lynx.tsrx',
+			}),
+		).toThrow(/Element Template backend returned an invalid program/);
+	});
+
+	it('emits an independent versioned background program for the Block core', () => {
+		const code = compiled(ADDRESSABLE_CARD, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module: 'src/Card.lynx.tsrx',
+			backgroundProgram: true,
+		});
+		expect(code).toContain('lynxProgram as');
+		expect(code).toContain('lynxProgramValue as');
+		expect(code).not.toContain('universalPlan as');
+		expect(code).not.toContain('universalValue as');
+
+		const { roots, addresses, card } = evaluate(code);
+		expect(roots).toHaveLength(1);
+		expect(roots[0]).toMatchObject({
+			version: 1,
+			address: {
+				module: 'src/Card.lynx.tsrx',
+				index: 0,
+				digest: expect.stringMatching(/^[0-9a-f]{16}$/),
+			},
+			wire: { nodes: expect.any(Array), events: expect.any(Array) },
+			values: expect.any(Array),
+			events: expect.any(Array),
+			ranges: [],
+		});
+		expect(addresses).toEqual([roots[0].address]);
+		const value = card({
+			tone: 'card active',
+			ident: 'card-1',
+			label: 'Label',
+			detail: 'Detail',
+			onPick: () => undefined,
+		});
+		expect(value.program).toBe(roots[0]);
+		expect(value.values).toEqual([
+			'card active',
+			'card-1',
+			expect.any(Function),
+			'Label',
+			'Detail',
+		]);
+	});
+
+	it('emits host refs as resource IR without putting them in the physical wire', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+export function Card(props: { label: string; capture: (value: unknown) => void }) @{
+	<view ref={props.capture}>
+		<text>{props.label as string}</text>
+	</view>
+}
+`;
+		const module = 'src/RefCard.lynx.tsrx';
+		const main = evaluate(compiled(source, { backend: Backend, module }));
+		const backgroundCode = compiled(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+		expect(backgroundCode).toContain('enableLynxCompilerProgramRefs');
+		const background = evaluate(backgroundCode);
+
+		expect(main.roots[0].refs).toEqual([0]);
+		expect(background.roots[0].refs).toEqual([{ node: 0, slot: 0 }]);
+		expect(background.roots[0].values.map((site: { slot: number }) => site.slot)).toEqual([1]);
+		expect(background.roots[0].wire.nodes[0].bindings).toBeUndefined();
+		expect(main.addresses).toEqual(background.addresses);
+
+		const withoutRefCode = compiled(source.replace(' ref={props.capture}', ''), {
+			backend: Backend,
+			module,
+		});
+		expect(withoutRefCode).not.toContain('enableLynxCompilerProgramRefs');
+		const withoutRef = evaluate(withoutRefCode);
+		expect(withoutRef.roots[0]).not.toHaveProperty('refs');
+		expect(withoutRef.addresses[0].digest).not.toBe(main.addresses[0].digest);
+	});
+
+	it('emits replayable state computations for pure dynamic bindings', () => {
+		const code = compiled(
+			`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+export function Card({ prefix }: { prefix: string }) @{
+	const [count, setCount] = useState(0);
+	const label = \`\${prefix}:\${count}\`;
+	<view class={count > 0 ? 'active' : 'idle'}>
+		<text>{label as string}</text>
+		<text bindtap={() => setCount(count + 1)}>{\`\${count}\`}</text>
+	</view>
+}
+`,
+			{
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/DirtyCard.lynx.tsrx',
+				backgroundProgram: true,
+			},
+		);
+		expect(code).toContain('__useStateWithGetter as');
+
+		const value = evaluate(code).card({ prefix: 'row' });
+		expect(value.computations).toHaveLength(1);
+		const computation = value.computations![0];
+		expect(computation).toMatchObject({
+			kind: 'scalar',
+			purity: 'pure',
+			escape: 'component-render',
+		});
+		expect(computation.sources).toEqual([expect.any(Function)]);
+		expect(computation.slots.length).toBeGreaterThanOrEqual(4);
+		const initial = computation.run();
+		for (let index = 0; index < initial.length; index++) {
+			const rendered = value.values[computation.slots[index]];
+			if (typeof initial[index] === 'function') expect(rendered).toEqual(expect.any(Function));
+			else expect(initial[index]).toBe(rendered);
+		}
+
+		const tap = value.values.find((entry) => typeof entry === 'function');
+		expect(tap).toEqual(expect.any(Function));
+		(tap as () => void)();
+		const updated = computation.run();
+		expect(updated).toEqual(expect.arrayContaining(['active', 'row:1', '1']));
+		const updatedTap = updated.find((entry: unknown) => typeof entry === 'function');
+		expect(updatedTap).toEqual(expect.any(Function));
+		(updatedTap as () => void)();
+		expect(computation.run()).toEqual(expect.arrayContaining(['active', 'row:2', '2']));
+	});
+
+	it('partitions independent state sources into separate computation groups', () => {
+		const value = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+export function Card() @{
+	const [left] = useState('left');
+	const [right] = useState('right');
+	<view class={left}><text>{right as string}</text></view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/IndependentCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			),
+		).card({});
+
+		expect(value.computations).toHaveLength(2);
+		expect(value.computations!.map((group) => group.sources.length)).toEqual([1, 1]);
+		const slots = value.computations!.flatMap((group) => group.slots);
+		expect(new Set(slots).size).toBe(slots.length);
+		expect(value.computations!.flatMap((group) => group.run()).sort()).toEqual(['left', 'right']);
+	});
+
+	it('replays useReducer state through the same dirty binding path', () => {
+		const value = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useReducer } from 'octane';
+
+export function Card() @{
+	const [count, dispatch] = useReducer((value: number, delta: number) => value + delta, 0);
+	<view><text bindtap={() => dispatch(2)}>{\`\${count}\`}</text></view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/ReducerCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			),
+		).card({});
+
+		expect(value.computations).toHaveLength(1);
+		const computation = value.computations![0];
+		expect(computation).toMatchObject({
+			kind: 'scalar',
+			purity: 'pure',
+			escape: 'component-render',
+		});
+		expect(computation.run()).toEqual(['0']);
+		const tap = value.values.find((entry) => typeof entry === 'function');
+		expect(tap).toEqual(expect.any(Function));
+		(tap as () => void)();
+		expect(computation.run()).toEqual(['2']);
+	});
+
+	it('keeps scalar replay separate from structural invalidation', () => {
+		const code = compiled(
+			`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+export function Card() @{
+	const [heading] = useState('ready');
+	const [rows] = useState([{ id: 1, label: 'one' }]);
+	<view>
+		<text>{heading as string}</text>
+		<view>
+			@for (const row of rows; key row.id) {
+				<text>{row.label as string}</text>
+			}
+		</view>
+	</view>
+}
+`,
+			{
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/StructuralStateCard.lynx.tsrx',
+				backgroundProgram: true,
+			},
+		);
+		const descriptors = [
+			...code.matchAll(
+				/["']?kind["']?\s*:\s*["'](scalar|structural)["'][\s\S]*?["']?purity["']?\s*:\s*["'](pure|unknown)["']/g,
+			),
+		].map((match) => match.slice(1));
+		expect(descriptors).toEqual(
+			expect.arrayContaining([
+				['scalar', 'pure'],
+				['structural', 'unknown'],
+			]),
+		);
+	});
+
+	it('declines unproved output evaluation without enabling getter-aware hooks', () => {
+		const code = compiled(
+			`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+function format(value: number): string {
+	return String(value);
+}
+
+export function Card() @{
+	const [count] = useState(0);
+	<view><text>{format(count) as string}</text></view>
+}
+`,
+			{
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/ConservativeCard.lynx.tsrx',
+				backgroundProgram: true,
+			},
+		);
+		expect(code).not.toContain('__useStateWithGetter as');
+
+		const value = evaluate(code).card({});
+		expect(value.computations).toEqual([]);
+		expect(value.values).toEqual(['0']);
+	});
+
+	it('keeps external property reads on the conservative component path', () => {
+		const code = compiled(
+			`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+const external = { get value(): string { return 'outside'; } };
+
+export function Card() @{
+	const [count] = useState(0);
+	<view><text>{\`\${external.value}:\${count}\`}</text></view>
+}
+`,
+			{
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/ExternalGetter.lynx.tsrx',
+				backgroundProgram: true,
+			},
+		);
+
+		expect(code).not.toContain('__useStateWithGetter as');
+		expect(code).not.toContain('component-render');
+	});
+
+	it('does not specialize a local function that merely uses a built-in hook name', () => {
+		const code = compiled(
+			`/** @jsxImportSource @octanejs/lynx/intrinsics */
+function useState(initial: string) {
+	return [initial, () => undefined] as const;
+}
+
+export function Card() @{
+	const [tone] = useState('quiet');
+	<view class={tone} />
+}
+`,
+			{
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/LocalHookName.lynx.tsrx',
+				backgroundProgram: true,
+			},
+		);
+
+		expect(code).not.toContain('component-render');
+	});
+
+	it('emits an explicit hook-scope proof for stateless and custom-hook components', () => {
+		const rendererModule = '@octanejs/lynx/main-renderer';
+		const stateless = evaluate(compiled(ADDRESSABLE_CARD));
+		expect(stateless.componentMetadata).toEqual([{ module: rendererModule, hookScope: false }]);
+
+		const hooked = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+function useTone(value: string): string {
+	return value;
+}
+
+export function Card(props: { label: string }) @{
+	const tone = useTone(props.label);
+	<view><text>{tone as string}</text></view>
+}
+`,
+				{},
+			),
+		);
+		expect(hooked.componentMetadata).toEqual([{ module: rendererModule, hookScope: true }]);
+	});
+
+	it('keeps an unaddressable Block background plan on the Universal plan path', () => {
+		const code = compiled(CARD, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module: 'src/Card.lynx.tsrx',
+			backgroundProgram: true,
+		});
+		expect(code).toContain('universalPlan as');
+		expect(code).toContain('universalValue as');
+		expect(code).not.toContain('lynxProgram as');
+		expect(code).not.toContain('lynxProgramValue as');
+
+		const { roots, addresses, card } = evaluate(code);
+		expect(roots).toHaveLength(1);
+		expect(addresses).toEqual([undefined]);
+		expect(
+			card({
+				tone: 'card active',
+				ident: 'card-1',
+				label: 'Label',
+				detail: 'Detail',
+				onPick: () => undefined,
+			}),
+		).toMatchObject({ plan: roots[0], values: expect.any(Array) });
+	});
+
+	it('emits program and Universal helpers together for a mixed Block module', () => {
+		const result = compileCard(
+			`${ADDRESSABLE_CARD}
+export function Dynamic(props: { detail: unknown }) @{
+	<view><text>{props.detail}</text></view>
+}
+`,
+			{
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/Card.lynx.tsrx',
+				backgroundProgram: true,
+			},
+		);
+		expect(result.code).toContain('lynxProgram as');
+		expect(result.code).toContain('lynxProgramValue as');
+		expect(result.code).toContain('universalPlan as');
+		expect(result.code).toContain('universalValue as');
+		expect(result.mainThreadProgramCoverage).toEqual({
+			total: 2,
+			addressed: 1,
+		});
+	});
+
 	it('changes nothing unless a backend is supplied', () => {
 		expect(compiled(CARD, { backend: Backend })).not.toBe(compiled(CARD));
 		// The plan the module declares is the same plan either way; only its
@@ -371,6 +931,7 @@ describe('emitting a compiled create function from the lynx main-thread compile'
 		expect(code).not.toContain('"create"');
 		const [root] = evaluate(code).roots;
 		expect(root.kind).toBe('program');
+		expect(root.version).toBe(1);
 		expect(typeof root.bind).toBe('function');
 		// The keyed slot map survives unchanged: it is the contract, not the
 		// description. `p:text` is the proved-scalar hole folded onto its `<text>`
@@ -402,7 +963,7 @@ describe('emitting a compiled create function from the lynx main-thread compile'
 		// thing the node list cannot say because the program dropped it. Counting
 		// the program's four nodes and its one range: view(0), card-label(1),
 		// card-body(2), the `d` text(3), its range(4).
-		expect(root.ranges).toEqual([{ slot: 4, node: 3, id: 4, paintsText: true }]);
+		expect(root.ranges).toEqual([{ slot: 4, node: 3, before: null, id: 4, paintsText: true }]);
 		// The count the create function makes, which is what a consumer claiming
 		// first-screen IDs needs and all it needs: the nodes come back from `bind`
 		// in this order, so nothing walks anything to pair them up.
@@ -444,7 +1005,7 @@ export function Card(props: { label: unknown }) @{
 		// that paints it when the value turns out to be a string. It is true here
 		// because the hole's host is a `text`; a hole under a `view` is the
 		// ordinary keyed list at every value and would read `false`.
-		expect(root.ranges).toEqual([{ slot: 0, node: 2, id: 3, paintsText: true }]);
+		expect(root.ranges).toEqual([{ slot: 0, node: 2, before: null, id: 3, paintsText: true }]);
 		const papi = createHost();
 		createLynxHostContainer(papi, { root: 1 });
 		const page = papi.pages[0]!;
@@ -505,19 +1066,31 @@ export function Card(props: { label: unknown }) @{
 		expect(withBackend.code.split('\n').length).toBeGreaterThan(compiled(CARD).split('\n').length);
 	});
 
-	it('leaves a plan the backend declines on the interpreted encoding', () => {
-		// A renderable hole that is not its parent's last child cannot be lifted out
-		// as a range without moving the siblings after it, so the backend declines
-		// the whole plan and the compile keeps the encoding it had before the
-		// backend existed. "Not describable as a program" is the ordinary answer for
-		// most plans, so it has to be silent rather than fatal.
+	it('emits a program for a range followed by a static sibling', () => {
 		const AHEAD = `/** @jsxImportSource @octanejs/lynx/intrinsics */
 export function Card(props: { label: string }) @{
 	<text class="l">{props.label as string}{'tail'}</text>
 }
 `;
-		expect(compiled(AHEAD, { backend: Backend })).toBe(compiled(AHEAD));
-		expect(evaluate(compiled(AHEAD, { backend: Backend })).roots[0].kind).toBe('template');
+		const evaluated = evaluate(compiled(AHEAD, { backend: Backend }));
+		const [root] = evaluated.roots;
+		expect(root.kind).toBe('program');
+		expect(root.ranges).toEqual([
+			expect.objectContaining({ slot: 0, node: 0, before: 1, paintsText: true }),
+		]);
+
+		const value = evaluated.card({ label: 'Live' });
+		const papi = createHost();
+		createLynxHostContainer(papi, { root: 1 });
+		const page = papi.pages[0]!;
+		const args = [
+			...root.values.map((slot: number) => value.values[slot]),
+			...root.events.map(() => () => undefined),
+			...root.ranges.map((range: { slot: number }) => value.values[range.slot]),
+		];
+		const nodes = root.bind(papi)(page.id, ...args) as readonly FakeNode[];
+		papi.insertBefore(page, nodes[0]!, null);
+		expect(nodes[0]!.children.map((child) => child.text)).toEqual(['Live', 'tail']);
 	});
 
 	it('keeps a described plan the emitter refuses on the interpreted encoding', () => {
@@ -560,9 +1133,58 @@ export function Card(props: { rows: unknown; label: unknown }) @{
 		const [root] = evaluate(compiled(BOTH, { backend: Backend })).roots;
 		expect(root.kind).toBe('program');
 		expect(root.ranges).toEqual([
-			{ slot: 0, node: 1, id: 2, paintsText: true },
-			{ slot: 1, node: 2, id: 4, paintsText: false },
+			{ slot: 0, node: 1, before: null, id: 2, paintsText: true },
+			{ slot: 1, node: 2, before: null, id: 4, paintsText: false },
 		]);
+	});
+
+	it('prefers the shared IR hook when a backend also exposes the legacy hook', () => {
+		const backend = {
+			...Backend,
+			deriveLynxMainThreadProgram() {
+				throw new Error('the legacy derivation must not run');
+			},
+		};
+		expect(evaluate(compiled(CARD, { backend })).roots[0].kind).toBe('program');
+	});
+
+	it('rejects a shared IR version mismatch before emitting either layer', () => {
+		const stale = {
+			...Backend,
+			deriveLynxProgramIR(plan: never) {
+				const ir = Backend.deriveLynxProgramIR(plan);
+				return ir === null ? null : { ...ir, version: 2 };
+			},
+		};
+		expect(() => compiled(CARD, { backend: stale })).toThrowError(
+			/expected program IR version 1, but the configured backend derived version 2/,
+		);
+		expect(() =>
+			compiled(CARD, {
+				backend: stale,
+				thread: 'background',
+				module: 'src/Card.lynx.tsrx',
+			}),
+		).toThrowError(/expected program IR version 1, but the configured backend derived version 2/);
+	});
+
+	it('rejects a malformed shared IR hook instead of silently using the legacy hook', () => {
+		const malformed = {
+			deriveLynxProgramIR: true,
+			deriveLynxMainThreadProgram: Backend.deriveLynxMainThreadProgram,
+			emitLynxMainThreadProgram: Backend.emitLynxMainThreadProgram,
+		};
+		expect(() => compiled(CARD, { backend: malformed })).toThrowError(
+			/deriveLynxProgramIR must be a function/,
+		);
+	});
+
+	it('keeps the legacy derivation hook as a compatibility fallback', () => {
+		const legacy = {
+			deriveLynxMainThreadProgram: Backend.deriveLynxMainThreadProgram,
+			emitLynxMainThreadProgram: Backend.emitLynxMainThreadProgram,
+		};
+		expect(evaluate(compiled(CARD, { backend: legacy })).roots[0].kind).toBe('program');
 	});
 
 	it('fails the build when a backend contradicts itself about its own arity', () => {
@@ -571,7 +1193,7 @@ export function Card(props: { rows: unknown; label: unknown }) @{
 		// shifted positions — a first screen that is wrong rather than absent. The
 		// compiler takes the source on trust and the counts on evidence.
 		const lying = {
-			deriveLynxMainThreadProgram: Backend.deriveLynxMainThreadProgram,
+			deriveLynxProgramIR: Backend.deriveLynxProgramIR,
 			emitLynxMainThreadProgram: (program: never, options: { readonly name: string }) => ({
 				...Backend.emitLynxMainThreadProgram(program, options),
 				valueCount: 99,
@@ -588,7 +1210,7 @@ export function Card(props: { rows: unknown; label: unknown }) @{
 		// truncate the backend's output — a shorter create function instead of a
 		// build error naming the backend.
 		const trailing = {
-			deriveLynxMainThreadProgram: Backend.deriveLynxMainThreadProgram,
+			deriveLynxProgramIR: Backend.deriveLynxProgramIR,
 			emitLynxMainThreadProgram: (program: never, options: { readonly name: string }) => {
 				const emission = Backend.emitLynxMainThreadProgram(program, options);
 				return { ...emission, source: `${emission.source}); (0` };
@@ -854,7 +1476,7 @@ export function App(props: { show: boolean; child: unknown }) @{
 
 		expect(result.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
 			{ kind: 'program-root-event', name: 'bindtap', line: 7, column: 7 },
-			{ kind: 'component', name: 'Panel', line: 8, column: 2 },
+			{ kind: 'local-component', name: 'Panel', line: 8, column: 2 },
 			{ kind: 'native-list', name: 'list', line: 9, column: 2 },
 			{ kind: 'host-ref', name: 'list', line: 9, column: 8 },
 			{ kind: 'native-list', name: 'list-item', line: 9, column: 30 },
@@ -863,6 +1485,148 @@ export function App(props: { show: boolean; child: unknown }) @{
 			{ kind: 'switch', name: null, line: 16, column: 2 },
 			{ kind: 'try', name: null, line: 24, column: 2 },
 			{ kind: 'renderable-hole', name: null, line: 25, column: 2 },
+		]);
+	});
+
+	it('proves only immutable module-root component bindings', () => {
+		const result = compileCard(`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import External from './External.tsrx';
+
+function Local() @{
+	<view />
+}
+
+function Shadowed(props: { Local: () => unknown }) @{
+	const Local = props.Local;
+	<Local />
+}
+
+export function App() @{
+	<view>
+		<Local />
+		<Shadowed Local={Local} />
+		<External />
+	</view>
+}
+`);
+
+		expect(result.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'component', name: 'Local', line: 10, column: 1 },
+			{ kind: 'local-component', name: 'Local', line: 15, column: 2 },
+			{ kind: 'local-component', name: 'Shadowed', line: 16, column: 2 },
+			{ kind: 'component', name: 'External', line: 17, column: 2 },
+		]);
+	});
+
+	it('records inline template-returning component props independently', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+function Frame(props: { render: () => unknown; onValue: () => number }) {
+	props.onValue();
+	return props.render();
+}
+
+export function App() @{
+	const [label] = useState('rendered');
+	<Frame
+		render={() => <view><text>{label as string}</text></view>}
+		onValue={() => 1}
+	/>
+}
+`;
+		const module = 'src/InlineRenderProp.lynx.tsrx';
+		const result = compileCard(source, { backend: Backend, module });
+		const background = compileCard(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+
+		expect(result.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'local-component', name: 'Frame', line: 10, column: 1 },
+			{ kind: 'inline-render-prop', name: 'render', line: 11, column: 2 },
+		]);
+		expect(result.mainThreadProgramCoverage).toEqual({ total: 1, addressed: 1 });
+		expect(background.mainThreadProgramCoverage).toEqual({ total: 1, addressed: 1 });
+		expect(background.code).not.toContain('universalPlan as');
+	});
+
+	it('proves only local-component-or-empty host holes and preserves their structural kind', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+function Region(props: { identity: string; label: string }) @{
+	const [tone] = useState('quiet');
+	<view><text>{props.label + ':' + tone}</text></view>
+}
+
+export function App(props: { show: boolean; identity: string; label: string }) @{
+	<view>
+		{props.show ? <Region key={props.identity} label={props.label} /> : null}
+	</view>
+}
+`;
+		const module = 'src/ComponentHole.lynx.tsrx';
+		const result = compileCard(source, { backend: Backend, module });
+		const background = compileCard(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+
+		expect(result.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'component-hole', name: null, line: 10, column: 2 },
+			{ kind: 'local-component', name: 'Region', line: 10, column: 16 },
+		]);
+		expect(result.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
+		expect(background.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
+		expect(result.code).toContain('universalIf as');
+		expect(background.code).not.toContain('universalPlan as');
+	});
+
+	it('proves imported portal-or-empty host holes independently of generic renderables', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { createPortal as portal } from 'octane';
+
+export function App(props: { target: unknown | null; label: string }) @{
+	<view>
+		{props.target === null ? null : portal(<text>{props.label as string}</text>, props.target)}
+	</view>
+}
+`;
+		const module = 'src/PortalHole.lynx.tsrx';
+		const main = compileCard(source, { backend: Backend, module });
+		const background = compileCard(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+
+		expect(main.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'portal', name: null, line: 6, column: 2 },
+		]);
+		expect(background.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'portal', name: null, line: 6, column: 2 },
+		]);
+		expect(main.lynxBlockSemanticRequirements?.runtimeUses).toEqual([
+			{ name: 'createPortal', line: 6, column: 34 },
+		]);
+
+		const shadowed = compileCard(`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { createPortal as portal } from 'octane';
+
+export function App(props: { portal: typeof portal; target: Element }) @{
+	const portal = props.portal;
+	<view>{portal(<text>shadowed</text>, props.target)}</view>
+}
+`);
+		expect(shadowed.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			{ kind: 'renderable-hole', name: null, line: 6, column: 7 },
 		]);
 	});
 });
@@ -944,6 +1708,222 @@ export function Card(props: { row: { id: number; label: string }; isSelected: bo
 		).toEqual({ total: 1, addressed: 1 });
 	});
 
+	it('keeps a component row resident when the keyed range has an @empty arm', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+interface Item { readonly id: number; readonly label: string }
+
+function Row(props: { readonly item: Item }) @{
+	<view class="row"><text>{props.item.label as string}</text></view>
+}
+
+export function Card(props: { readonly items: readonly Item[] }) @{
+	<view class="rows">
+		@for (const item of props.items; key item.id) {
+			<Row item={item} />
+		} @empty {
+			<view class="empty"><text>none</text></view>
+		}
+	</view>
+}
+`;
+		const module = 'src/EmptyRows.lynx.tsrx';
+		const mainResult = compileCard(source, { backend: Backend, module });
+		const backgroundResult = compileCard(source, {
+			thread: 'background',
+			backend: Backend,
+			module,
+		});
+		const main = evaluate(mainResult.code);
+		const background = evaluate(backgroundResult.code);
+
+		expect(mainResult.mainThreadProgramCoverage).toEqual({ total: 3, addressed: 3 });
+		expect(backgroundResult.mainThreadProgramCoverage).toEqual({ total: 3, addressed: 3 });
+		expect(main.addresses).toHaveLength(3);
+		expect(main.addresses.every((address) => address !== undefined)).toBe(true);
+		expect(background.addresses).toEqual(main.addresses);
+		expect(backgroundResult.lynxBlockFeatureRequirements?.keyedRanges).toEqual([
+			expect.objectContaining({
+				empty: true,
+				nested: false,
+				lastChild: true,
+				row: expect.objectContaining({ kind: 'local-component', name: 'Row' }),
+			}),
+		]);
+	});
+
+	it('addresses sibling keyed ranges by compiler slot on one host', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+interface Item { readonly id: number; readonly label: string }
+
+export function Card(props: { readonly left: readonly Item[]; readonly right: readonly Item[] }) @{
+	<view class="rows">
+		@for (const item of props.left; key item.id) {
+			<view class="left"><text>{item.label as string}</text></view>
+		}
+		@for (const item of props.right; key item.id) {
+			<view class="right"><text>{item.label as string}</text></view>
+		}
+		<text class="tail">ready</text>
+	</view>
+}
+`;
+		const module = 'src/SiblingRows.lynx.tsrx';
+		const mainResult = compileCard(source, { backend: Backend, module });
+		const backgroundResult = compileCard(source, {
+			thread: 'background',
+			backend: Backend,
+			module,
+		});
+		const main = evaluate(mainResult.code);
+		const background = evaluate(backgroundResult.code);
+		const root = main.roots.find((candidate) => candidate.ranges?.length === 2);
+
+		expect(mainResult.mainThreadProgramCoverage).toEqual({ total: 3, addressed: 3 });
+		expect(backgroundResult.mainThreadProgramCoverage).toEqual({ total: 3, addressed: 3 });
+		expect(root?.ranges).toEqual([
+			expect.objectContaining({ slot: expect.any(Number), node: 0, before: 1 }),
+			expect.objectContaining({ slot: expect.any(Number), node: 0, before: 1 }),
+		]);
+		expect(root!.ranges[0]!.slot).not.toBe(root!.ranges[1]!.slot);
+		expect(background.addresses).toEqual(main.addresses);
+	});
+
+	it('keeps a Provider-rooted keyed program fully addressed and dirty-grouped', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { createContext, useContext, useState } from 'octane';
+
+const Theme = createContext('default');
+interface Item { readonly id: number; readonly label: string }
+
+function Frame(props: { readonly children?: unknown }) {
+	return props.children;
+}
+
+function Row(props: { readonly item: Item }) @{
+	const theme = useContext(Theme);
+	<view class={theme}><text>{props.item.label as string}</text></view>
+}
+
+export function Card(props: { readonly items: readonly Item[]; readonly theme: string }) @{
+	const [theme] = useState(props.theme);
+	<Theme.Provider value={theme}>
+		<Frame>
+			<view class={theme}>
+				@for (const item of props.items; key item.id) {
+					<Row item={item} />
+				}
+			</view>
+		</Frame>
+	</Theme.Provider>
+}
+`;
+		const module = 'src/ContextRows.lynx.tsrx';
+		const mainResult = compileCard(source, { backend: Backend, module });
+		const backgroundResult = compileCard(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+
+		expect(mainResult.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
+		expect(backgroundResult.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
+		expect(backgroundResult.code).toContain('universalComponent as');
+		expect(backgroundResult.code).not.toContain('universalPlan as');
+		expect(backgroundResult.code).not.toContain('universalValue as');
+		expect(backgroundResult.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			expect.objectContaining({ kind: 'local-component', name: 'Frame' }),
+		]);
+		expect(
+			backgroundResult.lynxBlockSemanticRequirements?.runtimeUses.map((site) => site.name),
+		).toEqual(['createContext', 'useContext', 'useState']);
+		expect(backgroundResult.lynxBlockFeatureRequirements?.keyedRanges).toEqual([
+			expect.objectContaining({
+				row: expect.objectContaining({
+					kind: 'local-component',
+					name: 'Row',
+					hooks: [expect.objectContaining({ name: 'useContext' })],
+				}),
+			}),
+		]);
+	});
+
+	it('addresses an Activity body and reports it as a supported structural region', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { Activity } from 'octane';
+
+export function Card(props: { readonly visible: boolean; readonly label: string }) @{
+	<view class="page">
+		<Activity mode={props.visible ? 'visible' : 'hidden'}>
+			<view class="retained"><text>{props.label as string}</text></view>
+		</Activity>
+	</view>
+}
+`;
+		const module = 'src/ActivityCard.lynx.tsrx';
+		const main = compileCard(source, { backend: Backend, module });
+		const background = compileCard(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+
+		expect(main.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
+		expect(background.mainThreadProgramCoverage).toEqual({ total: 2, addressed: 2 });
+		expect(main.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			expect.objectContaining({ kind: 'activity' }),
+		]);
+		expect(background.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			expect.objectContaining({ kind: 'activity' }),
+		]);
+		expect(background.lynxBlockSemanticRequirements?.runtimeUses.map((site) => site.name)).toEqual([
+			'Activity',
+		]);
+	});
+
+	it('addresses every @try arm for both Lynx compiler threads', () => {
+		const source = `/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { use } from 'octane';
+
+export function Card(props: { readonly value: Promise<string> }) @{
+	<view class="page">
+		@try {
+			<view class="ready"><text>{use(props.value) as string}</text></view>
+		} @pending {
+			<view class="pending"><text>pending</text></view>
+		} @catch (error, reset) {
+			<view class="caught"><text bindtap={() => reset()}>{String(error) as string}</text></view>
+		}
+	</view>
+}
+`;
+		const module = 'src/SuspenseCard.lynx.tsrx';
+		const main = compileCard(source, { backend: Backend, module });
+		const background = compileCard(source, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+
+		expect(main.mainThreadProgramCoverage).toEqual({ total: 4, addressed: 4 });
+		expect(background.mainThreadProgramCoverage).toEqual({ total: 4, addressed: 4 });
+		expect(main.programAddresses).toEqual(background.programAddresses);
+		expect(main.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			expect.objectContaining({ kind: 'try' }),
+		]);
+		expect(background.lynxBlockFeatureRequirements?.templateFeatures).toEqual([
+			expect.objectContaining({ kind: 'try' }),
+		]);
+		expect(background.lynxBlockSemanticRequirements?.runtimeUses.map((site) => site.name)).toEqual([
+			'use',
+		]);
+	});
+
 	it('addresses an open structural range and hashes its topology', () => {
 		const module = 'src/StructuralCard.lynx.tsrx';
 		const main = evaluate(compiled(STRUCTURAL_ADDRESSABLE_CARD, { backend: Backend, module }));
@@ -963,8 +1943,8 @@ export function Card(props: { row: { id: number; label: string }; isSelected: bo
 
 		const shifted = {
 			...Backend,
-			deriveLynxMainThreadProgram(plan: never) {
-				const derived = Backend.deriveLynxMainThreadProgram(plan);
+			deriveLynxProgramIR(plan: never) {
+				const derived = Backend.deriveLynxProgramIR(plan);
 				if (derived === null || derived.ranges.length !== 1) return derived;
 				return {
 					...derived,
@@ -974,6 +1954,29 @@ export function Card(props: { row: { id: number; label: string }; isSelected: bo
 		};
 		const drifted = evaluate(compiled(STRUCTURAL_ADDRESSABLE_CARD, { backend: shifted, module }));
 		expect(drifted.addresses[index].digest).not.toBe(main.addresses[index].digest);
+	});
+
+	it('addresses every plan owned by nested structural ranges', () => {
+		const module = 'src/NestedStructuralCard.lynx.tsrx';
+		const mainResult = compileCard(NESTED_STRUCTURAL_ADDRESSABLE_CARD, {
+			backend: Backend,
+			module,
+		});
+		const backgroundResult = compileCard(NESTED_STRUCTURAL_ADDRESSABLE_CARD, {
+			target: 'universal',
+			thread: 'background',
+			backend: Backend,
+			module,
+			backgroundProgram: true,
+		});
+		const main = evaluate(mainResult.code);
+		const background = evaluate(backgroundResult.code);
+
+		expect(mainResult.mainThreadProgramCoverage).toEqual({ total: 5, addressed: 5 });
+		expect(backgroundResult.mainThreadProgramCoverage).toEqual({ total: 5, addressed: 5 });
+		expect(main.addresses).toHaveLength(5);
+		expect(main.addresses.every((address) => address !== undefined)).toBe(true);
+		expect(background.addresses).toEqual(main.addresses);
 	});
 
 	it('keeps a call through a local binding named String range-bearing', () => {
@@ -1042,7 +2045,7 @@ export function Card(props: { row: { id: number; label: string }; render: (id: n
 		expect(mainThread.addresses[0].index).toBe(0);
 		// The whole point: the two compiles independently produced the same name
 		// for the same plan. They agree by construction rather than by luck —
-		// both run `deriveLynxMainThreadProgram` as a pure oracle over the same
+		// both run `deriveLynxProgramIR` as a pure oracle over the same
 		// plan root, and the digest covers exactly the surface it produced.
 		expect(background.addresses).toEqual(mainThread.addresses);
 		expect(mainThread.addresses[0].digest).toMatch(/^[0-9a-f]{16}$/);
@@ -1056,8 +2059,10 @@ export function Card(props: { row: { id: number; label: string }; render: (id: n
 			'kind',
 			'nodes',
 			'ranges',
+			'resident',
 			'slots',
 			'values',
+			'version',
 			'wire',
 		]);
 		expect(Object.keys(background.roots[0]).sort()).toEqual(['create', 'kind', 'slots']);

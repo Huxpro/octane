@@ -48,6 +48,13 @@ test('Native tap receipt encloses action, transport ACK, two frames, and semanti
 	assert.match(measurement, /preState,/);
 	assert.match(measurement, /postState,/);
 	assert.match(measurement, /stormEvidence === undefined/);
+	assert.ok(measurement.indexOf('pipelineBefore = ackPipelineSnapshot()') < action);
+	assert.ok(measurement.indexOf('pipelineAfter = ackPipelineSnapshot()') > postState);
+	assert.match(measurement, /ackPipelineEvidence:/);
+	assert.match(measurement, /queueMaxDepthAfter:/);
+	assert.match(measurement, /preparationsWhileAck:/);
+	assert.match(measurement, /roundTrips:/);
+	assert.match(measurement, /firstFeedbackLatencyMs:/);
 });
 
 test('Native storms await every transport ACK and frame before publishing tick evidence', () => {
@@ -63,7 +70,11 @@ test('Native storms await every transport ACK and frame before publishing tick e
 
 	assert.ok(task !== -1 && task < step && step < flush);
 	assert.ok(flush < completed && completed < frame && frame < barrier);
-	assert.match(native, /expectedTicks: ticks, completedTicks, renderBarriers/);
+	assert.match(native, /commit: 'every-tick'/);
+	assert.match(native, /expectedTicks: ticks/);
+	assert.match(native, /completedTicks,/);
+	assert.match(native, /renderBarriers,/);
+	assert.match(native, /firstFeedbackMs,/);
 	assert.match(app, /tickAcknowledgements: stormEvidence\.completedTicks/);
 	assert.match(app, /const stormUpdate = useCallback\(\(\) => \{\s*return runStorm\(/);
 	assert.match(app, /const stormSelect = useCallback\(\(\) => \{\s*return runStorm\(/);

@@ -1013,6 +1013,71 @@ describe('direct first-screen applier, compiled main-thread programs', () => {
 		expect(papi.pages[0]!.children).toHaveLength(0);
 	});
 
+	it('inserts structural range members before their retained static anchor', () => {
+		const plan: UniversalProgramPlan = {
+			...fakeProgram(),
+			nodes: 2,
+			ranges: [{ slot: 0, node: 0, before: 1, id: 1 }],
+			bind: (host: unknown) => {
+				const papi = host as {
+					createElement(type: string, pageId: number, text: string): FakeNode;
+					insertBefore(parent: FakeNode, child: FakeNode, before: FakeNode | null): void;
+					setClasses(node: FakeNode, value: string): void;
+				};
+				return (...args: unknown[]) => {
+					const pageId = args[0] as number;
+					const root = papi.createElement('view', pageId, '');
+					const footer = papi.createElement('text', pageId, '');
+					papi.setClasses(footer, 'footer');
+					papi.insertBefore(root, footer, null);
+					return [root, footer, undefined];
+				};
+			},
+		};
+		const papi = intrinsicHost();
+		const container = createLynxHostContainer(papi, { root: 1 });
+		expect(
+			applyLynxFirstScreenDirect(
+				container,
+				[
+					programNode({
+						plan,
+						ids: [1, 4],
+						spans: [1],
+						texts: [undefined],
+						rangeIds: [undefined],
+						children: [
+							{
+								kind: 'host',
+								id: 2,
+								type: 'view',
+								props: { class: 'row' },
+								children: [
+									{ kind: 'host', id: 3, type: '#text', props: { value: 'inside' }, children: [] },
+								],
+							},
+						],
+					}),
+				],
+				PROGRAM_ENVELOPE,
+			),
+		).toBe(true);
+		expect(papi.pages[0]!.children[0]!.children.map((child) => child.classes)).toEqual([
+			'row',
+			'footer',
+		]);
+	});
+
+	it('rejects a compiler-emitted program with a mismatched ABI before it registers or runs', () => {
+		expect(() =>
+			universalPlan('lynx', fakeProgram({ version: 2 } as never), {
+				module: 'tests/stale-program.tsrx',
+				index: 0,
+				digest: 'stale',
+			}),
+		).toThrow(/expected program ABI version 1, received 2/);
+	});
+
 	it('refuses a program whose event site names no Lynx event prop', () => {
 		// The plan is the event table the mount journals from (issue #215 D3), so
 		// what a site's type has to name is a real Element PAPI tuple. The
@@ -1416,7 +1481,7 @@ describe('first-tree addressed program adoption manifest', () => {
 				};
 				return Object.assign(create, {
 					run(
-						pageId: number,
+						pageId: unknown,
 						count: number,
 						values: readonly unknown[],
 						_events: readonly unknown[],
@@ -1425,7 +1490,7 @@ describe('first-tree addressed program adoption manifest', () => {
 					): void {
 						calls.run++;
 						for (let index = 0; index < count; index++) {
-							const node = papi.intrinsics.view(pageId);
+							const node = papi.intrinsics.view(pageId as number);
 							papi.setId(node, values[index] as string);
 							out[index] = node;
 						}
@@ -2268,12 +2333,10 @@ describe('direct first-screen applier, the nodes a program leaves for teardown',
 // answers every later question about an ID by arithmetic from the first one
 // instead of from a per-member ID table.
 //
-// The shell is a program rather than a described host on purpose, and it is the
-// only arrangement this compiler produces: the backend leaves a parent
-// described only when its range hole is *not* the parent's last child, and a
-// hole that is not last has a described sibling after it — which an
-// all-or-nothing span over a parent's children declines anyway. Every other
-// shape either compiles the shell into a program, as here, or fails the build.
+// The shell is a program rather than a described host on purpose. Dense members
+// take the same physical-before anchor as individual members; this fixture pins
+// the tail case, while the focused anchored program above pins the non-tail case.
+// Both keep one run and one arithmetic ID span without reintroducing a walk.
 //
 // So what these pin is that the two paths are the same page. The control is not
 // a hand-written expectation: it is the same description, painted by the same

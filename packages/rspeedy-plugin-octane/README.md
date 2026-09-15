@@ -1,4 +1,4 @@
-# `@octanejs/rspeedy-plugin` (private Milestones 6–11 native application path)
+# `@octanejs/rspeedy-plugin` (private R10 native application release candidate)
 
 This private package turns an Octane Lynx application entry into the two
 programs required by a Lynx template:
@@ -9,8 +9,10 @@ programs required by a Lynx template:
   checks without retaining the recursive command validator; both then evaluate
   the authored entry with Octane's render-only first-screen runtime;
   and
-- the same authored entry runs in the background runtime with Octane's full
-  Lynx renderer, which adopts or deterministically repairs the first tree.
+- the same authored entry runs in the background runtime with the build-selected
+  Lynx renderer. An eligible one-shot production graph uses the Block core and
+  compact program transport; other graphs retain the Universal core. Either
+  path adopts or deterministically repairs the first tree it owns.
 
 The plugin configures the framework-neutral Lynx template, CSS extraction,
 runtime-wrapper, and native encoding packages and emits one `.lynx.bundle` per
@@ -24,7 +26,9 @@ preview. The repository proves graph specialization, bundle construction,
 decoding, dual-layer lazy-chunk emission, and one visible first paint in the
 official macOS Explorer 3.9 arm64 asset. It does not prove adopted-node
 identity, automated native interaction, dynamic chunk execution on Lynx Web,
-Android Explorer, or iOS Explorer, or state-preserving HMR on those targets.
+general Android Explorer or iOS Explorer behavior, or state-preserving HMR on
+those targets. The opt-in Element Template slice has separate, narrowly scoped
+Android table evidence described below.
 
 ## One-command repository demo
 
@@ -109,11 +113,47 @@ default. The backend travels to Rspack workers as a serializable absolute module
 request plus its cache signature; each worker loads and verifies the module, and
 the main compilation cross-checks the positional program digest produced by both
 thread layers. Eligible host-only plans therefore use compiled resident programs
-and addresses without config-file imports. Plans the create-function emitter
+and addresses from one versioned, compiler-owned Lynx IR: the background compile
+uses it for eligibility and addressing, while the main-thread compile also emits
+the resident create function from it. No config-file import is needed. Plans the
+create-function emitter
 cannot reproduce stay on the command path. Use `programAddressing: false` to
 keep compiled programs while comparing descriptor transport, or
 `mainThreadProgramBackend: false` for a full command-path control. Pass another
 backend explicitly only when developing its renderer/compiler integration.
+
+Set `experimentalElementTemplate: true` to require the matching whole-root
+Element Template backend:
+
+```js
+pluginOctane({ experimentalElementTemplate: true });
+```
+
+The option is valid only for the two-layer application build. It keeps the
+ordinary Block/application eligibility proof, then additionally requires every
+selected main-thread plan to lower to the public Template Definition schema.
+The build fails when coverage is incomplete; it never emits a tree that mixes
+opaque template handles with ordinary Element refs. The selected native bundle
+uses target SDK `3.2`, while ordinary application bundles retain target `3.9`.
+The default remains the ordinary compiled-program Element owner.
+
+The current lowering admits static native host topology, scalar value/event
+slots, root visibility, and one element slot for each proved structural range.
+It rejects refs, native lists, `main-thread:*` bindings, text-polymorphic ranges,
+and unsupported native attribute composition. At runtime, pending template work
+is drained in 8,192-node chunks; synchronous first screens above 8,192 plan
+nodes defer to the background store; and live ownership is capped at 32,768
+template instances and 40,960 resident plan nodes. Oversized eager trees reject
+with `Octane Lynx OL512` before native creation and must use the virtualized
+native-list backend.
+
+One pinned Android Explorer 4.1.0 cohort accepted the final 10,000-row native
+create and startup samples and rejected a 30,000-row startup without a JNI/fatal
+marker or process death. This qualifies only that workload and those recorded
+boundaries. See
+[`docs/lynx-block-semantics.md`](../../docs/lynx-block-semantics.md#experimental-whole-root-element-template-backend)
+and
+[`android-element-template-evidence.json`](../lynx/audit/android-element-template-evidence.json).
 
 Compatible Rspack entry metadata is copied to both generated graphs so they see
 the same entry initialization inputs. Development-only CSS HMR setup runs after
@@ -144,28 +184,38 @@ pluginOctane({ thread: 'main-thread' });
 
 Application builds attach an `octane:lynx-block-selection` report to the
 generated main-thread asset metadata. Selection version 1 with support-matrix
-version 2 is eligible only when paired
+version 20 is eligible only when paired
 background/main-thread resident-program coverage is complete, semantic and
 feature facts cover the same module set, and the graph stays within this
 independently proven Block subset:
 
-- authored Octane runtime uses or named re-exports are limited to `useCallback`,
-  `useEffect`, `useRef`, `useState`, and `useSyncExternalStore`; opaque Octane
-  module access is not eligible;
+- authored Octane runtime uses or named re-exports are limited to the matrix's
+  independently tested Activity, context, portal, memo, Suspense/data, state,
+  effect, external-store, and transition APIs. This includes `startTransition`,
+  `useTransition`, and `useDeferredValue`; opaque Octane module access is not
+  eligible;
 - background/main-thread functions and `main-thread:*` props are supported;
-- the authored template contains no ordinary component child, fragment,
-  `@if`/`@switch`/`@try`/Activity structure, bare renderable hole, ordinary host
-  ref, native `list`/`list-item` element, or event on a template-program root;
-- keyed ranges have no `@empty` arm or nested range, are the last child of
-  their host, and use an inline host or hookless local component as each row.
+- the authored template may use compiler-proved local component boundaries,
+  inline render props, component holes, host refs, `@if`, `@switch`, `@try`,
+  Activity, portals, and fixed-shape keyed rows below native
+  `list`/`list-item`; generic renderable holes and template-root events remain
+  ineligible;
+- keyed ranges may have an `@empty` arm, nested ranges, and multiple retained
+  siblings. Rows use an inline host or local component and may own the supported
+  hooks above; their scopes are retained and disposed by key. Portals select the
+  general Block application because the compact delta vocabulary cannot name a
+  renderer-owned parent; transition APIs themselves remain compact-eligible.
 
 The report retains source module, thread, line, and column for unsupported
 facts, as well as the underlying reason from an incomplete proof. A one-shot
 production application with no explicit `core` selects Block only when every
 authored entry is eligible. Selection happens after the complete first module
 graph and before optimization: the plugin rebuilds the background root's tiny
-selection dependency, then production tree-shaking emits one core rather than a
-runtime branch containing both. Asset metadata also carries the versioned
+selection dependency and every proved background source module with the
+independent compiler-program renderer. Production output therefore contains
+one core and BTS program definitions derived directly from the same shared IR
+as the resident MTS programs; it does not create Universal plans and lower them
+at runtime. Asset metadata also carries the versioned
 `octane:lynx-background-core-selection` decision.
 
 The plugin verifies the rebuilt background root's exact dependency edge before
@@ -180,44 +230,122 @@ development/benchmark override. An explicit override is reported as such and
 is not presented as an automatic eligibility decision.
 
 ## Compatibility lanes
+### Ordinary compiled-program receipt
 
-Milestone 9 covers two exact, indivisible source/build graphs. Registry
-metadata was checked on 2026-07-23:
+The production fixture
+`tests/_fixtures/application/src/BlockEligible.tsrx` is a normal authored
+application: a stateful page renders a keyed local row component with its own
+`useState`, `view`/`text`/`image` props, and a native `bindtap` handler.
+The real Rspeedy/Rspack production test requires complete paired coverage and
+checks this selected import graph:
+
+```text
+authored entry -> @octanejs/lynx package root
+  -> application-selection.compiled-program
+  -> compiled-program-block-transport -> block-background -> block-component
+
+generated main entry -> main-thread-product-application
+  -> main-thread-application-selection.compiled-program
+  -> compiled-program-application
+     -> first-screen.compiled-program + main-renderer.compiled-program
+     -> compiled-program-product-receiver -> compiled-program-store
+```
+
+It also checks the decoded production artifact uses only the compiled-program
+event channel, that the general event channel is absent, and that both compiled
+layers contain the image program (the main layer emits its direct
+`papi.createElement("image", ...)` body). Automatic development/watch
+selection remains Universal by design; `core: 'block'` is the explicit
+development/benchmark override and is not reported as an automatic product
+decision.
+
+The fixture imports an ordinary TypeScript custom hook. Its background-owned
+effect and pure module-local helper chain are present in decoded BTS and absent
+from decoded MTS. The compiler preserves helpers that remain reachable from
+main-thread setup, module initializers, imports, worklets, and lazy chunks; this
+is a capability-scoped source transform, not a second minifier or an assumption
+that all setup is background-only.
+
+The packed external-consumer gate installs only generated package archives and
+then rebuilds production and development applications. It covers the complex
+Block fixture, a fixed-shape native list with extracted CSS/CSS Modules and an
+emitted SVG, a real content-hashed lazy bundle, explicit whole-root Universal
+opt-out, and HMR/live-reload configuration. The native-list product contains
+paired `list`/`list-item` resident programs and compact transport without the
+general Universal application renderer. The lazy fixture deliberately keeps
+the whole entry on the Universal compatibility product because its pending and
+resolved ownership is not yet in the Block support matrix; its async chunk is
+still emitted and is never silently folded into the main bundle.
+
+The
+`packages/lynx/tests/compiled-program-product-application.test.ts` suite joins
+those module contracts against the official JavaScript host without replacing
+the compiler output with hand-written plans or frames:
+
+| Phase | Observed contract |
+| --- | --- |
+| IFR | The compiled main renderer synchronously creates `view`, `text`, and `image` nodes and installs native event tokens. |
+| Readiness/adoption | The background compact reply is held; the same painted nodes are adopted, scalar differences are repaired in place, and no command-array adapter is produced. |
+| First interaction | A native tap before ACK is queued, then reaches the correct row closure exactly once; its independent row state updates through a direct slot delta. |
+| Keyed update | `[1,2,3]` becomes `[3,1,4]` through direct set/remove/run/move operations; surviving row identities and row 1 state remain. |
+| Teardown | Root unmount removes the tree and a late native event is inert. |
+
+The compact store, transport, and native-list integration suites separately
+prove that a paired fixed-shape `list-item` program is declared logically,
+materialized only through Lynx list callbacks, recycled with scalar and event
+identity rebound, and removed with late enqueue callbacks inert. List deltas
+are prepared before the accepting page flush, and asynchronous callback
+failures cross the compact fault wire. Native-list first-screen paint is
+deliberately deferred to the first compact frame; this is an explicit
+limitation rather than a generic host mirror or a silent Universal fallback.
+Rows containing nested structural ranges remain ineligible until compact cells
+can retain that nested ownership.
+
+The adoption store separately proves that scalar repairs roll back to the
+painted values if the enclosing attempt aborts. These are compiler, Rspack
+artifact, and JavaScript-host observations—not Explorer, Android, or iOS
+interaction/performance evidence.
+
+
+R10 covers two exact, indivisible source/build graphs. Registry
+metadata was checked on 2026-09-14:
 
 | Component | Minimum | Current |
 | --- | ---: | ---: |
-| Lynx SDK / target SDK | `3.9.0` / `3.9` | `3.9.0` / `3.9` |
-| `@lynx-js/rspeedy` | `0.16.0` | `0.16.0` |
-| `@lynx-js/cache-events-webpack-plugin` | `0.2.0` | `0.2.0` |
-| `@lynx-js/chunk-loading-webpack-plugin` | `0.4.1` | `0.4.1` |
-| `@lynx-js/debug-metadata-rsbuild-plugin` | `0.2.0` | `0.2.0` |
+| Lynx SDK / ordinary target / Element Template target | `3.9.0` / `3.9` / `3.2` | `3.9.0` / `3.9` / `3.2` |
+| `@lynx-js/rspeedy` | `0.17.1` | `0.17.1` |
+| `@lynx-js/rsbuild-plugin` | `0.1.1` | `0.1.1` |
+| `@lynx-js/cache-events-webpack-plugin` | `0.2.1` | `0.2.1` |
+| `@lynx-js/chunk-loading-webpack-plugin` | `0.4.2` | `0.4.2` |
+| `@lynx-js/debug-metadata-rsbuild-plugin` | `0.2.3` | `0.2.3` |
 | `@lynx-js/debug-metadata` | `0.1.0` | `0.1.0` |
-| `@lynx-js/web-rsbuild-server-middleware` | `0.22.2` | `0.22.2` |
+| `@lynx-js/web-rsbuild-server-middleware` | `0.26.0` | `0.26.0` |
 | `@lynx-js/websocket` | `0.0.4` | `0.0.4` |
-| `@rsbuild/core` | `2.1.4` | `2.1.4` |
-| `@rsbuild/plugin-css-minimizer` | `2.0.0` | `2.0.0` |
-| `@rsdoctor/rspack-plugin` | `1.5.18` | `1.5.18` |
-| `@rspack/core` | `2.1.3` | `2.1.5` |
-| `@lynx-js/template-webpack-plugin` | `0.13.0` | `0.13.0` |
-| `@lynx-js/css-extract-webpack-plugin` | `0.9.0` | `0.9.0` |
-| `@lynx-js/runtime-wrapper-webpack-plugin` | `0.2.2` | `0.2.2` |
-| `@lynx-js/webpack-dev-transport` | `0.3.0` | `0.3.0` |
-| `@lynx-js/webpack-runtime-globals` | `0.0.7` | `0.0.7` |
-| `@lynx-js/tasm` | `0.0.39` | `0.0.39` |
+| `@rsbuild/core` | `2.2.3` | `2.2.3` |
+| `@rsbuild/plugin-css-minimizer` | `2.0.1` | `2.0.1` |
+| `@rsdoctor/rspack-plugin` | `1.6.4` | `1.6.4` |
+| `@rspack/core` | `2.2.2` | `2.2.3` |
+| `@lynx-js/template-webpack-plugin` | `0.16.0` | `0.16.0` |
+| `@lynx-js/css-extract-webpack-plugin` | `0.11.0` | `0.11.0` |
+| `@lynx-js/runtime-wrapper-webpack-plugin` | `0.2.4` | `0.2.4` |
+| `@lynx-js/webpack-dev-transport` | `0.4.0` | `0.4.0` |
+| `@lynx-js/webpack-runtime-globals` | `0.0.8` | `0.0.8` |
+| `@lynx-js/tasm` | `0.0.49` | `0.0.49` |
 | `@lynx-js/testing-environment` | `0.3.0` | `0.3.0` |
 | `@lynx-js/types` | `4.1.0` | `4.1.0` |
-| `@lynx-js/web-core` | `0.22.2` | `0.22.2` |
+| `@lynx-js/web-core` | `0.26.0` | `0.26.0` |
 | TypeScript | `5.9.3` | `5.9.3` |
 | Webpack (tooling peer only) | `5.108.4` | `5.108.4` |
 
-Rspeedy `0.16.0` requires Rsbuild `2.1.4` exactly. That Rsbuild release accepts
-Rspack `~2.1.2`, so the current lane advances only Rspack to the newest allowed
-patch. It does not mix in Rsbuild `2.1.7`. Likewise, template plugin `0.13.0`
-requires tasm `0.0.39` exactly, so the standalone tasm `0.0.48` release is not
-part of this graph. `@octanejs/lynx` also remains pinned to its audited
-`@lynx-js/types@4.0.0` compatibility slice; newer standalone types releases are
-reported by the registry check but are not accepted into either lane without a
-new compatibility audit. The lane also pins every direct Rspeedy dependency
+Rspeedy `0.17.1` requires Rsbuild `2.2.3` and its framework-neutral
+`@lynx-js/rsbuild-plugin@0.1.1` exactly. Rsbuild accepts Rspack `~2.2.2`, so the
+current lane advances only that declared-compatible patch edge. Element Template
+encoding requires the matching template `0.16.0`, tasm `0.0.49`, CSS extract
+`0.11.0`, runtime wrapper `0.2.4`, runtime globals `0.0.8`, and web-core `0.26.0`
+graph; the compatibility smoke rejects a cross-generation encoder graph. The
+Element Template application targets SDK `3.2`, matching the public encoder's
+native compatibility lane, while ordinary applications retain target `3.9`.
+`@octanejs/lynx` is pinned to `@lynx-js/types@4.1.0`. The lane also pins every direct Rspeedy dependency
 selected through a caret or tilde range, the debug-metadata payload, runtime
 globals, and the required Webpack 5 tooling peer. Webpack remains an audited
 tooling pin rather than a moving current-lane edge; the strict external install
@@ -230,7 +358,9 @@ then installs each lane into an external temporary consumer without creating a
 lockfile. It checks exact versions and dependency edges, one physical core
 graph, strict build-tool peer satisfaction, the absence of DOM and
 React/Preact/ReactLynx code in decoded programs, deterministic repeated
-production builds, and a decoded engine target of `3.9`. CI also checks registry
+production builds, and a decoded ordinary-application engine target of `3.9`.
+The Element Template build tests separately decode and validate target `3.2`.
+CI also checks registry
 drift for the current lane. These remain source/build checks, not Android or iOS
 runtime evidence.
 

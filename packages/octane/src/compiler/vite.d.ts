@@ -1,5 +1,5 @@
 import type { Plugin } from 'vite';
-import type { OctaneCssModuleConstants } from './index.js';
+import type { CompileRendererTarget, OctaneCssModuleConstants } from './index.js';
 
 export type { OctaneCssModuleConstants } from './index.js';
 
@@ -30,7 +30,7 @@ export type OctaneRendererRegistryEntry =
 	| string
 	| {
 			module: string;
-			target?: 'dom' | 'universal' | 'valdi';
+			target?: CompileRendererTarget;
 			server?: 'render' | 'client-only' | 'unsupported';
 			intrinsics?: string;
 			text?: 'reject' | 'ignore' | 'host';

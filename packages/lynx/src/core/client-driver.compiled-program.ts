@@ -1,13 +1,14 @@
 declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import type {
+	UniversalHostAttachmentBatch,
 	UniversalHostBatch,
 	UniversalHostCapabilities,
 	UniversalHostDriver,
 	UniversalHostPropCodecContext,
 	UniversalHostTemplateCapability,
 	UniversalHostTemplateProgram,
-	UniversalHostTemplateProgramBinding,
+	UniversalSerializableValue,
 	UniversalTemplateHostPlacement,
 } from 'octane/universal/native';
 
@@ -15,11 +16,36 @@ import { isLynxNativeResource } from '../resource.js';
 import { classifyLynxHostPropUpdate, sameLynxUniversalHostPropValue } from './host-props.js';
 import { encodeLynxProgramPropValue } from './host-prop-value.js';
 import { parseLynxNativeEventProp } from './native-events.js';
-import type { LynxMainThreadCapabilities } from './protocol.js';
+import { requireLynxCompactHostRefFeature } from './compact-host-ref-feature.js';
+import type {
+	LynxCreateSelectorQuery,
+	LynxMeasureOptions,
+	LynxMeasureResult,
+	LynxNodesRefBinding,
+	LynxNodesRefFieldsOptions,
+	LynxNodesRefFieldsResult,
+	LynxNodesRefPathResult,
+} from './nodes-ref.js';
+import type { LynxHostAttachmentChange, LynxMainThreadCapabilities } from './protocol.js';
 import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 
 export interface LynxPublicHandle {
 	readonly renderer: typeof LYNX_TRANSPORT_RENDERER;
+	readonly root: number;
+	readonly id: number;
+	readonly type: string;
+	readonly generation: number;
+	readonly active: boolean;
+	readonly attached: boolean;
+	readonly snapshot: UniversalSerializableValue;
+	invoke<Result extends UniversalSerializableValue = UniversalSerializableValue>(
+		method: string,
+		params?: Readonly<Record<string, UniversalSerializableValue>>,
+	): Promise<Result>;
+	measure(options?: LynxMeasureOptions): Promise<LynxMeasureResult>;
+	fields(options: LynxNodesRefFieldsOptions): Promise<LynxNodesRefFieldsResult>;
+	path(): Promise<LynxNodesRefPathResult | null>;
+	setNativeProps(props: Readonly<Record<string, UniversalSerializableValue>>): Promise<void>;
 }
 
 export interface LynxClientContainer {
@@ -27,7 +53,30 @@ export interface LynxClientContainer {
 	getPublicHandle(id: number): LynxPublicHandle | null;
 }
 
+interface CompactHandleEntry {
+	readonly root: number;
+	readonly id: number;
+	readonly type: string;
+	readonly generation: 1;
+	readonly createSelectorQuery: LynxCreateSelectorQuery;
+	active: boolean;
+	attached: boolean;
+	attachmentEpoch: number;
+	facade: LynxPublicHandle | null;
+	binding: LynxNodesRefBinding | null;
+	snapshot: UniversalSerializableValue | null;
+}
+
+export interface LynxCompactPublicHandleInput {
+	readonly root: number;
+	readonly id: number;
+	readonly type: string;
+	readonly attached: boolean;
+}
+
 interface CompactClientState {
+	readonly createSelectorQuery: LynxCreateSelectorQuery;
+	handles: Map<number, CompactHandleEntry> | null;
 	templateMount: boolean;
 	templateProgramMount: boolean;
 	templateProgramRuns: boolean;
@@ -40,6 +89,9 @@ interface CompactClientState {
 
 const STATES = new WeakMap<LynxClientContainer, CompactClientState>();
 const COMPACT_CLIENT_ERROR = 'Octane Lynx OL498';
+function compactSelector(root: number, id: number, generation: number): string {
+	return '[octane-ref=r' + root + '-h' + id + '-g' + generation + ']';
+}
 
 function state(container: LynxClientContainer): CompactClientState {
 	const value = STATES.get(container);
@@ -53,14 +105,99 @@ function state(container: LynxClientContainer): CompactClientState {
 	return value;
 }
 
-export function createLynxClientContainer(): LynxClientContainer {
+function nextAttachmentEpoch(entry: CompactHandleEntry, attached: boolean): number {
+	if (entry.attached === attached) return entry.attachmentEpoch;
+	if (entry.attachmentEpoch === Number.MAX_SAFE_INTEGER) throw new Error(COMPACT_CLIENT_ERROR);
+	return entry.attachmentEpoch + 1;
+}
+
+function bindingFor(entry: CompactHandleEntry): LynxNodesRefBinding {
+	if (entry.binding !== null) return entry.binding;
+	const selector = compactSelector(entry.root, entry.id, entry.generation);
+	const binding = requireLynxCompactHostRefFeature().createBinding({
+		identity: {
+			root: entry.root,
+			id: entry.id,
+			type: entry.type,
+			generation: entry.generation,
+			selector,
+		},
+		createSelectorQuery: entry.createSelectorQuery,
+		readState: () => ({
+			root: entry.root,
+			id: entry.id,
+			type: entry.type,
+			generation: entry.generation,
+			selector,
+			active: entry.active && entry.attached,
+			attachmentEpoch: entry.attachmentEpoch,
+		}),
+	});
+	entry.binding = binding;
+	return binding;
+}
+
+function facadeFor(entry: CompactHandleEntry): LynxPublicHandle {
+	if (entry.facade !== null) return entry.facade;
+	entry.facade = Object.freeze({
+		renderer: LYNX_TRANSPORT_RENDERER,
+		root: entry.root,
+		id: entry.id,
+		type: entry.type,
+		generation: entry.generation,
+		get active() {
+			return entry.active;
+		},
+		get attached() {
+			return entry.attached;
+		},
+		get snapshot() {
+			return (entry.snapshot ??= Object.freeze({
+				$$kind: 'octane.lynx.element',
+				renderer: LYNX_TRANSPORT_RENDERER,
+				root: entry.root,
+				id: entry.id,
+				type: entry.type,
+				generation: entry.generation,
+				selector: compactSelector(entry.root, entry.id, entry.generation),
+			}));
+		},
+		invoke: <Result extends UniversalSerializableValue>(
+			method: string,
+			params?: Readonly<Record<string, UniversalSerializableValue>>,
+		) => bindingFor(entry).handle.invoke<Result>(method, params),
+		measure: (options?: LynxMeasureOptions) => bindingFor(entry).handle.measure(options),
+		fields: (options: LynxNodesRefFieldsOptions) => bindingFor(entry).handle.fields(options),
+		path: () => bindingFor(entry).handle.path(),
+		setNativeProps: (props: Readonly<Record<string, UniversalSerializableValue>>) =>
+			bindingFor(entry).handle.setNativeProps(props),
+	}) as LynxPublicHandle;
+	return entry.facade;
+}
+
+export interface CreateLynxClientContainerOptions {
+	readonly createSelectorQuery?: LynxCreateSelectorQuery;
+}
+
+export function createLynxClientContainer(
+	options: CreateLynxClientContainerOptions = {},
+): LynxClientContainer {
+	const createSelectorQuery =
+		options.createSelectorQuery ??
+		(() => {
+			throw new Error(COMPACT_CLIENT_ERROR);
+		});
+	if (typeof createSelectorQuery !== 'function') throw new TypeError(COMPACT_CLIENT_ERROR);
 	const container: LynxClientContainer = Object.freeze({
 		renderer: LYNX_TRANSPORT_RENDERER,
-		getPublicHandle(_id: number) {
-			return null;
+		getPublicHandle(id: number) {
+			const entry = STATES.get(container)!.handles?.get(id);
+			return entry === undefined ? null : facadeFor(entry);
 		},
 	});
 	STATES.set(container, {
+		createSelectorQuery,
+		handles: null,
 		templateMount: false,
 		templateProgramMount: false,
 		templateProgramRuns: false,
@@ -121,7 +258,16 @@ export function hasLynxCompactHandleSegment(_container: LynxClientContainer): bo
 	return false;
 }
 
-export function invalidateLynxClientContainer(_container: LynxClientContainer): void {}
+export function invalidateLynxClientContainer(container: LynxClientContainer): void {
+	const current = state(container);
+	if (current.handles === null) return;
+	for (const entry of current.handles.values()) {
+		entry.active = false;
+		entry.attached = false;
+		entry.binding?.invalidate(new Error(COMPACT_CLIENT_ERROR));
+	}
+	current.handles = null;
+}
 
 export function prepareLynxCompactHandleDeltas(): never {
 	throw new Error(COMPACT_CLIENT_ERROR);
@@ -135,8 +281,90 @@ export function isLynxClientEventTarget(): boolean {
 	return false;
 }
 
-export function applyLynxHostAttachments(): { readonly detached: []; readonly attached: [] } {
-	return Object.freeze({ detached: [], attached: [] });
+export function activateLynxCompactPublicHandle(
+	container: LynxClientContainer,
+	input: LynxCompactPublicHandleInput,
+): LynxPublicHandle {
+	const current = state(container);
+	if (
+		!Number.isSafeInteger(input.root) ||
+		input.root <= 0 ||
+		!Number.isSafeInteger(input.id) ||
+		input.id <= 0 ||
+		typeof input.type !== 'string' ||
+		input.type.length === 0 ||
+		typeof input.attached !== 'boolean'
+	) {
+		throw new TypeError(COMPACT_CLIENT_ERROR);
+	}
+	const handles = (current.handles ??= new Map());
+	const existing = handles.get(input.id);
+	if (existing !== undefined) {
+		if (!existing.active || existing.root !== input.root || existing.type !== input.type) {
+			throw new Error(COMPACT_CLIENT_ERROR);
+		}
+		return facadeFor(existing);
+	}
+	const entry: CompactHandleEntry = {
+		root: input.root,
+		id: input.id,
+		type: input.type,
+		generation: 1,
+		createSelectorQuery: current.createSelectorQuery,
+		active: true,
+		attached: input.attached,
+		attachmentEpoch: input.attached ? 1 : 0,
+		facade: null,
+		binding: null,
+		snapshot: null,
+	};
+	handles.set(input.id, entry);
+	return facadeFor(entry);
+}
+
+export function releaseLynxCompactPublicHandle(container: LynxClientContainer, id: number): void {
+	const current = state(container);
+	const entry = current.handles?.get(id);
+	if (entry === undefined) return;
+	current.handles!.delete(id);
+	entry.active = false;
+	entry.attachmentEpoch = nextAttachmentEpoch(entry, false);
+	entry.attached = false;
+	entry.binding?.invalidate(new Error(COMPACT_CLIENT_ERROR));
+	if (current.handles!.size === 0) current.handles = null;
+}
+
+export function applyLynxHostAttachments(
+	container: LynxClientContainer,
+	changes: readonly LynxHostAttachmentChange[],
+): UniversalHostAttachmentBatch {
+	if (!Array.isArray(changes)) throw new TypeError(COMPACT_CLIENT_ERROR);
+	const current = state(container);
+	const detached: number[] = [];
+	const attached: number[] = [];
+	const seen = new Set<number>();
+	for (const change of changes) {
+		if (change === null || typeof change !== 'object' || Array.isArray(change)) {
+			throw new TypeError(COMPACT_CLIENT_ERROR);
+		}
+		const entry = current.handles?.get(change.id);
+		if (
+			seen.has(change.id) ||
+			entry === undefined ||
+			!entry.active ||
+			change.generation !== 1 ||
+			typeof change.attached !== 'boolean'
+		) {
+			throw new Error(COMPACT_CLIENT_ERROR);
+		}
+		seen.add(change.id);
+		if (entry.attached === change.attached) continue;
+		entry.attachmentEpoch = nextAttachmentEpoch(entry, change.attached);
+		entry.attached = change.attached;
+		if (!change.attached) entry.binding?.invalidateAttachment();
+		(change.attached ? attached : detached).push(change.id);
+	}
+	return Object.freeze({ detached: Object.freeze(detached), attached: Object.freeze(attached) });
 }
 
 const DISCRETE_EVENTS = new Set([
@@ -151,20 +379,15 @@ const DISCRETE_EVENTS = new Set([
 	'touchstart',
 ]);
 const CONTINUOUS_EVENTS = new Set(['layoutchange', 'scroll', 'touchmove', 'wheel']);
-const EMPTY_TEMPLATE_BINDINGS: readonly UniversalHostTemplateProgramBinding[] = Object.freeze([]);
 const TEMPLATE_HOSTS: UniversalHostTemplateCapability = Object.freeze({
 	placement(type: string): UniversalTemplateHostPlacement {
-		if (type === 'list') return 'none';
+		if (type === 'list') return 'any';
 		return type === 'list-item' ? 'root' : 'any';
 	},
-	defer(parentType: string, program: UniversalHostTemplateProgram): boolean {
-		if (parentType !== 'list') return false;
-		for (const node of program.nodes) {
-			for (const binding of node.bindings ?? EMPTY_TEMPLATE_BINDINGS) {
-				if (binding.name.startsWith('main-thread:')) return false;
-			}
-		}
-		return true;
+	defer(parentType: string, _program: UniversalHostTemplateProgram): boolean {
+		// Compact list cells bind worklets/refs lazily when Native materializes a row;
+		// those resident slots are therefore compatible with declaration and recycle.
+		return parentType === 'list';
 	},
 });
 

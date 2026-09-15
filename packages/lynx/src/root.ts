@@ -285,7 +285,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 	const context = resolveContext(target, options.context);
 	const scheduleMicrotask = resolveMicrotaskScheduler(target, options.scheduleMicrotask);
 	const general = LYNX_COMPILED_PROGRAM_APPLICATION ? null : createLynxGeneralBackgroundResources();
-	const createSelectorQuery = general === null ? undefined : target.lynx?.createSelectorQuery;
+	const createSelectorQuery = target.lynx?.createSelectorQuery;
 	const container = createLynxClientContainer({
 		createSelectorQuery:
 			typeof createSelectorQuery === 'function'
@@ -313,6 +313,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 				? createLynxCompiledProgramBlockTransport(context, container, {
 						onDiagnostic: options.onDiagnostic,
 						isPageDestroyed: () => compiledProgramDestroyedLifetimes.has(target.lynx as object),
+						createBackgroundFunctionRegistry: createLynxBackgroundFunctionRegistry,
 						onLifecycle(message) {
 							applyLynxBackgroundLifecycleData(target.lynx as unknown as Lynx, message);
 						},
@@ -356,6 +357,7 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 			if (LYNX_COMPILED_PROGRAM_APPLICATION) {
 				const compactRoot = root as LynxBackgroundCore & {
 					acceptsNativeEvent: NonNullable<LynxBackgroundCore['acceptsNativeEvent']>;
+					dispatchHostAttachments: NonNullable<LynxBackgroundCore['dispatchHostAttachments']>;
 				};
 				(transport as LynxCompiledProgramBlockTransport).bindRoot(compactRoot);
 			} else {
@@ -382,23 +384,19 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 		general?.close();
 	};
 	try {
-		if (LYNX_COMPILED_PROGRAM_APPLICATION) {
-			uninstallCallBridge = null;
-		} else {
-			const generalTransport = transport as LynxBackgroundTransport;
-			uninstallCallBridge = installBackgroundCallBridge({
-				callMain<Result>(
-					worklet: import('./core/worklets.js').LynxMainThreadWorkletDescriptor,
-					args: readonly LynxWorkletValue[],
-				) {
-					const call = generalTransport.callMain(
-						worklet as LynxMainThreadWorkletWireDescriptor,
-						args as never,
-					);
-					return { promise: call.promise as Promise<Result>, cancel: call.cancel };
-				},
-			});
-		}
+		const callTransport = transport as LynxBackgroundTransport | LynxCompiledProgramBlockTransport;
+		uninstallCallBridge = installBackgroundCallBridge({
+			callMain<Result>(
+				worklet: import('./core/worklets.js').LynxMainThreadWorkletDescriptor,
+				args: readonly LynxWorkletValue[],
+			) {
+				const call = callTransport.callMain(
+					worklet as LynxMainThreadWorkletWireDescriptor,
+					args as never,
+				);
+				return { promise: call.promise as Promise<Result>, cancel: call.cancel };
+			},
+		});
 	} catch (error) {
 		lifecycleInstallation?.rollback();
 		transport.close(error);

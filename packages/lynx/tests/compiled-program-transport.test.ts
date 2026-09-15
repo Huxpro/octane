@@ -44,6 +44,81 @@ const ROW: UniversalHostTemplateProgram = {
 	events: [],
 };
 
+const LIST_SHELL: UniversalHostTemplateProgram = {
+	nodes: [
+		{ type: 'view', parent: -1, props: {} },
+		{ type: 'list', parent: 0, props: { 'list-type': 'single' } },
+	],
+	events: [],
+};
+
+const LIST_ROW: UniversalHostTemplateProgram = {
+	nodes: [
+		{
+			type: 'list-item',
+			parent: -1,
+			props: { 'reuse-identifier': 'row' },
+			bindings: [{ name: 'item-key', valueIndex: 0 }],
+		},
+		{ type: 'text', parent: 0, props: {} },
+		{ type: '#text', parent: 1, props: {}, bindings: [{ name: 'value', valueIndex: 1 }] },
+	],
+	events: [],
+};
+
+function emittedListPlan(
+	program: UniversalHostTemplateProgram,
+	slots: UniversalProgramPlan['slots'],
+	values: UniversalProgramPlan['values'],
+	ranges: UniversalProgramPlan['ranges'] = [],
+): UniversalProgramPlan {
+	const emission = emitLynxMainThreadProgram(program, {
+		name: program === LIST_SHELL ? 'createWireList' : 'createWireListRow',
+		slotUpdates: true,
+		structuralRuns: true,
+		ranges: ranges.map((range) => ({ node: range.node, before: range.before })),
+	});
+	return {
+		kind: 'program',
+		slots,
+		nodes: program.nodes.length,
+		values,
+		events: [],
+		ranges,
+		bind: new Function('return (' + emission.source + ');')() as UniversalProgramPlan['bind'],
+		wire: program,
+	};
+}
+
+function listFrame() {
+	return encodeLynxDeltaMessage(
+		[
+			{
+				op: 'run',
+				templateId: 1,
+				parent: { instance: 1, slot: 0 },
+				before: null,
+				firstInstance: 2,
+				count: 1,
+				values: [],
+			},
+			{
+				op: 'run',
+				templateId: 2,
+				parent: { instance: 2, slot: 0 },
+				before: null,
+				firstInstance: 3,
+				count: 1,
+				values: ['item-0', 'Row 0'],
+			},
+		],
+		[
+			{ id: 1, address: { module: 'tests/WireList.lynx.tsrx', index: 0 } },
+			{ id: 2, address: { module: 'tests/WireList.lynx.tsrx', index: 1 } },
+		],
+	);
+}
+
 function emittedPlan(): UniversalProgramPlan {
 	const emission = emitLynxMainThreadProgram(ROW, {
 		name: 'createWireRow',
@@ -744,5 +819,48 @@ describe('@octanejs/lynx compact product receiver', () => {
 		expect(page.children).toEqual([]);
 		transport.close();
 		receiver.close();
+	});
+	it.each([
+		['controller receiver', false],
+		['product receiver', true],
+	] as const)('publishes accepted native-list callback faults for %s', async (_name, product) => {
+		const base = createFakePAPI({ list: true });
+		const papi: LynxElementPAPI<FakeNode> = {
+			...base,
+			intrinsics: {
+				view: (pageId) => base.createElement('view', pageId, ''),
+				text: (pageId) => base.createElement('text', pageId, ''),
+				rawText: (text) => base.createElement('#text', 0, text),
+			},
+			append: (parent, child) => base.insertBefore(parent, child, null),
+		};
+		const page = papi.createPage('0', 0);
+		const context = new RecordingContext();
+		const shell = emittedListPlan(LIST_SHELL, ['r'], [], [{ slot: 0, node: 1, id: 1 }]);
+		const row = emittedListPlan(LIST_ROW, ['p:item-key', 'c'], [0, 1]);
+		const receiver = (
+			product ? installLynxCompiledProgramProductReceiver : installLynxCompiledProgramReceiver
+		)({
+			context,
+			page,
+			papi,
+			resolveProgram: (name, index) => {
+				if (name !== 'tests/WireList.lynx.tsrx') return undefined;
+				return index === 0 ? shell : index === 1 ? row : undefined;
+			},
+		});
+		const transport = createLynxCompiledProgramTransport(context);
+		receiver.markProgramsReady();
+		receiver.markPageReady();
+		await transport.ready;
+		await transport.commit(identity(1), listFrame(), () => {}).promise;
+
+		const nativeList = base.lists[0]!;
+		expect(nativeList.componentAtIndex(nativeList.node, nativeList.node.uid, 99)).toBe(-1);
+		await expect(
+			transport.commit(identity(2), encodeLynxDeltaMessage([]), () => {}).promise,
+		).rejects.toThrow('out-of-range native-list item');
+		await transport.dispose(identity(1), true);
+		expect(page.children).toEqual([]);
 	});
 });

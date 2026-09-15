@@ -9,13 +9,14 @@ import {
 	supportNapi,
 } from '@lynx-js/tasm';
 import { getOctaneRspackBuildInfo } from '@octanejs/rspack-plugin';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import * as lynxMainThreadProgramBackend from '../../lynx/src/compiler/index.js';
 import { pluginOctane } from '../src/index.js';
 import {
 	LYNX_APPLICATION_SELECTION_ASSET_INFO,
 	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
+	LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
 	LYNX_BLOCK_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
@@ -27,6 +28,10 @@ const APPLICATION_FIXTURE = resolve(import.meta.dirname, '_fixtures/application'
 const BACKGROUND_ONLY_MARKER = 'octane-milestone-six-background-only-callback';
 const FORBIDDEN_MODULE =
 	/(?:^|[\\/])(?:runtime(?:\.server)?|universal-dom-boundary|dom-tables)\.[cm]?[jt]sx?$|(?:^|[\\/])hydration(?:[\\/]|\.[cm]?[jt]sx?$)|(?:^|[\\/])(?:react|react-dom|preact)(?:[\\/]|$)|@lynx-js[\\/]react/i;
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 const BUILD_CASES = [
 	{
@@ -126,6 +131,11 @@ class MetadataProbePlugin {
 		private readonly moduleIdentifiers: string[],
 		private readonly layeredModules: { identifier: string; layer?: string | null }[],
 		private readonly retainedModuleIdentifiers: string[],
+		private readonly moduleSources: {
+			identifier: string;
+			layer?: string | null;
+			code: string;
+		}[] = [],
 	) {}
 
 	apply(compiler: any): void {
@@ -136,6 +146,7 @@ class MetadataProbePlugin {
 						identifier?: () => string;
 						layer?: string | null;
 						nameForCondition?: () => string | null;
+						originalSource?: () => { source?: () => unknown } | null;
 					};
 					const moduleIdentifier = record.identifier?.();
 					if (typeof moduleIdentifier === 'string') {
@@ -143,6 +154,14 @@ class MetadataProbePlugin {
 							identifier: moduleIdentifier,
 							...(record.layer === undefined ? null : { layer: record.layer }),
 						});
+						const source = record.originalSource?.()?.source?.();
+						if (typeof source === 'string' || Buffer.isBuffer(source)) {
+							this.moduleSources.push({
+								identifier: moduleIdentifier,
+								...(record.layer === undefined ? null : { layer: record.layer }),
+								code: source.toString(),
+							});
+						}
 					}
 					for (const identifier of [record.identifier?.(), record.nameForCondition?.()]) {
 						if (typeof identifier === 'string') this.moduleIdentifiers.push(identifier);
@@ -189,6 +208,11 @@ function metadataProbe(
 	moduleIdentifiers: string[],
 	layeredModules: { identifier: string; layer?: string | null }[] = [],
 	retainedModuleIdentifiers: string[] = [],
+	moduleSources: {
+		identifier: string;
+		layer?: string | null;
+		code: string;
+	}[] = [],
 ) {
 	return {
 		name: 'octane:lynx-runtime-graph-probe',
@@ -201,6 +225,7 @@ function metadataProbe(
 						moduleIdentifiers,
 						layeredModules,
 						retainedModuleIdentifiers,
+						moduleSources,
 					]);
 			});
 		},
@@ -265,15 +290,25 @@ class ProgramCoverageProbePlugin {
 						const selection = asset.info[LYNX_BLOCK_SELECTION_ASSET_INFO];
 						const core = asset.info[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO];
 						const application = asset.info[LYNX_APPLICATION_SELECTION_ASSET_INFO];
+						const componentFeatures = asset.info[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO];
 						if (
 							program !== undefined ||
 							semantic !== undefined ||
 							feature !== undefined ||
 							selection !== undefined ||
 							core !== undefined ||
-							application !== undefined
+							application !== undefined ||
+							componentFeatures !== undefined
 						) {
-							this.reports.push({ program, semantic, feature, selection, core, application });
+							this.reports.push({
+								program,
+								semantic,
+								feature,
+								selection,
+								core,
+								application,
+								componentFeatures,
+							});
 						}
 					}
 				},
@@ -298,7 +333,7 @@ function programCoverageProbe(reports: unknown[]) {
 async function collectCoreSelections(
 	mode: 'development' | 'production',
 	entry: Record<string, string>,
-	field: 'application' | 'core' = 'core',
+	field: 'application' | 'componentFeatures' | 'core' = 'core',
 ): Promise<unknown[]> {
 	const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-core-selection-'));
 	const reports: unknown[] = [];
@@ -335,6 +370,16 @@ async function collectCoreSelections(
 }
 
 describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
+	it('specializes a production graph with structural semantics only', async () => {
+		expect(
+			await collectCoreSelections(
+				'production',
+				{ main: './src/block-ref.ts' },
+				'componentFeatures',
+			),
+		).toEqual([{ version: 1, selected: 'structural', reasons: [] }]);
+	}, 120_000);
+
 	it('keeps an eligible development graph on universal with a diagnostic reason', async () => {
 		expect(await collectCoreSelections('development', { main: './src/block-eligible.ts' })).toEqual(
 			[
@@ -379,7 +424,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 		]);
 		expect(await collectCoreSelections('production', entry, 'application')).toEqual([
 			{
-				version: 1,
+				version: 2,
 				selected: 'general',
 				reasons: [
 					{
@@ -391,11 +436,56 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 		]);
 	}, 120_000);
 
+	it('keeps compiler-proved portals on the general application with the Block core', async () => {
+		const entry = { main: './src/portal-eligible.ts' };
+		expect(await collectCoreSelections('production', entry)).toEqual([
+			{
+				version: 1,
+				mode: 'automatic',
+				selected: 'block',
+				eligible: true,
+				reasons: [],
+			},
+		]);
+		expect(await collectCoreSelections('production', entry, 'application')).toEqual([
+			{
+				version: 2,
+				selected: 'general',
+				reasons: [{ code: 'entry-ineligible', entry: 'main__octane_main_thread' }],
+			},
+		]);
+	}, 120_000);
+
+	it('selects the compact Block application for compiler-proved transitions', async () => {
+		const entry = { main: './src/transition-eligible.ts' };
+		expect(await collectCoreSelections('production', entry)).toEqual([
+			{
+				version: 1,
+				mode: 'automatic',
+				selected: 'block',
+				eligible: true,
+				reasons: [],
+			},
+		]);
+		expect(await collectCoreSelections('production', entry, 'application')).toEqual([
+			{
+				version: 2,
+				selected: 'compiled-program',
+				reasons: [],
+			},
+		]);
+	}, 120_000);
+
 	it('publishes an eligible verdict for a real production Block-compatible graph', async () => {
 		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-block-eligibility-'));
 		const reports: unknown[] = [];
 		const moduleIdentifiers: string[] = [];
 		const retainedModuleIdentifiers: string[] = [];
+		const moduleSources: {
+			identifier: string;
+			layer?: string | null;
+			code: string;
+		}[] = [];
 		const rspeedy = await createRspeedy({
 			cwd: APPLICATION_FIXTURE,
 			loadEnv: false,
@@ -420,7 +510,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						hmr: false,
 					}),
 					programCoverageProbe(reports),
-					metadataProbe([], moduleIdentifiers, [], retainedModuleIdentifiers),
+					metadataProbe([], moduleIdentifiers, [], retainedModuleIdentifiers, moduleSources),
 				],
 			},
 		});
@@ -432,16 +522,36 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				program: {
 					version: 1,
 					complete: true,
-					pairedPlans: 2,
-					pairedAddressed: 2,
+					pairedPlans: 18,
+					pairedAddressed: 18,
 					reasons: [],
 				},
 				semantic: {
 					version: 1,
 					paired: true,
 					requirements: {
-						background: { runtimeUses: ['useState'] },
-						mainThread: { runtimeUses: ['useState'] },
+						background: {
+							runtimeUses: [
+								'Activity',
+								'createContext',
+								'memo',
+								'useContext',
+								'useLayoutEffect',
+								'useMemo',
+								'useReducer',
+							],
+						},
+						mainThread: {
+							runtimeUses: [
+								'Activity',
+								'createContext',
+								'memo',
+								'useContext',
+								'useLayoutEffect',
+								'useMemo',
+								'useReducer',
+							],
+						},
 					},
 					reasons: [],
 				},
@@ -451,22 +561,100 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					modules: [
 						{
 							background: {
+								templateFeatures: [
+									expect.objectContaining({ kind: 'if' }),
+									expect.objectContaining({ kind: 'switch' }),
+									expect.objectContaining({ kind: 'component-hole' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockSelection' }),
+									expect.objectContaining({ kind: 'activity' }),
+									expect.objectContaining({ kind: 'try' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockFrame' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockRenderFrame' }),
+									expect.objectContaining({ kind: 'inline-render-prop', name: 'render' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockShell' }),
+								],
 								keyedRanges: [
 									expect.objectContaining({
-										empty: false,
+										empty: true,
 										nested: false,
+										lastChild: false,
+										row: {
+											kind: 'local-component',
+											name: 'BlockEligibleRow',
+											hooks: [
+												expect.objectContaining({ name: 'useReducer' }),
+												expect.objectContaining({ name: 'useContext' }),
+												expect.objectContaining({ name: 'useMemo' }),
+												expect.objectContaining({ name: 'useLayoutEffect' }),
+											],
+										},
+									}),
+									expect.objectContaining({
+										empty: true,
+										nested: true,
 										lastChild: true,
 										row: { kind: 'inline-host', name: 'view' },
+									}),
+									expect.objectContaining({
+										empty: true,
+										nested: false,
+										lastChild: false,
+										row: { kind: 'inline-host', name: 'text' },
+									}),
+									expect.objectContaining({
+										empty: true,
+										nested: false,
+										lastChild: true,
+										row: { kind: 'inline-host', name: 'text' },
 									}),
 								],
 							},
 							mainThread: {
+								templateFeatures: [
+									expect.objectContaining({ kind: 'if' }),
+									expect.objectContaining({ kind: 'switch' }),
+									expect.objectContaining({ kind: 'component-hole' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockSelection' }),
+									expect.objectContaining({ kind: 'activity' }),
+									expect.objectContaining({ kind: 'try' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockFrame' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockRenderFrame' }),
+									expect.objectContaining({ kind: 'inline-render-prop', name: 'render' }),
+									expect.objectContaining({ kind: 'local-component', name: 'BlockShell' }),
+								],
 								keyedRanges: [
 									expect.objectContaining({
-										empty: false,
+										empty: true,
 										nested: false,
+										lastChild: false,
+										row: {
+											kind: 'local-component',
+											name: 'BlockEligibleRow',
+											hooks: [
+												expect.objectContaining({ name: 'useReducer' }),
+												expect.objectContaining({ name: 'useContext' }),
+												expect.objectContaining({ name: 'useMemo' }),
+												expect.objectContaining({ name: 'useLayoutEffect' }),
+											],
+										},
+									}),
+									expect.objectContaining({
+										empty: true,
+										nested: true,
 										lastChild: true,
 										row: { kind: 'inline-host', name: 'view' },
+									}),
+									expect.objectContaining({
+										empty: true,
+										nested: false,
+										lastChild: false,
+										row: { kind: 'inline-host', name: 'text' },
+									}),
+									expect.objectContaining({
+										empty: true,
+										nested: false,
+										lastChild: true,
+										row: { kind: 'inline-host', name: 'text' },
 									}),
 								],
 							},
@@ -482,7 +670,17 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					eligible: true,
 					reasons: [],
 				},
-				application: { version: 1, selected: 'compiled-program', reasons: [] },
+				application: { version: 2, selected: 'compiled-program', reasons: [] },
+				componentFeatures: {
+					version: 1,
+					selected: 'full',
+					reasons: [
+						{
+							code: 'entry-requires-optional-block-semantics',
+							entry: 'main__octane_main_thread',
+						},
+					],
+				},
 			});
 			const retained = retainedModuleIdentifiers.map((identifier) =>
 				identifier
@@ -504,9 +702,18 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				),
 			).toBe(false);
 			for (const module of [
+				'compiled-program-application.ts',
+				'main-thread-product-application.ts',
 				'core/application-selection.compiled-program.ts',
+				'core/block-background.ts',
+				'core/block-component.ts',
 				'core/client-driver.compiled-program.ts',
+				'core/compact-host-ref-feature.ts',
 				'first-screen.compiled-program.ts',
+				'core/compiled-program-block-transport.ts',
+				'core/compiled-program-first-screen.ts',
+				'core/compiled-program-product-receiver.ts',
+				'core/compiled-program-store.ts',
 				'main-renderer.compiled-program.ts',
 				'core/main-thread-application-selection.compiled-program.ts',
 			]) {
@@ -518,6 +725,9 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			for (const module of [
 				'core/application-selection.ts',
 				'core/client-driver.ts',
+				'core/compact-host-refs.ts',
+				'core/compiled-program-worklets.ts',
+				'main-worklets.ts',
 				'main-renderer.ts',
 				'core/main-thread-application-selection.ts',
 			]) {
@@ -531,6 +741,336 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			expect(product.includes('octane-lynx:compiled-program-main-to-background')).toBe(true);
 			expect(product.includes('octane-lynx:background-to-main')).toBe(false);
 			expect(product.includes('octane-lynx:main-to-background')).toBe(false);
+			expect(
+				moduleSources.some(
+					(module) =>
+						module.layer === 'octane:background' &&
+						module.identifier
+							.replaceAll(String.fromCharCode(92), '/')
+							.endsWith('/packages/lynx/src/core/nodes-ref.ts'),
+				),
+			).toBe(false);
+			const backgroundProgram = moduleSources.find(
+				(module) =>
+					module.layer === 'octane:background' &&
+					module.identifier.replaceAll('\\\\', '/').includes('/src/BlockEligible.tsrx'),
+			);
+			expect(backgroundProgram?.code).toContain('lynxProgram as');
+			expect(backgroundProgram?.code).toContain('lynxProgramValue as');
+			expect(backgroundProgram?.code).not.toContain('universalPlan as');
+			expect(backgroundProgram?.code).not.toContain('universalValue as');
+			expect(backgroundProgram?.code).toContain('"type": "image"');
+			const mainProgram = moduleSources.find(
+				(module) =>
+					module.layer === 'octane:main-thread' &&
+					module.identifier.replaceAll('\\\\', '/').includes('/src/BlockEligible.tsrx'),
+			);
+			expect(mainProgram?.code).toContain('"kind": "program"');
+			expect(mainProgram?.code).toContain('"version": 1');
+			expect(mainProgram?.code).toContain('papi.createElement("image", pageId');
+			const decoded = await decodeNativeBundle(product);
+			expect(nativeScriptText(decoded['background-thread-script'])).toContain(
+				'octane-r10-background-selection',
+			);
+			expect(nativeScriptText(decoded['main-thread-script'])).not.toContain(
+				'octane-r10-background-selection',
+			);
+		} finally {
+			await result?.close();
+			rmSync(temporaryRoot, { recursive: true, force: true });
+		}
+	}, 120_000);
+
+	it('encodes and selects the explicit whole-root Element Template application', async () => {
+		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-element-template-'));
+		const reports: unknown[] = [];
+		const retainedModuleIdentifiers: string[] = [];
+		const rspeedy = await createRspeedy({
+			cwd: APPLICATION_FIXTURE,
+			loadEnv: false,
+			environment: ['lynx'],
+			rspeedyConfig: {
+				mode: 'production',
+				environments: { lynx: {} },
+				dev: { hmr: false, liveReload: false },
+				output: {
+					cleanDistPath: true,
+					distPath: { root: join(temporaryRoot, 'dist') },
+					filenameHash: false,
+					sourceMap: false,
+				},
+				source: { entry: { main: './src/block-eligible.ts' } },
+				splitChunks: false,
+				plugins: [
+					pluginOctane({ dev: false, hmr: false, experimentalElementTemplate: true }),
+					programCoverageProbe(reports),
+					metadataProbe([], [], [], retainedModuleIdentifiers),
+				],
+			},
+		});
+		let result: Awaited<ReturnType<typeof rspeedy.build>> | undefined;
+		try {
+			result = await rspeedy.build();
+			expect(reports).toHaveLength(1);
+			expect(reports[0]).toMatchObject({
+				program: { version: 1, complete: true, reasons: [] },
+				selection: { version: 1, eligible: true, reasons: [] },
+				core: { version: 1, selected: 'block', reasons: [] },
+				application: {
+					version: 2,
+					selected: 'compiled-program-element-template',
+					reasons: [],
+				},
+			});
+			const retained = retainedModuleIdentifiers.map((identifier) =>
+				identifier
+					.split('!')
+					.at(-1)!
+					.replace(/\|octane:(?:background|main-thread).*$/, '')
+					.split('?', 1)[0]
+					.replaceAll('\\', '/'),
+			);
+			for (const module of [
+				'core/main-thread-application-selection.element-template.ts',
+				'core/element-template-first-screen.ts',
+				'core/element-template-papi.ts',
+				'core/element-template-program-store.ts',
+			]) {
+				expect(
+					retained.some((identifier) => identifier.endsWith(`/packages/lynx/src/${module}`)),
+					retained.join('\n'),
+				).toBe(true);
+			}
+			expect(
+				retained.some((identifier) =>
+					identifier.endsWith(
+						'/packages/lynx/src/core/main-thread-application-selection.compiled-program.ts',
+					),
+				),
+			).toBe(false);
+			const product = readFileSync(join(temporaryRoot, 'dist/main.lynx.bundle'));
+			const decoded = await decodeNativeBundle(product);
+			expect(JSON.parse(decoded['page-config'] as string)).toMatchObject({
+				enableUnifyFixedBehavior: true,
+			});
+			expect(decoded['engine-version']).toBe('3.2');
+			expect(decoded.compilerOptions).toMatchObject({ target_sdk_version_: '3.2' });
+			const mainThreadScript = nativeScriptText(decoded['main-thread-script']);
+			expect(mainThreadScript).toContain('__CreateTypedElementTemplate');
+			expect(mainThreadScript).not.toMatch(/__CreateElement(?!Template)/);
+			expect(mainThreadScript).not.toContain('__CreatePage');
+			expect(mainThreadScript).toMatch(/_et_[a-f0-9]{12}/);
+		} finally {
+			await result?.close();
+			rmSync(temporaryRoot, { recursive: true, force: true });
+		}
+	}, 120_000);
+
+	it('selects the structural Element Template visibility policy in a production graph', async () => {
+		const temporaryRoot = mkdtempSync(
+			join(tmpdir(), 'octane-rspeedy-element-template-structural-'),
+		);
+		const reports: unknown[] = [];
+		const compilerMetadata: any[] = [];
+		const retainedModuleIdentifiers: string[] = [];
+		const rspeedy = await createRspeedy({
+			cwd: APPLICATION_FIXTURE,
+			loadEnv: false,
+			environment: ['lynx'],
+			rspeedyConfig: {
+				mode: 'production',
+				environments: { lynx: {} },
+				dev: { hmr: false, liveReload: false },
+				output: {
+					cleanDistPath: true,
+					distPath: { root: join(temporaryRoot, 'dist') },
+					filenameHash: false,
+					sourceMap: false,
+				},
+				source: { entry: { main: './src/element-template-structural.ts' } },
+				splitChunks: false,
+				plugins: [
+					pluginOctane({ dev: false, hmr: false, experimentalElementTemplate: true }),
+					programCoverageProbe(reports),
+					metadataProbe(compilerMetadata, [], [], retainedModuleIdentifiers),
+				],
+			},
+		});
+		let result: Awaited<ReturnType<typeof rspeedy.build>> | undefined;
+		try {
+			result = await rspeedy.build();
+			expect(reports).toHaveLength(1);
+			expect(reports[0]).toMatchObject({
+				core: { selected: 'block' },
+				application: { selected: 'compiled-program-element-template' },
+				componentFeatures: { selected: 'structural', reasons: [] },
+			});
+			const retained = retainedModuleIdentifiers.map((identifier) =>
+				identifier.replaceAll('\\', '/'),
+			);
+			expect(
+				retained.some((identifier) =>
+					identifier.includes('/core/block-component-features.structural.ts'),
+				),
+			).toBe(true);
+			expect(
+				retained.some((identifier) => identifier.includes('/core/element-template-visibility.ts')),
+			).toBe(false);
+			const structuralModule = compilerMetadata.find(
+				(metadata) =>
+					metadata.canonicalId?.endsWith('/ElementTemplateStructural.tsrx') &&
+					metadata.universalRuntime?.thread === 'main-thread',
+			);
+			expect(structuralModule?.lynxElementTemplates).toHaveLength(2);
+			for (const record of structuralModule.lynxElementTemplates) {
+				expect(
+					record.compiledTemplate.attributesArray.some(
+						(attribute: { key?: string }) => attribute.key === 'hidden',
+					),
+				).toBe(false);
+			}
+		} finally {
+			await result?.close();
+			rmSync(temporaryRoot, { recursive: true, force: true });
+		}
+	}, 120_000);
+
+	it('fails the explicit Element Template build before encoding an unsupported native list', async () => {
+		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-element-template-refusal-'));
+		const rspeedy = await createRspeedy({
+			cwd: APPLICATION_FIXTURE,
+			loadEnv: false,
+			environment: ['lynx'],
+			rspeedyConfig: {
+				mode: 'production',
+				environments: { lynx: {} },
+				dev: { hmr: false, liveReload: false },
+				output: {
+					cleanDistPath: true,
+					distPath: { root: join(temporaryRoot, 'dist') },
+					filenameHash: false,
+					sourceMap: false,
+				},
+				source: { entry: { main: './src/native-list.ts' } },
+				splitChunks: false,
+				plugins: [pluginOctane({ dev: false, hmr: false, experimentalElementTemplate: true })],
+			},
+		});
+		try {
+			await expect(rspeedy.build()).rejects.toThrow('Rspack build failed.');
+		} finally {
+			rmSync(temporaryRoot, { recursive: true, force: true });
+		}
+	}, 120_000);
+
+	it('builds a fixed-shape native list as the compact production application', async () => {
+		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-native-list-'));
+		const reports: unknown[] = [];
+		const moduleIdentifiers: string[] = [];
+		const retainedModuleIdentifiers: string[] = [];
+		const moduleSources: {
+			identifier: string;
+			layer?: string | null;
+			code: string;
+		}[] = [];
+		const rspeedy = await createRspeedy({
+			cwd: APPLICATION_FIXTURE,
+			loadEnv: false,
+			environment: ['lynx'],
+			rspeedyConfig: {
+				mode: 'production',
+				environments: { lynx: {} },
+				dev: { hmr: false, liveReload: false },
+				output: {
+					cleanDistPath: true,
+					dataUriLimit: 0,
+					distPath: { root: join(temporaryRoot, 'dist') },
+					filenameHash: false,
+					sourceMap: false,
+				},
+				source: { entry: { main: './src/native-list.ts' } },
+				splitChunks: false,
+				plugins: [
+					pluginOctane({ dev: false, hmr: false }),
+					programCoverageProbe(reports),
+					metadataProbe([], moduleIdentifiers, [], retainedModuleIdentifiers, moduleSources),
+				],
+			},
+		});
+		let result: Awaited<ReturnType<typeof rspeedy.build>> | undefined;
+		try {
+			result = await rspeedy.build();
+			expect(reports).toHaveLength(1);
+			expect(reports[0]).toMatchObject({
+				program: { version: 1, complete: true, reasons: [] },
+				semantic: { version: 1, paired: true, reasons: [] },
+				feature: {
+					version: 2,
+					paired: true,
+					modules: [
+						{
+							background: {
+								templateFeatures: expect.arrayContaining([
+									expect.objectContaining({ kind: 'native-list', name: 'list' }),
+									expect.objectContaining({ kind: 'native-list', name: 'list-item' }),
+								]),
+								keyedRanges: [
+									expect.objectContaining({
+										row: expect.objectContaining({
+											kind: 'local-component',
+											name: 'NativeListRow',
+										}),
+									}),
+								],
+							},
+						},
+					],
+					reasons: [],
+				},
+				selection: { version: 1, eligible: true, reasons: [] },
+				core: { version: 1, mode: 'automatic', selected: 'block', reasons: [] },
+				application: { version: 2, selected: 'compiled-program', reasons: [] },
+			});
+
+			const retained = retainedModuleIdentifiers.map((identifier) =>
+				identifier
+					.split('!')
+					.at(-1)!
+					.replace(/\|octane:(?:background|main-thread).*$/, '')
+					.split('?', 1)[0]
+					.replaceAll('\\\\', '/'),
+			);
+			for (const module of [
+				'core/application-selection.ts',
+				'core/client-driver.ts',
+				'core/compact-host-refs.ts',
+				'core/compiled-program-worklets.ts',
+				'main-worklets.ts',
+				'main-renderer.ts',
+				'core/main-thread-application-selection.ts',
+			]) {
+				expect(
+					retained.some((identifier) => identifier.endsWith(`/packages/lynx/src/${module}`)),
+					`${module}\n${retained.join('\n')}`,
+				).toBe(false);
+			}
+			const backgroundProgram = moduleSources
+				.filter((module) => module.layer === 'octane:background')
+				.map((module) => module.code)
+				.join('\n');
+			const mainProgram = moduleSources
+				.filter((module) => module.layer === 'octane:main-thread')
+				.map((module) => module.code)
+				.join('\n');
+			expect(backgroundProgram).toContain('"type": "list"');
+			expect(backgroundProgram).toContain('"type": "list-item"');
+			expect(mainProgram).toContain('papi.createElement("list", pageId');
+			expect(mainProgram).toContain('papi.createElement("list-item", pageId');
+
+			const product = readFileSync(join(temporaryRoot, 'dist/main.lynx.bundle'));
+			expect(product.includes('octane-lynx:compiled-program-background-to-main')).toBe(true);
+			expect(product.includes('octane-lynx:background-to-main')).toBe(false);
+			expect(readdirSync(join(temporaryRoot, 'dist/static/svg'))).toContain('badge.svg');
 		} finally {
 			await result?.close();
 			rmSync(temporaryRoot, { recursive: true, force: true });
@@ -692,23 +1232,49 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 2,
+							version: 20,
 							runtimeNames: [
+								'Activity',
+								'createContext',
+								'createPortal',
+								'memo',
+								'startTransition',
+								'use',
+								'useBatch',
 								'useCallback',
+								'useContext',
+								'useDeferredValue',
 								'useEffect',
+								'useLayoutEffect',
+								'useMemo',
+								'useReducer',
 								'useRef',
 								'useState',
 								'useSyncExternalStore',
+								'useTransition',
 							],
 							threadFunctions: ['background', 'main-thread'],
 							mainThreadProps: true,
-							templateFeatures: [],
+							templateFeatures: [
+								'activity',
+								'component-hole',
+								'host-ref',
+								'if',
+								'inline-render-prop',
+								'local-component',
+								'native-list',
+								'portal',
+								'switch',
+								'try',
+							],
 							keyedRanges: {
-								empty: false,
-								nested: false,
+								empty: true,
+								nested: true,
 								lastChild: true,
+								nonTail: true,
 								rowKinds: ['inline-host', 'local-component'],
-								rowHooks: false,
+								rowHooks: true,
+								siblings: true,
 							},
 						},
 						eligible: false,
@@ -734,10 +1300,18 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						reasons: [{ code: 'entry-ineligible', entry: 'main__octane_main_thread' }],
 					},
 					application: {
-						version: 1,
+						version: 2,
 						selected: 'general',
 						reasons: [
 							{ code: 'compiled-program-requires-block-core' },
+							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
+						],
+					},
+					componentFeatures: {
+						version: 1,
+						selected: 'full',
+						reasons: [
+							{ code: 'feature-specialization-requires-block-core' },
 							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
 						],
 					},
@@ -859,6 +1433,10 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 	);
 
 	it('assembles self-contained native bundles for every authored application entry', async () => {
+		// Rspeedy 0.17 intentionally omits debug metadata from local production
+		// builds. Exercise the automated-build contract that CI and release
+		// qualification use so the probe can observe metadata before it is stripped.
+		vi.stubEnv('BUILD_VERSION', 'octane-rspeedy-build-test');
 		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-application-'));
 		const outputRoot = join(temporaryRoot, 'dist');
 		const observed: unknown[] = [];
@@ -911,6 +1489,8 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 			const secondaryBackground = nativeScriptText(secondaryBundle['background-thread-script']);
 
 			expect(decoded['engine-version']).toBe('3.9');
+			expect(mainThread).toMatch(/\b__CreateElement\b/);
+			expect(mainThread).not.toMatch(/\b__Create(?:Typed)?ElementTemplate\b/);
 			expect(mainThread).toMatch(/getJSContext/);
 			expect(mainThread).not.toMatch(/getCoreContext/);
 			expect(background).toMatch(/getCoreContext/);
@@ -1110,6 +1690,7 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 	}, 120_000);
 
 	it('emits a production lazy bundle specialized for both native threads', async () => {
+		vi.stubEnv('BUILD_VERSION', 'octane-rspeedy-build-test');
 		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-lazy-'));
 		const outputRoot = join(temporaryRoot, 'dist');
 		const moduleIdentifiers: string[] = [];
@@ -1159,7 +1740,7 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 			});
 
 			const lazyBundlePath = outputFiles(outputRoot).find((filename) =>
-				/[\\/]async[\\/]src[\\/]LazyCard\.tsrx\.[A-Fa-f0-9]+\.bundle$/.test(filename),
+				/[\\/]lazy-bundle[\\/]src_LazyCard\.tsrx\.[A-Fa-f0-9]+\.bundle$/.test(filename),
 			);
 			expect(lazyBundlePath).toBeDefined();
 			const lazyBundle = readFileSync(lazyBundlePath!);
@@ -1202,11 +1783,15 @@ describe('@octanejs/rspeedy-plugin native production entries', () => {
 				expect.arrayContaining([
 					expect.objectContaining({
 						kind: 'background',
-						path: expect.stringMatching(/^\.rspeedy\/async\/src\/LazyCard\.tsrx\/background\.js$/),
+						path: expect.stringMatching(
+							/^\.rspeedy\/lazy-bundle\/src_LazyCard\.tsrx\/background\.js$/,
+						),
 					}),
 					expect.objectContaining({
 						kind: 'main-thread',
-						path: expect.stringMatching(/^\.rspeedy\/async\/src\/LazyCard\.tsrx\/main-thread\.js$/),
+						path: expect.stringMatching(
+							/^\.rspeedy\/lazy-bundle\/src_LazyCard\.tsrx\/main-thread\.js$/,
+						),
 					}),
 				]),
 			);

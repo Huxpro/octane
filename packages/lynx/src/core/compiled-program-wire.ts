@@ -16,6 +16,17 @@ import type {
 	LynxPageDataMessage,
 } from './lifecycle-types.js';
 import type {
+	LynxCallBackgroundErrorMessage,
+	LynxCallBackgroundMessage,
+	LynxCallBackgroundResultMessage,
+	LynxCallMainErrorMessage,
+	LynxCallMainMessage,
+	LynxCallMainResultMessage,
+	LynxCancelBackgroundCallMessage,
+	LynxCancelMainCallMessage,
+	LynxHostAttachmentChange,
+} from './protocol.js';
+import type {
 	LynxCompiledProgramDisposeAcknowledgement,
 	LynxCompiledProgramDisposeRetry,
 } from './compiled-program-controller.js';
@@ -44,6 +55,15 @@ const enum WireOpcode {
 	PageUpdate = 15,
 	PageReset = 16,
 	GlobalProps = 17,
+	HostAttachment = 18,
+	CallMain = 19,
+	CancelMain = 20,
+	CallBackgroundResult = 21,
+	CallBackgroundError = 22,
+	CallBackground = 23,
+	CancelBackground = 24,
+	CallMainResult = 25,
+	CallMainError = 26,
 }
 
 export const LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT =
@@ -66,6 +86,11 @@ export interface LynxCompiledProgramPageDestroyMessage {
 	readonly type: 'page-destroy';
 }
 
+export interface LynxCompiledProgramHostAttachmentMessage extends UniversalTransportIdentity {
+	readonly type: 'host-attachment';
+	readonly changes: readonly LynxHostAttachmentChange[];
+}
+
 export interface LynxCompiledProgramFrameMessage extends UniversalTransportIdentity {
 	readonly type: 'frame';
 	readonly frame: readonly unknown[];
@@ -81,13 +106,22 @@ export interface LynxCompiledProgramDisposeMessage extends UniversalTransportIde
 
 export type LynxCompiledProgramBackgroundMessage =
 	| LynxCompiledProgramReadyRequest
+	| LynxCallMainMessage
+	| LynxCancelMainCallMessage
+	| LynxCallBackgroundResultMessage
+	| LynxCallBackgroundErrorMessage
 	| LynxCompiledProgramFrameMessage
 	| LynxCompiledProgramAbortMessage
 	| LynxCompiledProgramDisposeMessage;
 
 export type LynxCompiledProgramMainMessage =
 	| LynxCompiledProgramReadyReply
+	| LynxCallBackgroundMessage
+	| LynxCancelBackgroundCallMessage
+	| LynxCallMainResultMessage
+	| LynxCallMainErrorMessage
 	| LynxCompiledProgramPageDestroyMessage
+	| LynxCompiledProgramHostAttachmentMessage
 	| LynxDataLifecycleMessage
 	| UniversalTransportAcknowledgement
 	| UniversalTransportCompleteMessage
@@ -165,6 +199,42 @@ export function encodeLynxCompiledProgramBackgroundMessage(
 			safePositive(message.request, 'ready request'),
 		]);
 	}
+	if (
+		message.type === 'call-main' ||
+		message.type === 'cancel-main' ||
+		message.type === 'call-background-result' ||
+		message.type === 'call-background-error'
+	) {
+		if (
+			message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION ||
+			message.renderer !== LYNX_TRANSPORT_RENDERER
+		)
+			fail('received a foreign call identity');
+		const output: unknown[] = [
+			LYNX_TRANSPORT_PROTOCOL_VERSION,
+			message.type === 'call-main'
+				? WireOpcode.CallMain
+				: message.type === 'cancel-main'
+					? WireOpcode.CancelMain
+					: message.type === 'call-background-result'
+						? WireOpcode.CallBackgroundResult
+						: WireOpcode.CallBackgroundError,
+			safePositive(message.root, 'root'),
+			safePositive(message.version, 'frame version'),
+			safePositive(message.call, 'call id'),
+		];
+		if (message.type === 'call-main') {
+			output.push(
+				encodeLynxTransportValue(message.worklet),
+				encodeLynxTransportValue(message.args),
+			);
+		} else if (message.type === 'call-background-result') {
+			output.push(encodeLynxTransportValue(message.value));
+		} else if (message.type === 'call-background-error') {
+			output.push(message.error.name, message.error.message);
+		}
+		return JSON.stringify(output);
+	}
 	const prefix = [
 		LYNX_TRANSPORT_PROTOCOL_VERSION,
 		message.type === 'frame'
@@ -198,6 +268,51 @@ export function decodeLynxCompiledProgramBackgroundMessage(
 	if (input[1] === WireOpcode.Ready) {
 		if (input.length !== 3) fail('received the wrong ready field count');
 		return Object.freeze({ type: 'ready', request: safePositive(input[2], 'ready request') });
+	}
+	if (input[1] === WireOpcode.CallMain) {
+		const route = identity(input, 7);
+		const worklet = decodeLynxTransportValue(input[5] as string);
+		const args = decodeLynxTransportValue(input[6] as string);
+		if (
+			worklet === null ||
+			typeof worklet !== 'object' ||
+			Array.isArray(worklet) ||
+			!Array.isArray(args)
+		)
+			fail('received an invalid call-main payload');
+		return Object.freeze({
+			...route,
+			type: 'call-main',
+			call: safePositive(input[4], 'call id'),
+			worklet,
+			args,
+		}) as LynxCallMainMessage;
+	}
+	if (input[1] === WireOpcode.CancelMain) {
+		const route = identity(input, 5);
+		return Object.freeze({
+			...route,
+			type: 'cancel-main',
+			call: safePositive(input[4], 'call id'),
+		});
+	}
+	if (input[1] === WireOpcode.CallBackgroundResult) {
+		const route = identity(input, 6);
+		return Object.freeze({
+			...route,
+			type: 'call-background-result',
+			call: safePositive(input[4], 'call id'),
+			value: decodeLynxTransportValue(input[5] as string),
+		}) as LynxCallBackgroundResultMessage;
+	}
+	if (input[1] === WireOpcode.CallBackgroundError) {
+		const route = identity(input, 7);
+		return Object.freeze({
+			...route,
+			type: 'call-background-error',
+			call: safePositive(input[4], 'call id'),
+			error: error(input, 5),
+		});
 	}
 	if (input[1] === WireOpcode.Frame) {
 		const route = identity(input, 5);
@@ -236,6 +351,39 @@ export function encodeLynxCompiledProgramMainMessage(
 	if (message.type === 'page-destroy') {
 		return JSON.stringify([LYNX_TRANSPORT_PROTOCOL_VERSION, WireOpcode.PageDestroy]);
 	}
+	if (
+		message.type === 'call-background' ||
+		message.type === 'cancel-background' ||
+		message.type === 'call-main-result' ||
+		message.type === 'call-main-error'
+	) {
+		if (
+			message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION ||
+			message.renderer !== LYNX_TRANSPORT_RENDERER
+		)
+			fail('received a foreign call identity');
+		const output: unknown[] = [
+			LYNX_TRANSPORT_PROTOCOL_VERSION,
+			message.type === 'call-background'
+				? WireOpcode.CallBackground
+				: message.type === 'cancel-background'
+					? WireOpcode.CancelBackground
+					: message.type === 'call-main-result'
+						? WireOpcode.CallMainResult
+						: WireOpcode.CallMainError,
+			safePositive(message.root, 'root'),
+			safePositive(message.version, 'frame version'),
+			safePositive(message.call, 'call id'),
+		];
+		if (message.type === 'call-background') {
+			output.push(encodeLynxTransportValue(message.fn), encodeLynxTransportValue(message.args));
+		} else if (message.type === 'call-main-result') {
+			output.push(encodeLynxTransportValue(message.value));
+		} else if (message.type === 'call-main-error') {
+			output.push(message.error.name, message.error.message);
+		}
+		return JSON.stringify(output);
+	}
 	if (message.type === 'page-data' || message.type === 'global-props') {
 		if (
 			message.protocol !== LYNX_TRANSPORT_PROTOCOL_VERSION ||
@@ -269,6 +417,27 @@ export function encodeLynxCompiledProgramMainMessage(
 		message.renderer !== LYNX_TRANSPORT_RENDERER
 	) {
 		fail('received a foreign identity');
+	}
+	if (message.type === 'host-attachment') {
+		if (message.changes.length === 0) fail('requires host attachment changes');
+		const output: unknown[] = [
+			LYNX_TRANSPORT_PROTOCOL_VERSION,
+			WireOpcode.HostAttachment,
+			safePositive(message.root, 'root'),
+			safePositive(message.version, 'frame version'),
+		];
+		for (const change of message.changes) {
+			output.push(
+				safePositive(change.id, 'host attachment id'),
+				safePositive(change.generation, 'host attachment generation'),
+				change.attached === true
+					? 1
+					: change.attached === false
+						? 0
+						: fail('requires a boolean host attachment state'),
+			);
+		}
+		return JSON.stringify(output);
 	}
 	const opcode =
 		message.type === 'ack'
@@ -307,6 +476,46 @@ export function decodeLynxCompiledProgramMainMessage(
 		if (input.length !== 2) fail('received the wrong page-destroy field count');
 		return Object.freeze({ type: 'page-destroy' });
 	}
+	if (input[1] === WireOpcode.CallBackground) {
+		const route = identity(input, 7);
+		const fn = decodeLynxTransportValue(input[5] as string);
+		const args = decodeLynxTransportValue(input[6] as string);
+		if (fn === null || typeof fn !== 'object' || Array.isArray(fn) || !Array.isArray(args))
+			fail('received an invalid call-background payload');
+		return Object.freeze({
+			...route,
+			type: 'call-background',
+			call: safePositive(input[4], 'call id'),
+			fn,
+			args,
+		}) as LynxCallBackgroundMessage;
+	}
+	if (input[1] === WireOpcode.CancelBackground) {
+		const route = identity(input, 5);
+		return Object.freeze({
+			...route,
+			type: 'cancel-background',
+			call: safePositive(input[4], 'call id'),
+		});
+	}
+	if (input[1] === WireOpcode.CallMainResult) {
+		const route = identity(input, 6);
+		return Object.freeze({
+			...route,
+			type: 'call-main-result',
+			call: safePositive(input[4], 'call id'),
+			value: decodeLynxTransportValue(input[5] as string),
+		}) as LynxCallMainResultMessage;
+	}
+	if (input[1] === WireOpcode.CallMainError) {
+		const route = identity(input, 7);
+		return Object.freeze({
+			...route,
+			type: 'call-main-error',
+			call: safePositive(input[4], 'call id'),
+			error: error(input, 5),
+		});
+	}
 	if (input[1] === WireOpcode.GlobalProps) {
 		const patch = lifecycleRecord(input, 'global-props');
 		return Object.freeze({
@@ -334,6 +543,25 @@ export function decodeLynxCompiledProgramMainMessage(
 						: 'reset',
 			data,
 		}) as LynxPageDataMessage;
+	}
+	if (input[1] === WireOpcode.HostAttachment) {
+		if (input.length < 7 || (input.length - 4) % 3 !== 0) {
+			fail('received the wrong host-attachment field count');
+		}
+		const route = identity(input, input.length);
+		const changes: LynxHostAttachmentChange[] = [];
+		for (let index = 4; index < input.length; index += 3) {
+			const attached = input[index + 2];
+			if (attached !== 0 && attached !== 1) fail('received an invalid host attachment state');
+			changes.push(
+				Object.freeze({
+					id: safePositive(input[index], 'host attachment id'),
+					generation: safePositive(input[index + 1], 'host attachment generation'),
+					attached: attached === 1,
+				}),
+			);
+		}
+		return Object.freeze({ ...route, type: 'host-attachment', changes: Object.freeze(changes) });
 	}
 	const withError =
 		input[1] === WireOpcode.Reject ||

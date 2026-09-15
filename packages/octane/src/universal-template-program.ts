@@ -435,6 +435,26 @@ export function universalHostTemplateShape(
 ): readonly UniversalHostTemplateShapeNode[] | null {
 	const cached = encoder.templateShapes.get(plan);
 	if (cached !== undefined) return cached;
+	const shape = collectUniversalHostProgramShape(encoder, plan, 2);
+	encoder.templateShapes.set(plan, shape);
+	return shape;
+}
+
+/**
+ * Flatten the host topology shared by template and resident-program lowering.
+ *
+ * Ordinary Universal template mounts deliberately require two nodes: collapsing
+ * a lone host adds bookkeeping without removing a descendant walk. A resident
+ * compiler program has a different boundary — even one host must be addressable
+ * so a background range can name and instantiate it without the Universal core.
+ * Keeping the minimum at the caller prevents that correctness requirement from
+ * silently widening the generic template optimization.
+ */
+function collectUniversalHostProgramShape(
+	encoder: UniversalHostEncoder,
+	plan: UniversalHostPlan,
+	minimumNodes: 1 | 2,
+): readonly UniversalHostTemplateShapeNode[] | null {
 	const output: UniversalHostTemplateShapeNode[] = [];
 	const visit = (node: UniversalPlanNode, parent: number): boolean => {
 		if (node.kind === 'range') {
@@ -453,9 +473,7 @@ export function universalHostTemplateShape(
 		for (const child of node.children ?? []) if (!visit(child, index)) return false;
 		return true;
 	};
-	const shape = visit(plan, -1) && output.length > 1 ? Object.freeze(output) : null;
-	encoder.templateShapes.set(plan, shape);
-	return shape;
+	return visit(plan, -1) && output.length >= minimumNodes ? Object.freeze(output) : null;
 }
 
 /** A plan whose every node is compile-time host structure, flattened. */
@@ -506,6 +524,15 @@ export function compiledUniversalTemplateProgram(
 		encoder.compiledTemplatePrograms.set(plan, null);
 		return null;
 	}
+	const program = compileUniversalHostProgramFromShape(plan, shape);
+	encoder.compiledTemplatePrograms.set(plan, program);
+	return program;
+}
+
+function compileUniversalHostProgramFromShape(
+	plan: UniversalHostPlan,
+	shape: readonly UniversalHostTemplateShapeNode[],
+): CompiledUniversalTemplateProgram | null {
 	const plans: (UniversalHostPlan | UniversalTextPlan | UniversalSlotPlan)[] = [];
 	const visit = (node: UniversalPlanNode): boolean => {
 		if (node.kind === 'slot' || node.kind === 'text') {
@@ -538,8 +565,23 @@ export function compiledUniversalTemplateProgram(
 		visit(plan) && plans.length === shape.length
 			? Object.freeze({ shape, plans: Object.freeze(plans) })
 			: null;
-	encoder.compiledTemplatePrograms.set(plan, program);
 	return program;
+}
+
+/**
+ * Compile any non-empty, wholly static host topology, including a lone host.
+ *
+ * This is the correctness boundary used by resident program compilers and
+ * specialized runtimes. Unlike `compiledUniversalTemplateProgram`, it does not
+ * apply the generic template mount's two-node profitability threshold and is
+ * not cached; callers that retain a program should retain this result with it.
+ */
+export function compileUniversalHostProgram(
+	encoder: UniversalHostEncoder,
+	plan: UniversalHostPlan,
+): CompiledUniversalTemplateProgram | null {
+	const shape = collectUniversalHostProgramShape(encoder, plan, 1);
+	return shape === null ? null : compileUniversalHostProgramFromShape(plan, shape);
 }
 
 /**
@@ -553,6 +595,8 @@ export function compiledUniversalTemplateProgram(
 export interface UniversalTemplateProgramRange {
 	readonly slot: number;
 	readonly node: number;
+	/** Reduced-program child inserted after this range, or null at the parent's tail. */
+	readonly before: number | null;
 }
 
 /** A program with its range holes removed, and where they were. */
@@ -577,10 +621,11 @@ const EMPTY_TEMPLATE_PROGRAM_RANGES: readonly UniversalTemplateProgramRange[] =
  * its holes those are, because only the caller has the values, which is why
  * `isRange` is asked rather than assumed.
  *
- * Returns `null` when a range hole is not the last child of its host node. That
- * is not a shape this refuses on principle: a range appends its members to its
- * parent, so a *later* static sibling would end up ahead of every row it was
- * authored after. An earlier sibling is fine and stays.
+ * A non-tail range names its next surviving static sibling as `before`, in the
+ * reduced program's node space. The host can therefore insert the range without
+ * rediscovering topology at run time. Adjacent ranges may name the same static
+ * anchor (or the tail); their compiler slots remain distinct identities, and a
+ * resident receiver uses the next non-empty sibling range as the live anchor.
  *
  * Not memoized. The result depends on the caller's values as well as the plan,
  * and its consumer derives it once per mounted program, so a cache here would
@@ -606,10 +651,15 @@ export function universalTemplateProgramWithoutRanges(
 		count++;
 	}
 	if (count === 0) return { compiled, ranges: EMPTY_TEMPLATE_PROGRAM_RANGES };
-	// One pass rather than a scan per hole: a node's last child is simply the
-	// last entry naming it, because the shape is pre-order.
-	const lastChild = new Map<number, number>();
-	for (let index = 0; index < shape.length; index++) lastChild.set(shape[index]!.parent, index);
+	// Backwards over the pre-order gives every dropped leaf its next surviving
+	// direct sibling in O(nodes), including a run of adjacent dropped holes.
+	const nextChild = new Map<number, number>();
+	const before: (number | null)[] = new Array(shape.length).fill(null);
+	for (let index = shape.length - 1; index >= 0; index--) {
+		const parent = shape[index]!.parent;
+		if (dropped[index]) before[index] = nextChild.get(parent) ?? null;
+		else nextChild.set(parent, index);
+	}
 	const remap: number[] = new Array(shape.length);
 	let next = 0;
 	for (let index = 0; index < shape.length; index++) {
@@ -618,7 +668,6 @@ export function universalTemplateProgramWithoutRanges(
 			continue;
 		}
 		remap[index] = -1;
-		if (lastChild.get(shape[index]!.parent) !== index) return null;
 	}
 	const nextShape: UniversalHostTemplateShapeNode[] = [];
 	const nextPlans: (UniversalHostPlan | UniversalTextPlan | UniversalSlotPlan)[] = [];
@@ -632,6 +681,7 @@ export function universalTemplateProgramWithoutRanges(
 			ranges.push(
 				Object.freeze({
 					slot: (compiled.plans[index] as UniversalSlotPlan).slot,
+					before: before[index] === null ? null : remap[before[index]!]!,
 					node: remap[node.parent]!,
 				}),
 			);
@@ -777,9 +827,48 @@ export function prepareUniversalTemplateProgram(
  * event slot is checked for holding a function. An instance that fails either
  * declines the program and renders the ordinary way.
  */
-export function prepareUniversalTemplateProgramValues(
+/** Sentinel returned when one authored value cannot occupy its prepared wire binding. */
+export const UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED: unique symbol = Symbol(
+	'octane.universal.template-program.value-refused',
+);
+
+/** Encode one known prepared binding without visiting unrelated plan or wire slots. */
+export function prepareUniversalTemplateProgramValueFromWire(
 	encoder: UniversalHostEncoder,
-	compiled: CompiledUniversalTemplateProgram,
+	prepared: PreparedUniversalTemplateProgram,
+	binding: PreparedUniversalTemplateProgramValue,
+	source: unknown,
+): UniversalHostTemplateProgramValue | typeof UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED {
+	if (binding.text) {
+		return typeof source === 'string' || typeof source === 'number' || typeof source === 'bigint'
+			? String(source)
+			: UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED;
+	}
+	// Renderer-namespaced values, lifecycle callbacks, and normalized props use
+	// the identical checks as the whole-program path below. Keeping this primitive
+	// here lets sparse runtimes avoid recreating that policy.
+	if (
+		encoder.classifyLifecycle(binding.name, source) !== null ||
+		encoder.classifyLocalCallback(binding.name, source) !== null
+	) {
+		return UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED;
+	}
+	const host = prepared.wire.nodes[binding.node];
+	if (host === undefined) return UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED;
+	const encoded = encoder.encodeHostProp(host.type, binding.name, source);
+	return isUniversalHostTemplateProgramSlotValue(binding.name, encoded)
+		? (encoded as UniversalHostTemplateProgramValue)
+		: UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED;
+}
+
+/**
+ * Normalize values when the compiler already emitted the prepared wire/maps.
+ *
+ * This is the same per-render validation as the plan-backed entry below, but
+ * reads the host type from the wire instead of from a runtime plan shape.
+ */
+export function prepareUniversalTemplateProgramValuesFromWire(
+	encoder: UniversalHostEncoder,
 	prepared: PreparedUniversalTemplateProgram,
 	slotValues: readonly unknown[],
 ): readonly UniversalHostTemplateProgramValue[] | null {
@@ -789,35 +878,24 @@ export function prepareUniversalTemplateProgramValues(
 	const values: UniversalHostTemplateProgramValue[] = new Array(prepared.values.length);
 	for (let index = 0; index < prepared.values.length; index++) {
 		const binding = prepared.values[index]!;
-		const source = slotValues[binding.slot];
-		if (binding.text) {
-			if (typeof source !== 'string' && typeof source !== 'number' && typeof source !== 'bigint') {
-				return null;
-			}
-			values[index] = String(source);
-			continue;
-		}
-		// A renderer-namespaced binding is authored as whatever the renderer's
-		// encoder understands — for Lynx, the tagged function a worklet compiles to —
-		// so only the encoded result can be judged for transportability. The same is
-		// true for an ordinary renderer-normalized prop: Lynx class arrays and object
-		// maps, for example, are valid authored values whose codec turns into the
-		// scalar string its program carries. Rejecting the source before consulting
-		// that codec made the program path disagree with the ordinary prop path and
-		// forced a command fallback for values the renderer could encode exactly.
-		if (
-			encoder.classifyLifecycle(binding.name, source) !== null ||
-			encoder.classifyLocalCallback(binding.name, source) !== null
-		) {
-			return null;
-		}
-		const encoded = encoder.encodeHostProp(
-			compiled.shape[binding.node]!.type,
-			binding.name,
-			source,
+		const value = prepareUniversalTemplateProgramValueFromWire(
+			encoder,
+			prepared,
+			binding,
+			slotValues[binding.slot],
 		);
-		if (!isUniversalHostTemplateProgramSlotValue(binding.name, encoded)) return null;
-		values[index] = encoded as UniversalHostTemplateProgramValue;
+		if (value === UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED) return null;
+		values[index] = value;
 	}
 	return Object.freeze(values);
+}
+
+export function prepareUniversalTemplateProgramValues(
+	encoder: UniversalHostEncoder,
+	compiled: CompiledUniversalTemplateProgram,
+	prepared: PreparedUniversalTemplateProgram,
+	slotValues: readonly unknown[],
+): readonly UniversalHostTemplateProgramValue[] | null {
+	if (compiled.shape.length !== prepared.wire.nodes.length) return null;
+	return prepareUniversalTemplateProgramValuesFromWire(encoder, prepared, slotValues);
 }

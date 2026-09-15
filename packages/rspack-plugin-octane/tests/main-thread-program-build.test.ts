@@ -302,7 +302,7 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 			/signature/,
 		);
 		await expect(build('incomplete', { mainThread: { signature: 'x' } })).rejects.toThrow(
-			/deriveLynxMainThreadProgram/,
+			/deriveLynxProgramIR/,
 		);
 		await expect(
 			build('stale-reference', {
@@ -428,8 +428,8 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 		// and would leave the drift gate untested.
 		const drifting = {
 			...Backend,
-			deriveLynxMainThreadProgram: (plan: never) => {
-				const derived = Backend.deriveLynxMainThreadProgram(plan);
+			deriveLynxProgramIR: (plan: never) => {
+				const derived = Backend.deriveLynxProgramIR(plan);
 				if (derived === null) return null;
 				const [root, ...rest] = derived.wire.nodes;
 				return {
@@ -449,8 +449,8 @@ describe('a main-thread program backend, through a real Rspack build', () => {
 	it('fails the build when a structural range topology drifts between layers', async () => {
 		const drifting = {
 			...Backend,
-			deriveLynxMainThreadProgram: (plan: never) => {
-				const derived = Backend.deriveLynxMainThreadProgram(plan);
+			deriveLynxProgramIR: (plan: never) => {
+				const derived = Backend.deriveLynxProgramIR(plan);
 				if (derived === null || derived.ranges.length !== 1) return derived;
 				return {
 					...derived,

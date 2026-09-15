@@ -5252,6 +5252,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		readonly parentRecord: LynxHostRecord<Node> | null;
 		readonly parentId: number | null;
 		readonly physicalParent: Node;
+		readonly physicalBefore?: Node | null;
 		readonly parentVisible: boolean;
 		/**
 		 * True for a `<list>`'s rows and everything beneath them. Such a record is
@@ -5285,19 +5286,12 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		physicalParent: Node,
 		parentVisible: boolean,
 		insideList: boolean,
+		physicalBefore: Node | null = null,
 	): void => {
-		// A described parent's children are deliberately *not* tested for the dense
-		// span here (issue #215 D8). The shape would be the same one
-		// `mountProgram` looks for, and a described parent holding nothing but
-		// compiled rows cannot arise from this compiler: the backend leaves a
-		// parent described only when its range hole is not the parent's last
-		// child — that is the one condition `universalTemplateProgramWithoutRanges`
-		// declines on — and a hole that is not last has a described sibling after
-		// it, which is exactly what an all-or-nothing span over a parent's children
-		// refuses. Every other arrangement either compiles the parent into a
-		// program, which is the site below, or fails the build outright. So the
-		// test here would run once per described host on every first screen and
-		// answer `null` every time.
+		// A described parent may mix compiled rows with ordinary siblings, so it
+		// takes the per-child path. A program range carries an exact member span and
+		// optional static anchor; only that boundary has enough information to issue
+		// one dense run without scanning or regrouping the authored children.
 		//
 		// Reversed, so the stack pops siblings in authored order.
 		for (let index = node.children.length - 1; index >= 0; index--) {
@@ -5309,6 +5303,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				parentRecord,
 				parentId,
 				physicalParent,
+				physicalBefore,
 				parentVisible,
 				insideList,
 			});
@@ -5385,6 +5380,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		parentId: number | null,
 		physicalParent: Node,
 		parentVisible: boolean,
+		physicalBefore: Node | null = null,
 	): void => {
 		const plan = node.plan;
 		const ids = node.ids;
@@ -5751,6 +5747,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			parentRecord: null,
 			parentId,
 			physicalParent,
+			physicalBefore,
 			parentVisible,
 			insideList: false,
 		});
@@ -5762,10 +5759,17 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		for (let range = plan.ranges.length - 1; range >= 0; range--) {
 			const site = plan.ranges[range]!;
 			const memberParent = created[site.node];
+			const memberBefore = site.before == null ? null : (created[site.before] as Node | undefined);
 			if (memberParent === undefined) {
 				throw hostError(
 					LYNX_HOST_DEVELOPMENT &&
 						`first-screen program appends a keyed range into node ${site.node}, which it did not make.`,
+				);
+			}
+			if (memberBefore === undefined) {
+				throw hostError(
+					LYNX_HOST_DEVELOPMENT &&
+						`first-screen program cannot resolve static range anchor ${String(site.before)}.`,
 				);
 			}
 			const start = end - spans[range]!;
@@ -5787,6 +5791,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 					parentRecord: null,
 					parentId: ids[site.node]!,
 					physicalParent: memberParent as Node,
+					physicalBefore: memberBefore,
 					parentVisible,
 					insideList: false,
 				});
@@ -5804,6 +5809,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 					parentRecord: null,
 					parentId: ids[site.node]!,
 					physicalParent: memberParent as Node,
+					physicalBefore: memberBefore,
 					parentVisible,
 					insideList: false,
 				});
@@ -5840,6 +5846,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		parentId: number,
 		physicalParent: Node,
 		parentVisible: boolean,
+		physicalBefore: Node | null = null,
 	): void => {
 		const plan = span.plan;
 		const count = span.count;
@@ -5883,6 +5890,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 					parentRecord: null,
 					parentId,
 					physicalParent,
+					physicalBefore,
 					parentVisible,
 					insideList: false,
 				});
@@ -6046,13 +6054,20 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 		// is what a program is (issue #215 D5 states the three cases and where each
 		// one is resolved).
 		for (let instance = 0; instance < count; instance++) {
-			append(physicalParent, out[instance * stride] as Node);
+			papi.insertBefore(physicalParent, out[instance * stride] as Node, physicalBefore);
 		}
 	};
 	const visit = (frame: WalkFrame): void => {
+		const physicalBefore = frame.physicalBefore ?? null;
 		const denseSpan = frame.denseSpan;
 		if (denseSpan !== null) {
-			mountDenseSpan(denseSpan, frame.parentId!, frame.physicalParent, frame.parentVisible);
+			mountDenseSpan(
+				denseSpan,
+				frame.parentId!,
+				frame.physicalParent,
+				frame.parentVisible,
+				physicalBefore,
+			);
 			return;
 		}
 		const { node, parentRecord, parentId, physicalParent, parentVisible, insideList } = frame;
@@ -6067,18 +6082,26 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			}
 			const attached = frame.papiNode!;
 			if (parentId === null) state.ownedPageRoots.add(attached);
-			append(physicalParent, attached);
+			papi.insertBefore(physicalParent, attached, physicalBefore);
 			return;
 		}
 		if (node.kind === 'program') {
 			// Handled before the range-transparent branch below, which would
 			// otherwise walk past a node carrying no type and no props and publish
 			// the page it left out.
-			mountProgram(node, parentRecord, parentId, physicalParent, parentVisible);
+			mountProgram(node, parentRecord, parentId, physicalParent, parentVisible, physicalBefore);
 			return;
 		}
 		if (node.kind !== 'host') {
-			pushChildren(node, parentRecord, parentId, physicalParent, parentVisible, insideList);
+			pushChildren(
+				node,
+				parentRecord,
+				parentId,
+				physicalParent,
+				parentVisible,
+				insideList,
+				physicalBefore,
+			);
 			return;
 		}
 		const type = node.type!;
@@ -6164,7 +6187,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			// publication behind its attach, and that frame must still pop first
 			// even when the tree gave it nothing to publish.
 			if (parentId === null) state.ownedPageRoots.add(papiNode);
-			append(physicalParent, papiNode);
+			papi.insertBefore(physicalParent, papiNode, physicalBefore);
 			return;
 		}
 		// The attach is queued before the children so it pops after them.
@@ -6176,6 +6199,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 			parentRecord: null,
 			parentId,
 			physicalParent,
+			physicalBefore,
 			parentVisible,
 			insideList: false,
 		});
@@ -6191,6 +6215,7 @@ export function applyLynxFirstScreenDirect<Node extends LynxElementRef>(
 				parentRecord: null,
 				parentId,
 				physicalParent,
+				physicalBefore,
 				parentVisible,
 				insideList: false,
 			});

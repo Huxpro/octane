@@ -22,8 +22,13 @@ import {
 	type LynxBlockTemplate,
 } from '../src/core/block-core.js';
 import {
+	createLynxBlockDeltaProducer,
+	preparedLynxBlockDeltaBatch,
+} from '../src/core/block-delta-producer.js';
+import {
 	universalProgramRangeCommandSlot,
 	type UniversalHostCommand,
+	type UniversalPortalTargetHandle,
 } from 'octane/universal/native';
 import {
 	createLynxMainThreadWorkletRegistry,
@@ -129,6 +134,53 @@ function scene(list: readonly Row[], selected: number | null): Scene {
 }
 
 describe('Lynx block core — compiler range provenance', () => {
+	it('retargets a renderer-owned range without replacing its retained members', () => {
+		const target = (id: string): UniversalPortalTargetHandle =>
+			Object.freeze({
+				$$kind: 'octane.universal.portal-target',
+				renderer: 'octane.lynx',
+				root: 1,
+				id,
+			});
+		const first = target('first');
+		const second = target('second');
+		const core = createLynxBlockCore();
+		const slot = core.openForParent(first);
+
+		core.beginAttempt();
+		core.fillForSlot(
+			slot,
+			ROW_TEMPLATE,
+			rows(2),
+			(row) => row.id,
+			(row) => rowValues(row, null),
+		);
+		const mounted = core.flush()!;
+		core.acceptAttempt();
+		const identities = [...slot.items.values()];
+		expect(mounted.commands.some((command) => command.op === 'create')).toBe(true);
+		expect(mounted.commands.some((command) => command.op === 'mount-template-run')).toBe(false);
+
+		core.beginAttempt();
+		core.retargetForSlot(slot, second);
+		const rejected = core.flush()!;
+		expect(rejected.commands.map((command) => command.op)).toEqual(['move', 'move']);
+		expect(slot.parent).toBe(second);
+		expect(core.abortAttempt()).toBe(true);
+		expect(slot.parent).toBe(first);
+		expect([...slot.items.values()]).toEqual(identities);
+
+		core.beginAttempt();
+		core.retargetForSlot(slot, second);
+		const accepted = core.flush()!;
+		core.acceptAttempt();
+		expect(slot.parent).toBe(second);
+		expect([...slot.items.values()]).toEqual(identities);
+		expect(
+			accepted.commands.flatMap((command) => (command.op === 'move' ? [command.id] : [])),
+		).toEqual(identities.map((member) => member.firstId));
+	});
+
 	it('does not guess a compiler slot for a hand-written range site', () => {
 		const core = createLynxBlockCore();
 		const page = core.mount(null, null, PAGE_TEMPLATE, []);
@@ -191,6 +243,62 @@ describe('Lynx block core — compiler range provenance', () => {
 			retried.filter((command) => command.op === 'move').map(universalProgramRangeCommandSlot),
 		).toEqual([7]);
 		core.acceptAttempt();
+	});
+});
+
+describe('Lynx block core — retained visibility', () => {
+	it('emits one root visibility command and restores logical state on abort', () => {
+		const core = createLynxBlockCore();
+		const block = core.mount(null, null, PAGE_TEMPLATE, []);
+		core.flush();
+		core.resetCounters();
+
+		core.beginAttempt();
+		expect(core.setVisibility(block, false)).toBe(true);
+		expect(core.setVisibility(block, false)).toBe(false);
+		expect(core.counters()).toEqual({ blockLookups: 1, commands: 2 });
+		expect(core.flush()?.commands).toEqual([
+			{ op: 'visibility', id: block.firstId + 1, state: 'hidden' },
+			{ op: 'visibility', id: block.firstId, state: 'hidden' },
+		]);
+		expect(block.visible).toBe(false);
+		expect(core.abortAttempt()).toBe(true);
+		expect(block.visible).toBe(true);
+
+		core.beginAttempt();
+		expect(core.setVisibility(block, false)).toBe(true);
+		expect(core.flush()?.commands).toEqual([
+			{ op: 'visibility', id: block.firstId + 1, state: 'hidden' },
+			{ op: 'visibility', id: block.firstId, state: 'hidden' },
+		]);
+		core.acceptAttempt();
+		expect(block.visible).toBe(false);
+	});
+
+	it('uses one compact VIS delta for the whole resident instance', () => {
+		const producer = createLynxBlockDeltaProducer();
+		const core = createLynxBlockCore({ deltaProducer: producer });
+		const template = compileLynxBlockTemplate(PAGE_TEMPLATE.program, {
+			module: 'tests/VisiblePage.lynx.tsrx',
+			index: 0,
+		});
+		core.beginAttempt();
+		const block = core.mount(null, null, template, []);
+		expect(preparedLynxBlockDeltaBatch(core.flush()!)!.operations.map((entry) => entry.op)).toEqual(
+			['run'],
+		);
+		core.acceptAttempt();
+		core.resetCounters();
+
+		core.beginAttempt();
+		expect(core.setVisibility(block, false)).toBe(true);
+		expect(core.setVisibility(block, false)).toBe(false);
+		expect(core.counters()).toEqual({ blockLookups: 1, commands: 1 });
+		expect(preparedLynxBlockDeltaBatch(core.flush()!)!.operations).toEqual([
+			{ op: 'vis', instance: block.instance, state: 'hidden' },
+		]);
+		expect(core.abortAttempt()).toBe(true);
+		expect(block.visible).toBe(true);
 	});
 });
 
@@ -444,6 +552,37 @@ describe('Lynx block core — change-proportionality', () => {
 		expect(built.papi.pages[0]!.children[0]!.children[0]!.children).toEqual([]);
 	});
 
+	it('clears child ranges before individually destroying their outer members', () => {
+		const built = scene(rows(2), null);
+		const nested = new Map<unknown, LynxBlockForSlot>();
+		for (const [key, member] of built.slot.items) {
+			const slot = built.core.openForSlot(member, 0);
+			built.core.fillForSlot(
+				slot,
+				ROW_TEMPLATE,
+				[{ id: Number(key) * 10, label: `nested ${String(key)}` }],
+				(row) => row.id,
+				(row) => rowValues(row, null),
+			);
+			nested.set(key, slot);
+		}
+		built.apply();
+		built.core.resetCounters();
+
+		built.core.clearForSlot(
+			built.slot,
+			(member) => built.core.clearForSlot(nested.get(member.key)!),
+			true,
+		);
+		const batch = built.core.flush()!;
+		const outerDestroyRuns = batch.commands.filter(
+			(command) => command.op === 'destroy-run' && command.parent === built.slot.parent,
+		);
+		expect(outerDestroyRuns).toEqual([]);
+		prepareLynxHostBatch(built.container, batch).apply();
+		expect(built.papi.pages[0]!.children[0]!.children[0]!.children).toEqual([]);
+	});
+
 	it('coalesces adjacent allocations when clearing after an append', () => {
 		const built = scene(rows(2), null);
 		built.core.reconcileForSlot(
@@ -521,13 +660,19 @@ describe('Lynx block core — allocation-order determinism', () => {
 		expect(first.tree()).toEqual(second.tree());
 	});
 
-	it('refuses a template the specialized path cannot own', () => {
-		expect(() =>
-			compileLynxBlockTemplate({
-				nodes: [{ type: 'list', parent: -1, props: {} }],
-				events: [],
-			}),
-		).toThrowError(/native lists are not in the specialized core/);
+	it('admits native-list templates while retaining compiler slot identity', () => {
+		const template = compileLynxBlockTemplate({
+			nodes: [
+				{ type: 'list', parent: -1, props: {}, bindings: [{ name: 'span-count', valueIndex: 0 }] },
+			],
+			events: [],
+		});
+		expect(template).toMatchObject({
+			hostCount: 1,
+			valueCount: 1,
+			valueNodes: [0],
+			valueNames: ['span-count'],
+		});
 	});
 
 	it('refuses a malformed resident program address before it reaches the wire', () => {

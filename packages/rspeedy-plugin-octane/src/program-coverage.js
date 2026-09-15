@@ -1,6 +1,11 @@
-import { getOctaneRspackBuildInfo } from '@octanejs/rspack-plugin';
+import {
+	getOctaneRspackBuildInfo,
+	setOctaneRspackModuleCompilerOptions,
+} from '@octanejs/rspack-plugin';
+import { lynxBlockRspeedyBackgroundRenderers } from '@octanejs/lynx/config';
 
 import { installLynxBackgroundCoreReplacement } from './background-core.js';
+import { installLynxBlockComponentFeatureReplacement } from './block-component-features.js';
 import { installLynxApplicationSelectionReplacement } from './application-selection.js';
 
 export const LYNX_PROGRAM_COVERAGE_ASSET_INFO = 'octane:lynx-program-coverage';
@@ -15,34 +20,64 @@ export const LYNX_BLOCK_SELECTION_VERSION = 1;
 export const LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO = 'octane:lynx-background-core-selection';
 export const LYNX_BACKGROUND_CORE_SELECTION_VERSION = 1;
 export const LYNX_APPLICATION_SELECTION_ASSET_INFO = 'octane:lynx-application-selection';
-export const LYNX_APPLICATION_SELECTION_VERSION = 1;
-export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 2;
+export const LYNX_APPLICATION_SELECTION_VERSION = 2;
+export const LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO =
+	'octane:lynx-block-component-feature-selection';
+export const LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_VERSION = 1;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 20;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
 	// Each name has an independent assertion through the Block component path.
 	// Expanding this list is a semantic change, not a discovery heuristic.
 	runtimeNames: Object.freeze([
+		'Activity',
+		'createContext',
+		'createPortal',
+		'memo',
+		'startTransition',
+		'use',
+		'useBatch',
 		'useCallback',
+		'useContext',
+		'useDeferredValue',
 		'useEffect',
+		'useLayoutEffect',
+		'useMemo',
+		'useReducer',
 		'useRef',
 		'useState',
 		'useSyncExternalStore',
+		'useTransition',
 	]),
 	threadFunctions: Object.freeze(['background', 'main-thread']),
 	mainThreadProps: true,
-	templateFeatures: Object.freeze([]),
+	templateFeatures: Object.freeze([
+		'activity',
+		'component-hole',
+		'host-ref',
+		'if',
+		'inline-render-prop',
+		'local-component',
+		'native-list',
+		'portal',
+		'switch',
+		'try',
+	]),
 	keyedRanges: Object.freeze({
-		empty: false,
-		nested: false,
+		empty: true,
+		nested: true,
+		siblings: true,
 		lastChild: true,
+		nonTail: true,
 		rowKinds: Object.freeze(['inline-host', 'local-component']),
-		rowHooks: false,
+		rowHooks: true,
 	}),
 });
 const MAIN_THREAD_ASSET = /main-thread(?:\.[A-Fa-f0-9]+)?\.js$/;
 const LYNX_BACKGROUND_LAYER = 'octane:background';
 const LYNX_BLOCK_RUNTIME_NAMES = new Set(LYNX_BLOCK_SUPPORT_MATRIX.runtimeNames);
 const LYNX_BLOCK_RANGE_ROW_KINDS = new Set(LYNX_BLOCK_SUPPORT_MATRIX.keyedRanges.rowKinds);
+const LYNX_BLOCK_TEMPLATE_FEATURES = new Set(LYNX_BLOCK_SUPPORT_MATRIX.templateFeatures);
 
 function dependencyRequest(dependency) {
 	return typeof dependency?.request === 'string' ? dependency.request : null;
@@ -76,6 +111,44 @@ function isLynxBackgroundRoot(module) {
 	);
 }
 
+function isLynxBlockComponent(module) {
+	const resource = moduleResource(module);
+	return (
+		resource !== null &&
+		(resource.endsWith('/packages/lynx/src/core/block-component.ts') ||
+			resource.includes('/node_modules/@octanejs/lynx/src/core/block-component.ts'))
+	);
+}
+
+function isLynxBlockComponentFeatures(module, selected) {
+	const resource = moduleResource(module);
+	if (resource === null) return false;
+	return selected === 'structural'
+		? resource.endsWith('/block-component-features.structural.ts')
+		: resource.endsWith('/block-component-features.ts');
+}
+
+function verifyBlockComponentFeatureSelection(compilation, components, selected) {
+	if (selected === 'structural' && components.length === 0) {
+		throw new Error(
+			'@octanejs/rspeedy-plugin: Block component lowering disappeared during feature specialization.',
+		);
+	}
+	for (const component of components) {
+		const resolved = [...compilation.moduleGraph.getOutgoingConnections(component)].some(
+			(connection) =>
+				activeConnection(connection) &&
+				connection.module != null &&
+				isLynxBlockComponentFeatures(connection.module, selected),
+		);
+		if (!resolved) {
+			throw new Error(
+				`@octanejs/rspeedy-plugin: Block component lowering did not resolve the selected ${selected} feature module.`,
+			);
+		}
+	}
+}
+
 function isLynxApplicationSelectionOwner(module) {
 	const resource = moduleResource(module);
 	return (
@@ -92,6 +165,15 @@ function isLynxApplicationSelectionOwner(module) {
 function isApplicationSelection(module, selected) {
 	const resource = moduleResource(module);
 	if (resource === null) return false;
+	if (selected === 'compiled-program-element-template') {
+		return (
+			resource.endsWith('/application-selection.compiled-program.ts') ||
+			resource.endsWith('/main-thread-application-selection.element-template.ts') ||
+			resource.endsWith('/first-screen.compiled-program.ts') ||
+			resource.endsWith('/client-driver.compiled-program.ts') ||
+			resource.endsWith('/main-renderer-selection.compiled-program.ts')
+		);
+	}
 	return selected === 'compiled-program'
 		? resource.endsWith('/application-selection.compiled-program.ts') ||
 				resource.endsWith('/main-thread-application-selection.compiled-program.ts') ||
@@ -224,7 +306,7 @@ function collectExplicitRootReasons(compilation, backgroundRoots) {
 }
 
 function verifyApplicationSelection(compilation, owners, selected) {
-	if (selected === 'compiled-program' && owners.length === 0) {
+	if (selected !== 'general' && owners.length === 0) {
 		throw new Error(
 			'@octanejs/rspeedy-plugin: compiled-program application owners disappeared during specialization.',
 		);
@@ -346,6 +428,34 @@ function collectApplicationEntryModules(compilation, options) {
 		background: collectReachableModules(compilation, options.backgroundEntry, authoredRequests),
 		main: collectReachableModules(compilation, options.mainThreadEntry, authoredRequests),
 	};
+}
+
+/** Background source modules in an already-collected graph that can receive BTS IR. */
+function lynxBackgroundCompilerModules(entryModules) {
+	return Object.freeze(
+		[...entryModules.background.modules].filter((module) => {
+			const info = getOctaneRspackBuildInfo(module);
+			return (
+				info?.transformKind === 'compile' &&
+				info.universalRuntime?.runtime === 'lynx' &&
+				info.universalRuntime.thread === 'background'
+			);
+		}),
+	);
+}
+
+/** Main-thread source modules in an already-collected graph that emit programs. */
+function lynxMainThreadCompilerModules(entryModules) {
+	return Object.freeze(
+		[...entryModules.main.modules].filter((module) => {
+			const info = getOctaneRspackBuildInfo(module);
+			return (
+				info?.transformKind === 'compile' &&
+				info.universalRuntime?.runtime === 'lynx' &&
+				info.universalRuntime.thread === 'main-thread'
+			);
+		}),
+	);
 }
 
 function layerCoverage(modules, thread) {
@@ -890,9 +1000,12 @@ function unsupportedRuntimeReasons(reasons, module, thread, requirements) {
 function unsupportedFeatureReasons(reasons, module, thread, requirements) {
 	for (const range of requirements.keyedRanges) {
 		const site = { module, thread, line: range.line, column: range.column };
-		if (range.empty) reasons.push(reason('keyed-range-empty-branch', site));
-		if (range.nested) reasons.push(reason('keyed-range-nested', site));
-		if (!range.lastChild) reasons.push(reason('keyed-range-not-last-child', site));
+		if (range.empty && !LYNX_BLOCK_SUPPORT_MATRIX.keyedRanges.empty)
+			reasons.push(reason('keyed-range-empty-branch', site));
+		if (range.nested && !LYNX_BLOCK_SUPPORT_MATRIX.keyedRanges.nested)
+			reasons.push(reason('keyed-range-nested', site));
+		if (!range.lastChild && !LYNX_BLOCK_SUPPORT_MATRIX.keyedRanges.nonTail)
+			reasons.push(reason('keyed-range-not-last-child', site));
 		if (!LYNX_BLOCK_RANGE_ROW_KINDS.has(range.row.kind)) {
 			reasons.push(
 				reason('unsupported-keyed-range-row', {
@@ -901,17 +1014,10 @@ function unsupportedFeatureReasons(reasons, module, thread, requirements) {
 					row: range.row.name,
 				}),
 			);
-		} else if (range.row.kind === 'local-component' && range.row.hooks.length !== 0) {
-			reasons.push(
-				reason('keyed-range-row-hooks', {
-					...site,
-					row: range.row.name,
-					hooks: Object.freeze(range.row.hooks.map(cloneSourceSite)),
-				}),
-			);
 		}
 	}
 	for (const feature of requirements.templateFeatures) {
+		if (LYNX_BLOCK_TEMPLATE_FEATURES.has(feature.kind)) continue;
 		reasons.push(
 			reason('unsupported-template-feature', {
 				module,
@@ -1032,9 +1138,9 @@ export function evaluateLynxBlockEligibility({
 }
 
 /**
- * The compact product omits general worklet/ref ownership. Select it only when
- * the paired compiler facts prove those channels absent in addition to Block
- * eligibility and complete resident addressing.
+ * The compact product owns worklet/ref state sparsely from resident descriptors.
+ * Selection therefore requires paired feature facts and Block eligibility; the
+ * same support matrix has already validated the reported thread channels.
  */
 export function evaluateLynxCompiledProgramEligibility({ blockSelection, featureRequirements }) {
 	const reasons = [];
@@ -1048,29 +1154,23 @@ export function evaluateLynxCompiledProgramEligibility({ blockSelection, feature
 	} else if (featureRequirements.paired !== true) {
 		reasons.push(reason('feature-requirements-unpaired'));
 	} else {
-		for (const module of featureRequirements.modules) {
+		for (const module of [...featureRequirements.modules].sort((left, right) =>
+			left.module.localeCompare(right.module),
+		)) {
 			for (const [thread, requirements] of [
 				['background', module.background],
 				['main-thread', module.mainThread],
 			]) {
-				for (const site of requirements.threadFunctions) {
+				for (const feature of requirements.templateFeatures) {
+					if (feature.kind !== 'portal') continue;
 					reasons.push(
-						reason('thread-function-requires-general-application', {
+						reason('compiled-program-unsupported-template-feature', {
 							module: module.module,
 							thread,
-							kind: site.kind,
-							id: site.id,
-							line: site.line,
-							column: site.column,
-						}),
-					);
-				}
-				for (const site of requirements.mainThreadProps) {
-					reasons.push(
-						reason('main-thread-prop-requires-general-application', {
-							module: module.module,
-							thread,
-							...cloneSourceSite(site),
+							kind: feature.kind,
+							name: feature.name,
+							line: feature.line,
+							column: feature.column,
 						}),
 					);
 				}
@@ -1102,6 +1202,8 @@ function collectApplicationReports(compilation, entries, enabled) {
 		reports.set(
 			entry.mainThreadEntry,
 			Object.freeze({
+				backgroundCompilerModules: lynxBackgroundCompilerModules(entryModules),
+				mainThreadCompilerModules: lynxMainThreadCompilerModules(entryModules),
 				programCoverage,
 				semanticRequirements,
 				featureRequirements,
@@ -1123,6 +1225,7 @@ function decideApplication(
 	coreDecision,
 	ownersAvailable,
 	explicitRootReasons,
+	elementTemplate,
 ) {
 	const reasons = [];
 	if (!oneShotProduction(compiler)) {
@@ -1142,7 +1245,12 @@ function decideApplication(
 	}
 	return Object.freeze({
 		version: LYNX_APPLICATION_SELECTION_VERSION,
-		selected: reasons.length === 0 && entries.length !== 0 ? 'compiled-program' : 'general',
+		selected:
+			reasons.length === 0 && entries.length !== 0
+				? elementTemplate
+					? 'compiled-program-element-template'
+					: 'compiled-program'
+				: 'general',
 		reasons: Object.freeze(reasons),
 	});
 }
@@ -1182,12 +1290,80 @@ function decideBackgroundCore(compiler, entries, reports, configuredCore, backgr
 	});
 }
 
+function reportRequiresOptionalBlockSemantics(report) {
+	if (report?.featureRequirements?.paired !== true) return true;
+	for (const module of report.featureRequirements.modules) {
+		for (const requirements of [module.background, module.mainThread]) {
+			for (const feature of requirements.templateFeatures) {
+				if (feature.kind === 'activity' || feature.kind === 'try' || feature.kind === 'portal') {
+					return true;
+				}
+			}
+		}
+	}
+	if (report?.semanticRequirements?.paired !== true) return true;
+	const transitions = new Set(['startTransition', 'useDeferredValue', 'useTransition']);
+	for (const module of report.semanticRequirements.modules) {
+		for (const requirements of [module.background, module.mainThread]) {
+			for (const site of [...requirements.runtimeUses, ...requirements.runtimeExports]) {
+				if (transitions.has(site.name)) return true;
+			}
+		}
+	}
+	return false;
+}
+
+/**
+ * Select the smallest Block component implementation proved sufficient for
+ * every authored entry. Unknown or unsupported graphs retain the source-safe
+ * full feature module.
+ */
+export function decideLynxBlockComponentFeatures(compiler, entries, reports, coreDecision) {
+	const reasons = [];
+	if (!oneShotProduction(compiler)) {
+		reasons.push(reason('feature-specialization-requires-one-shot-production'));
+	}
+	if (coreDecision.selected !== 'block') {
+		reasons.push(reason('feature-specialization-requires-block-core'));
+	}
+	for (const entry of entries) {
+		const report = reports.get(entry.mainThreadEntry);
+		if (report === undefined) {
+			reasons.push(reason('selection-report-missing', { entry: entry.mainThreadEntry }));
+			continue;
+		}
+		if (report.selection.eligible !== true) {
+			reasons.push(reason('entry-ineligible', { entry: entry.mainThreadEntry }));
+			continue;
+		}
+		if (reportRequiresOptionalBlockSemantics(report)) {
+			reasons.push(
+				reason('entry-requires-optional-block-semantics', { entry: entry.mainThreadEntry }),
+			);
+		}
+	}
+	if (entries.length === 0) reasons.push(reason('no-authored-entries'));
+	return Object.freeze({
+		version: LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_VERSION,
+		selected: reasons.length === 0 ? 'structural' : 'full',
+		reasons: Object.freeze(reasons),
+	});
+}
+
 /** Attach versioned proofs and specialize the one-core production graph. */
 export class LynxProgramCoveragePlugin {
-	constructor(entries, enabled, configuredCore) {
+	constructor(
+		entries,
+		enabled,
+		configuredCore,
+		elementTemplate = false,
+		structuralElementTemplateBackend,
+	) {
 		this.entries = entries;
 		this.enabled = enabled;
 		this.configuredCore = configuredCore;
+		this.elementTemplate = elementTemplate;
+		this.structuralElementTemplateBackend = structuralElementTemplateBackend;
 	}
 
 	apply(compiler) {
@@ -1200,6 +1376,10 @@ export class LynxProgramCoveragePlugin {
 		installLynxBackgroundCoreReplacement(
 			compiler,
 			() => activeState?.decision.selected ?? this.configuredCore ?? 'universal',
+		);
+		installLynxBlockComponentFeatureReplacement(
+			compiler,
+			() => activeState?.blockComponentFeatures.selected ?? 'full',
 		);
 		installLynxApplicationSelectionReplacement(
 			compiler,
@@ -1219,6 +1399,11 @@ export class LynxProgramCoveragePlugin {
 				applicationDecision: Object.freeze({
 					version: LYNX_APPLICATION_SELECTION_VERSION,
 					selected: 'general',
+					reasons: Object.freeze([reason('application-graph-not-collected')]),
+				}),
+				blockComponentFeatures: Object.freeze({
+					version: LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_VERSION,
+					selected: 'full',
 					reasons: Object.freeze([reason('application-graph-not-collected')]),
 				}),
 			};
@@ -1245,6 +1430,7 @@ export class LynxProgramCoveragePlugin {
 									[LYNX_BLOCK_SELECTION_ASSET_INFO]: report.selection,
 									[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO]: state.decision,
 									[LYNX_APPLICATION_SELECTION_ASSET_INFO]: state.applicationDecision,
+									[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO]: state.blockComponentFeatures,
 								});
 							}
 						}
@@ -1273,14 +1459,57 @@ export class LynxProgramCoveragePlugin {
 				state.decision,
 				applicationOwners.length !== 0,
 				explicitRootReasons,
+				this.elementTemplate,
+			);
+			state.blockComponentFeatures = decideLynxBlockComponentFeatures(
+				compiler,
+				this.entries,
+				state.reports,
+				state.decision,
 			);
 			activeState = state;
 			const rebuild = new Set();
 			if (this.configuredCore === undefined && state.decision.selected === 'block') {
 				for (const root of backgroundRoots) rebuild.add(root);
+				// The first pass stays conservative so an ineligible ordinary app can
+				// fall back to Universal. Once the complete paired graph proves Block,
+				// rebuild only its authored background modules with the independent
+				// compiler-program renderer. This is the compiler-output seam; the
+				// compact product selected below remains the transport/owner seam.
+				for (const report of state.reports.values()) {
+					for (const module of report.backgroundCompilerModules) {
+						setOctaneRspackModuleCompilerOptions(module, {
+							renderers: lynxBlockRspeedyBackgroundRenderers,
+						});
+						rebuild.add(module);
+					}
+				}
 			}
-			if (state.applicationDecision.selected === 'compiled-program') {
+			if (state.applicationDecision.selected !== 'general') {
 				for (const owner of applicationOwners) rebuild.add(owner);
+			}
+			if (state.blockComponentFeatures.selected !== 'full') {
+				for (const component of [...compilation.modules].filter(isLynxBlockComponent)) {
+					rebuild.add(component);
+				}
+			}
+			if (
+				state.applicationDecision.selected === 'compiled-program-element-template' &&
+				state.blockComponentFeatures.selected === 'structural'
+			) {
+				if (this.structuralElementTemplateBackend === undefined) {
+					throw new Error(
+						'@octanejs/rspeedy-plugin: structural Element Template selection has no compiler backend.',
+					);
+				}
+				for (const report of state.reports.values()) {
+					for (const module of report.mainThreadCompilerModules) {
+						setOctaneRspackModuleCompilerOptions(module, {
+							mainThreadProgramBackend: this.structuralElementTemplateBackend,
+						});
+						rebuild.add(module);
+					}
+				}
 			}
 			if (rebuild.size !== 0) await rebuildLynxModules(compilation, [...rebuild]);
 			const selectedBackgroundRoots = [...compilation.modules].filter(isLynxBackgroundRoot);
@@ -1290,6 +1519,11 @@ export class LynxProgramCoveragePlugin {
 				compilation,
 				selectedApplicationOwners,
 				state.applicationDecision.selected,
+			);
+			verifyBlockComponentFeatureSelection(
+				compilation,
+				[...compilation.modules].filter(isLynxBlockComponent),
+				state.blockComponentFeatures.selected,
 			);
 		});
 	}

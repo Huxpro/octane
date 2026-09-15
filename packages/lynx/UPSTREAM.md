@@ -111,19 +111,114 @@ Milestone 5's additional CSS, template, encoding, and development-transport
 pins and integrities are recorded in [`audit/toolchain.json`](./audit/toolchain.json)
 and the repository `pnpm-lock.yaml`.
 
-Milestone 9 keeps the audited Rspack `2.1.3` edge in its atomic minimum
-source/build lane and adds a current lane with Rspack `2.1.5`, the newest patch
-allowed by the same Rspeedy `0.16.0` / Rsbuild `2.1.4` graph. Both live lanes
-install the registry-verified `@lynx-js/types@4.1.0`; the renderer-local
+Milestone 9's live compatibility graph uses Rspeedy `0.17.1`, the
+framework-neutral Rsbuild plugin `0.1.1`, and Rsbuild `2.2.3`. Its atomic
+minimum lane uses Rspack `2.2.2`; the current lane uses Rspack `2.2.3`, within
+Rsbuild's declared `~2.2.2` edge. Both live lanes install the registry-verified
+`@lynx-js/types@4.1.0`; the renderer-local
 declarations remain adapted from the audited `4.0.0` artifact. The complete
 exact lane maps live in
 [`toolchain-lanes.js`](../rspeedy-plugin-octane/src/toolchain-lanes.js).
 Required CI jobs pack and install both graphs into external consumers, build
 each twice, and check live registry drift for the current lane. The lane source
 map and registry check do not add committed tarball-integrity provenance to
-`audit/toolchain.json`; in particular, that audit does not record the current
-Rspack `2.1.5` or Lynx types `4.1.0` artifacts. This also does not establish
+`audit/toolchain.json`; in particular, that historical audit does not record
+the current Rspack `2.2.3` or Lynx types `4.1.0` artifacts. This also does not establish
 minimum/current execution on a Lynx native engine or device.
+
+## Roadmap #383 Element Template alignment
+
+The whole-root experimental backend was checked against
+`lynx-family/lynx-stack@2b837edbf640587be59211ad146a764a1703851b` and its
+public Element Template compiler/runtime surface. Octane follows the compatible
+SDK boundaries: compiler-emitted Template Definitions, stable indexed attribute
+and child slots, collision-checked `encodeData.elementTemplate` metadata,
+`enableUnifyFixedBehavior`, a typed template page, opaque template handles, and
+the public create/set/insert/remove/serialize/flush functions. The Element
+Template encoder envelope stays at target SDK `3.2`; the ordinary application
+target remains `3.9`.
+
+No ReactLynx transform, renderer, Preact runtime, host config, or private native
+call is copied. Octane lowers its own shared immutable program IR, preserves its
+existing compact background delta and acceptance protocol, and swaps the native
+owner only after whole-entry paired proof. Because upstream types deliberately
+separate template handles from ordinary Element refs, incomplete lowering fails
+the explicit build instead of creating a mixed tree. Refs, native lists,
+`main-thread:*` bindings, text-polymorphic ranges, and unsupported native
+attribute composition remain outside the first slice.
+
+At the 2026-09-14 09:40 UTC read-only refresh, `Huxpro/octane:new-lynx` remained
+at `7a523bf20d04578c39fe0b5fe532cdef6dab3e9e`, `octanejs/octane:main` remained at
+`8e5ca22a6e17582b4293232406a2c0420509f4a4`, and
+[octanejs/octane#1055](https://github.com/octanejs/octane/issues/1055) remained
+open. This implementation agrees with #1055's shared-IR, independent dual-thread
+lowering, versioned paired ABI, hybrid generated/resident representation, reuse
+of native integration, and atomic experimental-root selection. The compiler and
+Vite public types now expose the already implemented `target: 'lynx'` registry
+dispatch rather than leaving external integrations behind the runtime contract.
+The implementation remains narrower: it does not add signal-read ownership,
+Strong-mode projection caches, full semantic coverage, default migration, or
+old-path retirement. No upstream acceptance or merge is claimed.
+
+### 2026-09-15 upstream-tip delta
+
+A later read-only refresh found `Huxpro/octane:new-lynx` unchanged at
+`7a523bf20d04578c39fe0b5fe532cdef6dab3e9e`, while
+`octanejs/octane:main` had advanced to
+`277c10c3fa80f56ef162959832dba35c1b43b32e`; #1055 remained open without an
+implementation comment. The three compiler-touching commits after the frozen
+R11 comparator were reviewed separately:
+
+- `fdb790a6b` (#1082) reserves module-wide hook/memo slot ranges and changes the
+  DOM runtime's Provider/lazy shared-body ownership together. The compiler half
+  changes a shared ABI while the runtime half is written for DOM `Scope`; it is
+  not safe to cherry-pick only the numeric-slot rewrite into the independent
+  Universal/Block owners. It remains an input to the next coherent upstream
+  synchronization and must then rerun both Lynx thread products.
+- `527358c52` (#1083) expands the shared Strong diagnostics and automatic memo
+  front end. Those checks are useful upstream input, but they do not themselves
+  implement #1055's Lynx-owned reactive consumer, projection cache, or
+  main/background adoption protocol. Strong-on-Lynx therefore remains explicit
+  work rather than an implied capability of this branch.
+- `277c10c3f` (#1093) specializes DOM inline-style suffix updates after object
+  spreads and adds DOM setter/runtime support. Lynx style objects continue
+  through renderer-owned host-prop normalization, so that DOM lowering is not
+  copied into the Lynx backend.
+
+This audit does not move the frozen R11 comparator or claim those upstream
+commits are integrated. It records why the public `target: 'lynx'` type fix is a
+safe standalone seam while the new shared compiler/runtime work requires a
+separate synchronized candidate and qualification.
+
+The pinned Android evidence qualifies only the experimental 10,000-row table
+create/startup boundary and a safe 30,000-row rejection. It also records why
+pending PaintingContext work, synchronous-first-screen work, live instance
+count, and resident native-node cost require separate caps. See
+[`audit/android-element-template-evidence.json`](./audit/android-element-template-evidence.json).
+It does not replace the broader Android/iOS, parity, memory, list, and
+comparative-performance gates.
+
+The 2026-09-15 #383 memory correction further narrowed the remaining gap. Nine
+eligible fresh-process pairs directionally favored Element Template over the
+latest-upstream Native heap allocation (`0.9023745x` paired geometric mean),
+but the tenth comparator arm lost its CDP channel and latest upstream still had
+no timing acknowledgement, so that cohort is incomplete. Against the merged
+automatic owner, six diagnostic pairs still measured `1.149152x` Native heap
+allocation. A device ablation rejected shared per-row JavaScript value slices
+as the cause and moved the next gate to native template-instance/slot residency.
+
+For applications whose paired production graph already proves that Activity,
+retained try/Suspense boundaries, and transitions are absent, finishMake now
+rebuilds only the reachable main-thread compiler modules with a dedicated
+structural Element Template backend. That backend omits the otherwise permanent
+root `hidden` attribute from both the emitted plan and Template Definition, so
+the runtime and native arities agree without an encoder rewrite. Visibility-
+capable and source-safe graphs retain the slot unchanged. Encoder handoff checks
+the compiler-reported visibility-slot count against that graph decision, and a
+store rejects an unexpected VIS operation when its plan has no visibility slot. This is a
+structural reduction of one native attribute slot per live template instance,
+not a memory-performance claim: the corrected 10-pair comparator and the full
+#291 matrix still require a qualified native device.
 
 ## Milestone 9 runner inventory
 

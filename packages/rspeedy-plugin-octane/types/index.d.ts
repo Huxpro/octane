@@ -71,11 +71,18 @@ export interface OctaneRspeedyPluginOptions {
 	 * short names in the output.
 	 */
 	parallel?: boolean | { maxWorkers?: number };
+	/**
+	 * @experimental Compile every eligible native root through Lynx Element
+	 * Template metadata and select the matching whole-root runtime backend.
+	 * The build fails closed when any root cannot be lowered.
+	 */
+	experimentalElementTemplate?: boolean;
 }
 
 export const LYNX_BACKGROUND_LAYER: 'octane:background';
 export const LYNX_MAIN_THREAD_LAYER: 'octane:main-thread';
 export const LYNX_TARGET_SDK_VERSION: '3.9';
+export const LYNX_ELEMENT_TEMPLATE_TARGET_SDK_VERSION: '3.2';
 export const LYNX_BACKGROUND_RUNTIME: Readonly<{
 	runtime: 'lynx';
 	thread: 'background';
@@ -96,6 +103,7 @@ export interface LynxToolchainLane {
 	readonly description: string;
 	readonly lynxSdk: '3.9.0';
 	readonly targetSdk: '3.9';
+	readonly elementTemplateTargetSdk: '3.2';
 	readonly packages: Readonly<
 		Record<
 			| '@emnapi/core'

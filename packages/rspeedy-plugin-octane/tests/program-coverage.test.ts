@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
 	LYNX_APPLICATION_SELECTION_ASSET_INFO,
 	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
+	LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO,
 	collectLynxBlockFeatureRequirements,
 	collectLynxBlockSemanticRequirements,
 	collectLynxProgramCoverage,
+	decideLynxBlockComponentFeatures,
 	evaluateLynxBlockEligibility,
 	evaluateLynxCompiledProgramEligibility,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
@@ -48,10 +50,14 @@ function featureRequirements(
 			kind:
 				| 'activity'
 				| 'component'
+				| 'component-hole'
+				| 'local-component'
 				| 'fragment'
 				| 'host-ref'
 				| 'if'
+				| 'inline-render-prop'
 				| 'native-list'
+				| 'portal'
 				| 'program-root-event'
 				| 'renderable-hole'
 				| 'switch'
@@ -144,7 +150,10 @@ function completeProofs() {
 	const mainThread = moduleWithCoverage('/src/App.tsrx', 'main-thread', 1, 1);
 	background.buildInfo.octane.lynxBlockSemanticRequirements = semanticRequirements({
 		runtimeUses: [
+			site('createContext', 1, 2),
+			site('memo', 1, 3),
 			site('useEffect', 3, 2),
+			site('useContext', 2, 3),
 			site('useState', 2, 2),
 			site('useSyncExternalStore', 4, 2),
 		],
@@ -155,6 +164,7 @@ function completeProofs() {
 				line: 1,
 				column: 0,
 				hooks: [
+					site('useContext', 2, 3),
 					site('useState', 2, 2),
 					site('useEffect', 3, 2),
 					site('useSyncExternalStore', 4, 2),
@@ -182,11 +192,18 @@ function completeProofs() {
 			},
 		],
 		mainThreadProps: [site('main-thread:ref', 6, 4)],
+		templateFeatures: [
+			{ kind: 'component-hole', name: null, line: 5, column: 1 },
+			{ kind: 'if', name: null, line: 5, column: 2 },
+			{ kind: 'inline-render-prop', name: 'render', line: 5, column: 3 },
+			{ kind: 'local-component', name: 'Frame', line: 5, column: 3 },
+			{ kind: 'switch', name: null, line: 6, column: 2 },
+		],
 		keyedRanges: [
 			{
 				line: 7,
 				column: 2,
-				empty: false,
+				empty: true,
 				nested: false,
 				lastChild: true,
 				row: { kind: 'inline-host', name: 'view' },
@@ -196,7 +213,7 @@ function completeProofs() {
 				column: 2,
 				empty: false,
 				nested: false,
-				lastChild: true,
+				lastChild: false,
 				row: { kind: 'local-component', name: 'Row', hooks: [] },
 			},
 		],
@@ -211,6 +228,59 @@ function completeProofs() {
 	};
 }
 
+function blockComponentFeatureDecision(
+	feature: 'activity' | 'portal' | 'try' | null = null,
+	runtime: 'startTransition' | 'useDeferredValue' | 'useTransition' | null = null,
+) {
+	const features = featureRequirements({
+		templateFeatures: feature === null ? [] : [{ kind: feature, name: null, line: 1, column: 0 }],
+	});
+	const semantics = semanticRequirements({
+		runtimeUses: runtime === null ? [] : [site(runtime)],
+	});
+	const report = {
+		selection: { eligible: true },
+		featureRequirements: {
+			paired: true,
+			modules: [{ background: features, mainThread: features }],
+		},
+		semanticRequirements: {
+			paired: true,
+			modules: [{ background: semantics, mainThread: semantics }],
+		},
+	};
+	return decideLynxBlockComponentFeatures(
+		{ options: { mode: 'production' }, watchMode: false },
+		[{ mainThreadEntry: 'app__octane_main_thread' }],
+		new Map([['app__octane_main_thread', report]]),
+		{ selected: 'block' },
+	);
+}
+
+describe('Lynx Block component feature selection', () => {
+	it('selects the structural runtime only when optional semantics are absent', () => {
+		expect(blockComponentFeatureDecision()).toEqual({
+			version: 1,
+			selected: 'structural',
+			reasons: [],
+		});
+		for (const feature of ['activity', 'portal', 'try'] as const) {
+			expect(blockComponentFeatureDecision(feature)).toMatchObject({
+				version: 1,
+				selected: 'full',
+				reasons: [{ code: 'entry-requires-optional-block-semantics' }],
+			});
+		}
+		for (const runtime of ['startTransition', 'useDeferredValue', 'useTransition'] as const) {
+			expect(blockComponentFeatureDecision(null, runtime)).toMatchObject({
+				version: 1,
+				selected: 'full',
+				reasons: [{ code: 'entry-requires-optional-block-semantics' }],
+			});
+		}
+	});
+});
+
 describe('Lynx application Block eligibility', () => {
 	it('accepts only the proven intersection of complete program, semantic, and feature facts', () => {
 		const report = evaluateLynxBlockEligibility(completeProofs());
@@ -218,17 +288,49 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 2,
-				runtimeNames: ['useCallback', 'useEffect', 'useRef', 'useState', 'useSyncExternalStore'],
+				version: 20,
+				runtimeNames: [
+					'Activity',
+					'createContext',
+					'createPortal',
+					'memo',
+					'startTransition',
+					'use',
+					'useBatch',
+					'useCallback',
+					'useContext',
+					'useDeferredValue',
+					'useEffect',
+					'useLayoutEffect',
+					'useMemo',
+					'useReducer',
+					'useRef',
+					'useState',
+					'useSyncExternalStore',
+					'useTransition',
+				],
 				threadFunctions: ['background', 'main-thread'],
 				mainThreadProps: true,
-				templateFeatures: [],
+				templateFeatures: [
+					'activity',
+					'component-hole',
+					'host-ref',
+					'if',
+					'inline-render-prop',
+					'local-component',
+					'native-list',
+					'portal',
+					'switch',
+					'try',
+				],
 				keyedRanges: {
-					empty: false,
-					nested: false,
+					empty: true,
+					nested: true,
+					siblings: true,
 					lastChild: true,
+					nonTail: true,
 					rowKinds: ['inline-host', 'local-component'],
-					rowHooks: false,
+					rowHooks: true,
 				},
 			},
 			eligible: true,
@@ -237,6 +339,126 @@ describe('Lynx application Block eligibility', () => {
 		expect(Object.isFrozen(report)).toBe(true);
 		expect(Object.isFrozen(report.matrix.keyedRanges)).toBe(true);
 		expect(Object.isFrozen(report.reasons)).toBe(true);
+	});
+
+	it('admits Activity only after both compiler threads prove the same supported use', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const activity = semanticRequirements({ runtimeUses: [site('Activity', 8, 2)] });
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: activity, mainThread: activity }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toContain('Activity');
+	});
+
+	it('admits the retained reducer, memo, and layout-effect hook set only when paired', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const hooks = semanticRequirements({
+			runtimeUses: [site('useLayoutEffect', 4, 2), site('useMemo', 5, 2), site('useReducer', 6, 2)],
+		});
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: hooks, mainThread: hooks }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toEqual(
+			expect.arrayContaining(['useLayoutEffect', 'useMemo', 'useReducer']),
+		);
+	});
+
+	it('admits paired transition scheduling and deferred-value semantics', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const transitions = semanticRequirements({
+			runtimeUses: [
+				site('startTransition', 4, 2),
+				site('useDeferredValue', 5, 2),
+				site('useTransition', 6, 2),
+			],
+		});
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: transitions, mainThread: transitions }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toEqual(
+			expect.arrayContaining(['startTransition', 'useDeferredValue', 'useTransition']),
+		);
+	});
+
+	it('admits paired nested keyed-range ownership', () => {
+		const proofs = completeProofs();
+		const featureModule = proofs.featureRequirements.modules[0]!;
+		const nested = featureRequirements({
+			keyedRanges: [
+				{
+					line: 8,
+					column: 2,
+					empty: true,
+					nested: true,
+					lastChild: false,
+					row: { kind: 'inline-host', name: 'view' },
+				},
+			],
+		});
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			featureRequirements: {
+				...proofs.featureRequirements,
+				modules: [{ ...featureModule, background: nested, mainThread: nested }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.keyedRanges.nested).toBe(true);
+		expect(report.matrix.keyedRanges.siblings).toBe(true);
+	});
+
+	it('admits a paired compiler-proved error and Suspense boundary', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const featureModule = proofs.featureRequirements.modules[0]!;
+		const suspense = semanticRequirements({
+			runtimeUses: [site('use', 7, 3), site('useBatch', 7, 8)],
+		});
+		const boundary = featureRequirements({
+			templateFeatures: [{ kind: 'try', name: null, line: 8, column: 2 }],
+		});
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: suspense, mainThread: suspense }],
+			},
+			featureRequirements: {
+				...proofs.featureRequirements,
+				modules: [{ ...featureModule, background: boundary, mainThread: boundary }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.templateFeatures).toContain('try');
+		expect(report.matrix.runtimeNames).toEqual(expect.arrayContaining(['use', 'useBatch']));
 	});
 
 	it('fails closed when a proof is incomplete, unpaired, version-skewed, or covers another graph', () => {
@@ -319,7 +541,7 @@ describe('Lynx application Block eligibility', () => {
 					{
 						...semanticModule,
 						background: semanticRequirements({
-							runtimeUses: [site('useContext', 2, 3)],
+							runtimeUses: [site('useOptimistic', 2, 3)],
 							runtimeExports: [site('Suspense', 3, 4)],
 							opaqueRuntimeAccesses: [site('export-all', 4, 5)],
 						}),
@@ -373,7 +595,7 @@ describe('Lynx application Block eligibility', () => {
 					code: 'unsupported-runtime-use',
 					module: '/src/App.tsrx',
 					thread: 'background',
-					name: 'useContext',
+					name: 'useOptimistic',
 					line: 2,
 					column: 3,
 				},
@@ -394,36 +616,6 @@ describe('Lynx application Block eligibility', () => {
 					column: 5,
 				},
 				{
-					code: 'keyed-range-empty-branch',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					line: 10,
-					column: 2,
-				},
-				{
-					code: 'keyed-range-nested',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					line: 10,
-					column: 2,
-				},
-				{
-					code: 'keyed-range-not-last-child',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					line: 10,
-					column: 2,
-				},
-				{
-					code: 'keyed-range-row-hooks',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					line: 10,
-					column: 2,
-					row: 'Row',
-					hooks: [site('useState', 11, 3)],
-				},
-				{
 					code: 'unsupported-keyed-range-row',
 					module: '/src/App.tsrx',
 					thread: 'background',
@@ -439,24 +631,6 @@ describe('Lynx application Block eligibility', () => {
 					kind: 'component',
 					name: 'Panel',
 					line: 5,
-					column: 2,
-				},
-				{
-					code: 'unsupported-template-feature',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					kind: 'native-list',
-					name: 'list',
-					line: 6,
-					column: 2,
-				},
-				{
-					code: 'unsupported-template-feature',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					kind: 'host-ref',
-					name: 'view',
-					line: 7,
 					column: 2,
 				},
 				{
@@ -498,12 +672,12 @@ describe('Lynx compiled-program application eligibility', () => {
 			blockSelection,
 			featureRequirements,
 		});
-		expect(report).toEqual({ version: 1, eligible: true, reasons: [] });
+		expect(report).toEqual({ version: 2, eligible: true, reasons: [] });
 		expect(Object.isFrozen(report)).toBe(true);
 		expect(Object.isFrozen(report.reasons)).toBe(true);
 	});
 
-	it('retains exact thread-function and main-thread-prop sites that require the general application', () => {
+	it('accepts paired thread-function and main-thread-prop sites in the compact application', () => {
 		const { proofs, featureRequirements: compactRequirements } = compactFeatureRequirements();
 		const featureModule = compactRequirements.modules[0]!;
 		const requirements = {
@@ -549,42 +723,51 @@ describe('Lynx compiled-program application eligibility', () => {
 				blockSelection,
 				featureRequirements: requirements,
 			}),
-		).toMatchObject({
+		).toEqual({ version: 2, eligible: true, reasons: [] });
+	});
+
+	it('keeps compiler-proved portals on the general Block application', () => {
+		const { proofs, featureRequirements: compactRequirements } = compactFeatureRequirements();
+		const featureModule = compactRequirements.modules[0]!;
+		const portal = featureRequirements({
+			templateFeatures: [{ kind: 'portal', name: null, line: 14, column: 3 }],
+		});
+		const requirements = {
+			...compactRequirements,
+			modules: [{ ...featureModule, background: portal, mainThread: portal }],
+		};
+		const blockSelection = evaluateLynxBlockEligibility({
+			...proofs,
+			featureRequirements: requirements,
+		});
+
+		expect(blockSelection.eligible).toBe(true);
+		expect(
+			evaluateLynxCompiledProgramEligibility({
+				blockSelection,
+				featureRequirements: requirements,
+			}),
+		).toEqual({
+			version: 2,
 			eligible: false,
 			reasons: [
 				{
-					code: 'thread-function-requires-general-application',
+					code: 'compiled-program-unsupported-template-feature',
 					module: '/src/App.tsrx',
 					thread: 'background',
-					kind: 'background',
-					id: 'tf_background_read',
-					line: 11,
+					kind: 'portal',
+					name: null,
+					line: 14,
 					column: 3,
 				},
 				{
-					code: 'main-thread-prop-requires-general-application',
-					module: '/src/App.tsrx',
-					thread: 'background',
-					name: 'main-thread:background-ref',
-					line: 12,
-					column: 4,
-				},
-				{
-					code: 'thread-function-requires-general-application',
+					code: 'compiled-program-unsupported-template-feature',
 					module: '/src/App.tsrx',
 					thread: 'main-thread',
-					kind: 'main-thread',
-					id: 'tf_main_tap',
-					line: 21,
-					column: 5,
-				},
-				{
-					code: 'main-thread-prop-requires-general-application',
-					module: '/src/App.tsrx',
-					thread: 'main-thread',
-					name: 'main-thread:main-ref',
-					line: 22,
-					column: 6,
+					kind: 'portal',
+					name: null,
+					line: 14,
+					column: 3,
 				},
 			],
 		});
@@ -815,13 +998,40 @@ describe('Lynx application resident-program coverage', () => {
 			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/root.ts',
 			connections: [] as { module: unknown }[],
 		};
-		graph.modules = new Set([root]);
+		const blockComponent = {
+			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/core/block-component.ts',
+			connections: [] as { module: unknown }[],
+		};
+		graph.modules = new Set([root, blockComponent]);
 		const replacements: Array<{
 			test: RegExp;
 			callback: (resource: { request: string }) => void;
 		}> = [];
 		const rebuiltRequests: string[] = [];
-		graph.rebuildModule = (_module: unknown, callback: (error: Error | null) => void) => {
+		const rebuiltModules: unknown[] = [];
+		graph.rebuildModule = (module: unknown, callback: (error: Error | null) => void) => {
+			rebuiltModules.push(module);
+			if (module === mainThread) {
+				callback(null);
+				return;
+			}
+			if (module === blockComponent) {
+				const resource = { request: './block-component-features.js' };
+				for (const replacement of replacements) {
+					if (replacement.test.test(resource.request)) replacement.callback(resource);
+				}
+				rebuiltRequests.push(resource.request);
+				blockComponent.connections = [
+					{
+						module: {
+							nameForCondition: () =>
+								'/repo/node_modules/@octanejs/lynx/src/core/block-component-features.structural.ts',
+						},
+					},
+				];
+				callback(null);
+				return;
+			}
 			const connections = [];
 			for (const request of [
 				'./core/background-core-selection.js',
@@ -878,14 +1088,21 @@ describe('Lynx application resident-program coverage', () => {
 				},
 			],
 			true,
+			undefined,
+			true,
+			{ request: '/repo/structural-element-template.js', signature: 'structural-et/1' },
 		).apply(compiler);
 		await finishMake(graph);
 		processAssets();
 
-		// Two complete entry traversals, owner discovery/verification, and the
-		// dependency-first rebuild ordering pass each inspect the exact root edge.
-		expect(graphVisits).toBe(5);
+		// The proof passes, compiler-program module selection, owner discovery /
+		// verification, and dependency-first rebuild ordering all inspect the graph.
+		expect(graphVisits).toBe(13);
+		expect(rebuiltModules).toEqual([background, mainThread, blockComponent, root]);
 		expect(rebuiltRequests).toEqual([
+			'./core/background-core-selection.block.js',
+			'./core/application-selection.compiled-program.js',
+			'./block-component-features.structural.js',
 			'./core/background-core-selection.block.js',
 			'./core/application-selection.compiled-program.js',
 		]);
@@ -929,13 +1146,13 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 2 },
+				matrix: { version: 20 },
 				eligible: true,
 				reasons: [],
 			},
 			[LYNX_APPLICATION_SELECTION_ASSET_INFO]: {
-				version: 1,
-				selected: 'compiled-program',
+				version: 2,
+				selected: 'compiled-program-element-template',
 				reasons: [],
 			},
 			[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO]: {
@@ -943,6 +1160,11 @@ describe('Lynx application resident-program coverage', () => {
 				mode: 'automatic',
 				selected: 'block',
 				eligible: true,
+				reasons: [],
+			},
+			[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO]: {
+				version: 1,
+				selected: 'structural',
 				reasons: [],
 			},
 		});

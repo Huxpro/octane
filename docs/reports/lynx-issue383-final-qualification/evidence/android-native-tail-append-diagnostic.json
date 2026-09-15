@@ -1,0 +1,2265 @@
+{
+  "schemaVersion": 4,
+  "meta": {
+    "generatedAt": "2026-09-14T01:44:24.211Z",
+    "machine": {
+      "id": "lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216-c775ba926a72-e0431afe869c",
+      "platform": "android",
+      "osVersion": "10",
+      "cpuModel": "linaro",
+      "cores": 8,
+      "node": null,
+      "deviceModel": "ByteDance aries_10",
+      "app": "LynxExplorer",
+      "appVersion": "1.0",
+      "explorerPackage": {
+        "versionName": "1.0",
+        "versionCode": 1
+      },
+      "explorerArtifact": {
+        "protocol": "pinned-lynx-explorer-apk-v1",
+        "release": "4.1.0",
+        "sourceUrl": "https://github.com/lynx-family/lynx/releases/download/4.1.0/LynxExplorer-noasan-release.apk",
+        "sha256": "6ae29787a2166974c29c2f23d87f3b20a137abcf9a8c17903ad19f3fb7f00cb6",
+        "bytes": 173293606
+      },
+      "debugRouterVersion": "0.0.1",
+      "lynxSdkVersion": "0.0.1",
+      "connectorPackageTrees": {
+        "protocol": "connector-package-trees-v1",
+        "packages": [
+          {
+            "name": "@byted/agent-lynx",
+            "version": "0.14.12",
+            "available": true,
+            "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx",
+            "rootSha256": "95966570e831e922ff71053156f6ad7cb951a1134018fd8cccf1c136c0291a6a",
+            "fileCount": 450,
+            "byteCount": 20682682
+          },
+          {
+            "name": "@byted-lynx/devtool-connector",
+            "version": "0.15.5",
+            "available": true,
+            "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx/node_modules/@byted-lynx/devtool-connector",
+            "rootSha256": "9c6d2e045811565553c2a97c1546cb9906f3afc071a3de6b734b53d763a20900",
+            "fileCount": 86,
+            "byteCount": 1594959
+          },
+          {
+            "name": "@byted-lynx/bdc-client",
+            "version": "0.4.5",
+            "available": true,
+            "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx/node_modules/@byted-lynx/bdc-client",
+            "rootSha256": "3979846b8e0438bb823c2639be4d358be29184222a644f1d03466e3807358dca",
+            "fileCount": 15,
+            "byteCount": 616839
+          }
+        ],
+        "sha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199"
+      },
+      "protocol": "native-sandbox-adapter-v3",
+      "defaultTimeoutMs": 30000,
+      "longWorkloadTimeoutMs": 240000,
+      "renderGraceFrames": 2,
+      "debugRouterSettleMs": 100,
+      "explorerRecycleEveryPages": 5,
+      "explorerLaunchSettleMs": 500,
+      "explorerReconnectTimeoutMs": 90000,
+      "clientDiscoveryPollMs": 250,
+      "sessionDiscoveryPollMs": 50,
+      "octaneReadyPollMs": 16,
+      "startupPollMs": 16,
+      "producerProbePollMs": 250,
+      "tapSettleMs": 10,
+      "maxBatteryTemperatureC": 40,
+      "thermalGateTimeoutMs": 300000,
+      "thermalPollMs": 5000,
+      "thermalGateScope": "before-every-bundle-load",
+      "transientAttempts": 3,
+      "leaseCleanupMarginMs": 30000,
+      "leaseStopSafetyOverrideMs": null,
+      "semanticDnfRetries": 0,
+      "retryScope": "transport-only-within-repetition",
+      "deviceClockCalibrationSamples": 7,
+      "explorerLifecycle": "force-stop-at-start-and-recycle-cadence",
+      "octaneTriggerMode": "tap",
+      "devtoolTransport": "direct",
+      "tableProtocol": "lynx-native-bench-v2",
+      "startupProtocol": "lynx-native-startup-v1",
+      "campaignId": "ea80760962591e75",
+      "matrixContractSha256": "5eb5c94b55e1779720957b83f69ed3c5008121c62b38be533248cada6b19f09d",
+      "inputReceiptSha256": "12ae7cf27e494e84158d2ab87c9105752bff326550a649a5c6ed1371a2e54b96",
+      "connectorPackageTreesSha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199",
+      "harnessConfigId": "e0431afe869c",
+      "serialSha256": "53f1a021542e185dd3ef9f329b3941d20b390d283b4272835433142c8030954e",
+      "deviceLeaseId": "c775ba926a72",
+      "leaseReceipt": {
+        "protocol": "lynx-sandbox-lease-receipt-v1",
+        "issueId": "octane-383-tail-append-20260914",
+        "expiredAt": 1789353713161,
+        "serialSha256": "53f1a021542e185dd3ef9f329b3941d20b390d283b4272835433142c8030954e",
+        "deviceLeaseId": "c775ba926a72"
+      },
+      "deviceCohort": {
+        "protocol": "native-device-cohort-v1",
+        "serialSha256": "53f1a021542e185dd3ef9f329b3941d20b390d283b4272835433142c8030954e",
+        "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216",
+        "hardware": {
+          "platform": "android",
+          "osVersion": "10",
+          "cpuModel": "linaro",
+          "cores": 8,
+          "deviceModel": "ByteDance aries_10",
+          "app": "LynxExplorer",
+          "appVersion": "1.0",
+          "explorerPackage": {
+            "versionName": "1.0",
+            "versionCode": 1
+          },
+          "explorerArtifact": {
+            "protocol": "pinned-lynx-explorer-apk-v1",
+            "release": "4.1.0",
+            "sourceUrl": "https://github.com/lynx-family/lynx/releases/download/4.1.0/LynxExplorer-noasan-release.apk",
+            "sha256": "6ae29787a2166974c29c2f23d87f3b20a137abcf9a8c17903ad19f3fb7f00cb6",
+            "bytes": 173293606
+          },
+          "debugRouterVersion": "0.0.1",
+          "lynxSdkVersion": "0.0.1"
+        },
+        "campaignId": "ea80760962591e75",
+        "matrixContractSha256": "5eb5c94b55e1779720957b83f69ed3c5008121c62b38be533248cada6b19f09d",
+        "inputReceiptSha256": "12ae7cf27e494e84158d2ab87c9105752bff326550a649a5c6ed1371a2e54b96",
+        "connectorPackageTreesSha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199",
+        "harnessConfigId": "e0431afe869c",
+        "id": "0bc613dd83b5ca15",
+        "sha256": "0bc613dd83b5ca1512f5cc96d909e129ae6803699fadd440492414049f3606d4"
+      },
+      "deviceCohortId": "0bc613dd83b5ca15",
+      "deviceLeaseIdentitySource": "structured-receipt-v1",
+      "deviceClockOffsetMs": 738.5,
+      "deviceClockCalibrationRttMs": 21,
+      "thermalStart": {
+        "capturedAt": "2026-09-14T01:44:29.407Z",
+        "batteryTemperatureC": 35,
+        "thermalStatus": 0,
+        "temperatures": [
+          {
+            "valueC": 30.8,
+            "type": 3,
+            "name": "test temperature sensor",
+            "status": 0
+          }
+        ]
+      },
+      "servedInputs": [
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+          "bytes": 246675,
+          "served": 1
+        }
+      ],
+      "transientRecoveries": [],
+      "thermalGates": [
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:44:29.521Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:44:32.542Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:44:33.856Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:44:35.192Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:44:36.489Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:44:37.830Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:44:42.990Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:44:47.049Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:44:51.074Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:44:55.091Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:44:59.224Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:45:08.477Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:45:16.972Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:45:25.475Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        },
+        {
+          "entry": "octane-m4-final",
+          "rows": 0,
+          "suite": "table",
+          "capturedAt": "2026-09-14T01:45:33.844Z",
+          "batteryTemperatureC": 35,
+          "thermalStatus": 0,
+          "temperatures": [
+            {
+              "valueC": 30.8,
+              "type": 3,
+              "name": "test temperature sensor",
+              "status": 0
+            }
+          ]
+        }
+      ]
+    },
+    "calibration": null,
+    "harness": "native",
+    "adapter": "/tmp/octane-383-tail-append.m3jHHc/runner/packages/runner/adapters/lynx-sandbox-android.mjs",
+    "argv": [
+      "run",
+      "--harness",
+      "native",
+      "--adapter",
+      "packages/runner/adapters/lynx-sandbox-android.mjs",
+      "--diagnostic-native",
+      "--entry",
+      "octane-m4-final",
+      "--suite",
+      "table",
+      "--case",
+      "create",
+      "--scale",
+      "1000,3000,5000,10000",
+      "--reps",
+      "5",
+      "--campaign-id",
+      "octane-383-tail-append-diagnostic-v2",
+      "--label",
+      "octane-383-tail-append-diagnostic-v2",
+      "--no-collect"
+    ],
+    "entryOrder": ["octane-m4-final"],
+    "checkpoint": true,
+    "checkpointComplete": false,
+    "deviceCohort": {
+      "protocol": "native-device-cohort-v1",
+      "serialSha256": "53f1a021542e185dd3ef9f329b3941d20b390d283b4272835433142c8030954e",
+      "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216",
+      "hardware": {
+        "platform": "android",
+        "osVersion": "10",
+        "cpuModel": "linaro",
+        "cores": 8,
+        "deviceModel": "ByteDance aries_10",
+        "app": "LynxExplorer",
+        "appVersion": "1.0",
+        "explorerPackage": {
+          "versionName": "1.0",
+          "versionCode": 1
+        },
+        "explorerArtifact": {
+          "protocol": "pinned-lynx-explorer-apk-v1",
+          "release": "4.1.0",
+          "sourceUrl": "https://github.com/lynx-family/lynx/releases/download/4.1.0/LynxExplorer-noasan-release.apk",
+          "sha256": "6ae29787a2166974c29c2f23d87f3b20a137abcf9a8c17903ad19f3fb7f00cb6",
+          "bytes": 173293606
+        },
+        "debugRouterVersion": "0.0.1",
+        "lynxSdkVersion": "0.0.1"
+      },
+      "campaignId": "ea80760962591e75",
+      "matrixContractSha256": "5eb5c94b55e1779720957b83f69ed3c5008121c62b38be533248cada6b19f09d",
+      "inputReceiptSha256": "12ae7cf27e494e84158d2ab87c9105752bff326550a649a5c6ed1371a2e54b96",
+      "connectorPackageTreesSha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199",
+      "harnessConfigId": "e0431afe869c",
+      "id": "0bc613dd83b5ca15",
+      "sha256": "0bc613dd83b5ca1512f5cc96d909e129ae6803699fadd440492414049f3606d4"
+    },
+    "leaseChain": {
+      "protocol": "lynx-sandbox-lease-chain-v1",
+      "serialSha256": "53f1a021542e185dd3ef9f329b3941d20b390d283b4272835433142c8030954e",
+      "receipts": [
+        {
+          "protocol": "lynx-sandbox-lease-receipt-v1",
+          "issueId": "octane-383-tail-append-20260914",
+          "expiredAt": 1789353713161,
+          "serialSha256": "53f1a021542e185dd3ef9f329b3941d20b390d283b4272835433142c8030954e",
+          "deviceLeaseId": "c775ba926a72"
+        }
+      ],
+      "sha256": "7a428a5b3e2121e4633ac6802793512f6ebe724c8de7649add3603db8ab00666"
+    },
+    "cellLeaseIds": {
+      "octane-m4-final|table|create|1000|latency": "c775ba926a72",
+      "octane-m4-final|table|create|3000|latency": "c775ba926a72",
+      "octane-m4-final|table|create|5000|latency": "c775ba926a72"
+    },
+    "campaign": {
+      "version": "native-sandbox-campaign-v2",
+      "label": "octane-383-tail-append-diagnostic-v2",
+      "matrixContractSha256": "5eb5c94b55e1779720957b83f69ed3c5008121c62b38be533248cada6b19f09d",
+      "inputReceiptSha256": "12ae7cf27e494e84158d2ab87c9105752bff326550a649a5c6ed1371a2e54b96",
+      "connectorPackageTreesSha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199",
+      "resolvedMatrix": {
+        "suites": ["table"],
+        "cases": ["create"],
+        "scales": [1000, 3000, 5000, 10000],
+        "startupScales": [0, 1000, 10000, 30000],
+        "reps": 5,
+        "startupReps": 3
+      },
+      "entryOrder": ["octane-m4-final"],
+      "runtimePolicy": {
+        "protocol": "native-sandbox-adapter-v3",
+        "defaultTimeoutMs": 30000,
+        "longWorkloadTimeoutMs": 240000,
+        "renderGraceFrames": 2,
+        "debugRouterSettleMs": 100,
+        "explorerRecycleEveryPages": 5,
+        "explorerLaunchSettleMs": 500,
+        "explorerReconnectTimeoutMs": 90000,
+        "clientDiscoveryPollMs": 250,
+        "sessionDiscoveryPollMs": 50,
+        "octaneReadyPollMs": 16,
+        "startupPollMs": 16,
+        "producerProbePollMs": 250,
+        "tapSettleMs": 10,
+        "maxBatteryTemperatureC": 40,
+        "thermalGateTimeoutMs": 300000,
+        "thermalPollMs": 5000,
+        "thermalGateScope": "before-every-bundle-load",
+        "transientAttempts": 3,
+        "leaseCleanupMarginMs": 30000,
+        "leaseStopSafetyOverrideMs": null,
+        "semanticDnfRetries": 0,
+        "retryScope": "transport-only-within-repetition",
+        "deviceClockCalibrationSamples": 7,
+        "explorerLifecycle": "force-stop-at-start-and-recycle-cadence",
+        "octaneTriggerMode": "tap",
+        "devtoolTransport": "direct"
+      },
+      "leaseExpirySafety": {
+        "protocol": "native-lease-expiry-safety-v2",
+        "checkpointScope": "before-every-repetition",
+        "incompleteCellPolicy": "discard-and-repeat",
+        "repetitions": 5,
+        "attemptCount": 3,
+        "thermalGateTimeoutMs": 300000,
+        "pageSessionTimeoutMs": 30000,
+        "longWorkloadTimeoutMs": 240000,
+        "reconnectAttempts": 2,
+        "explorerReconnectTimeoutMs": 90000,
+        "cleanupMarginMs": 30000,
+        "minimumSafetyMs": 1920000,
+        "overrideMs": null,
+        "effectiveSafetyMs": 1920000
+      },
+      "id": "ea80760962591e75"
+    },
+    "resolvedMatrix": {
+      "suites": ["table"],
+      "cases": ["create"],
+      "scales": [1000, 3000, 5000, 10000],
+      "startupScales": [0, 1000, 10000, 30000],
+      "reps": 5,
+      "startupReps": 3
+    },
+    "matrixContract": {
+      "version": "native-featured-black-box-matrix-v2",
+      "entryIds": ["octane-m4-final"],
+      "cells": [
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "create",
+          "scale": 1000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "create",
+          "scale": 3000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "create",
+          "scale": 5000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "create",
+          "scale": 10000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "create",
+          "scale": 20000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "create",
+          "scale": 30000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "replace",
+          "scale": 1000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "append1k",
+          "scale": 1000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "update10th",
+          "scale": 1000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "update10th",
+          "scale": 10000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "select",
+          "scale": 1000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "select",
+          "scale": 10000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "swap",
+          "scale": 1000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "remove",
+          "scale": 1000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "table",
+          "workload": "clear",
+          "scale": 10000,
+          "metric": "latency",
+          "unit": "ms",
+          "boundary": "native-input-handler-to-second-native-frame"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "startup",
+          "workload": "startup",
+          "scale": 0,
+          "metric": "octaneCommitAck",
+          "unit": "ms",
+          "boundary": "native-open-request-to-octane-transport-ack"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "startup",
+          "workload": "startup",
+          "scale": 0,
+          "metric": "octaneSecondFrame",
+          "unit": "ms",
+          "boundary": "native-open-request-to-second-frame-after-octane-transport-ack"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "startup",
+          "workload": "startup",
+          "scale": 1000,
+          "metric": "octaneCommitAck",
+          "unit": "ms",
+          "boundary": "native-open-request-to-octane-transport-ack"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "startup",
+          "workload": "startup",
+          "scale": 1000,
+          "metric": "octaneSecondFrame",
+          "unit": "ms",
+          "boundary": "native-open-request-to-second-frame-after-octane-transport-ack"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "startup",
+          "workload": "startup",
+          "scale": 10000,
+          "metric": "octaneCommitAck",
+          "unit": "ms",
+          "boundary": "native-open-request-to-octane-transport-ack"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "startup",
+          "workload": "startup",
+          "scale": 10000,
+          "metric": "octaneSecondFrame",
+          "unit": "ms",
+          "boundary": "native-open-request-to-second-frame-after-octane-transport-ack"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "startup",
+          "workload": "startup",
+          "scale": 30000,
+          "metric": "octaneCommitAck",
+          "unit": "ms",
+          "boundary": "native-open-request-to-octane-transport-ack"
+        },
+        {
+          "entry": "octane-m4-final",
+          "suite": "startup",
+          "workload": "startup",
+          "scale": 30000,
+          "metric": "octaneSecondFrame",
+          "unit": "ms",
+          "boundary": "native-open-request-to-second-frame-after-octane-transport-ack"
+        }
+      ],
+      "sha256": "5eb5c94b55e1779720957b83f69ed3c5008121c62b38be533248cada6b19f09d",
+      "expectedCellCount": 23
+    },
+    "inputReceipt": {
+      "version": "native-input-receipt-v3",
+      "adapter": "packages/runner/adapters/lynx-sandbox-android.mjs",
+      "connectorPackageTrees": {
+        "protocol": "connector-package-trees-v1",
+        "packages": [
+          {
+            "name": "@byted/agent-lynx",
+            "version": "0.14.12",
+            "available": true,
+            "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx",
+            "rootSha256": "95966570e831e922ff71053156f6ad7cb951a1134018fd8cccf1c136c0291a6a",
+            "fileCount": 450,
+            "byteCount": 20682682
+          },
+          {
+            "name": "@byted-lynx/devtool-connector",
+            "version": "0.15.5",
+            "available": true,
+            "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx/node_modules/@byted-lynx/devtool-connector",
+            "rootSha256": "9c6d2e045811565553c2a97c1546cb9906f3afc071a3de6b734b53d763a20900",
+            "fileCount": 86,
+            "byteCount": 1594959
+          },
+          {
+            "name": "@byted-lynx/bdc-client",
+            "version": "0.4.5",
+            "available": true,
+            "resolvedPath": "/data00/home/xuan.huang/.local/node-v22.22.2-linux-x64/lib/node_modules/@byted/agent-lynx/node_modules/@byted-lynx/bdc-client",
+            "rootSha256": "3979846b8e0438bb823c2639be4d358be29184222a644f1d03466e3807358dca",
+            "fileCount": 15,
+            "byteCount": 616839
+          }
+        ],
+        "sha256": "aa891c81ffb5d96e353881dcf885009739f1bafe2d2aaa6a26ee2e94aab56199"
+      },
+      "sources": {
+        "packages/runner/adapters/lynx-sandbox-android.mjs": {
+          "bytes": 78913,
+          "sha256": "0461d8deede7914b1c4a34e3079e4a8102157fdf3360970d312020a48c04a0ac"
+        },
+        "packages/runner/src/cli.mjs": {
+          "bytes": 36259,
+          "sha256": "83e7ed6513d6879f8ef7aab10ec64d71e99fbe0dbcf4fa5a372ad7baf5ff4bdb"
+        },
+        "packages/runner/src/connector-receipt.mjs": {
+          "bytes": 8422,
+          "sha256": "81e41b0fba079cf6be47816cf510e44716348f30ccb30365958154bb18a41a03"
+        },
+        "packages/runner/src/harness-native.mjs": {
+          "bytes": 21176,
+          "sha256": "08935c57c462182a799cf308bc3d7bf33981ca098748a8aafe99b4180fff15ed"
+        },
+        "packages/runner/src/native-coverage.mjs": {
+          "bytes": 8033,
+          "sha256": "d224b162fd0caac0025b778efc4a4bdcfaafbdd3b326da1809071b9601026148"
+        },
+        "packages/runner/src/native-inputs.mjs": {
+          "bytes": 8314,
+          "sha256": "d6f325fd95500a6cd4bdcbe917b9788e8a81c7ac68ec4268a69c7871c894a1ba"
+        },
+        "packages/runner/src/native-protocol.mjs": {
+          "bytes": 17920,
+          "sha256": "82eabfa4556a35bae2d14cbc7a7509183e20b5b01e618934e6c423b875055d5c"
+        },
+        "packages/runner/src/native-resume.mjs": {
+          "bytes": 11891,
+          "sha256": "1bd6b568c13ca21d3452ef9d1f4aa73f10d9075e2ed14de37fd10df8b090a505"
+        },
+        "packages/runner/src/run-matrix.mjs": {
+          "bytes": 3424,
+          "sha256": "0876c360f52134d1c57f65f054d0bbffca25eed7bf42b6cfdecf9cc10d375391"
+        },
+        "packages/shared/src/workloads.mjs": {
+          "bytes": 6526,
+          "sha256": "0eef1e168c2d12c4f503d0835d1baacc3222760a352e9811fe2db1cd9ecc55a1"
+        },
+        "packages/shared/src/schema.mjs": {
+          "bytes": 10344,
+          "sha256": "3c4fef2302579aeb3b3fff478fc271919089c588fb746192b0e1a3b815f89e48"
+        }
+      },
+      "entryArtifacts": {
+        "octane-m4-final": {
+          "manifest": {
+            "path": "entries/octane-m4-final/entry.json",
+            "bytes": 11122,
+            "sha256": "29aee91ce9844227aa0a436c52f33db433bf5c1bba4785edc85cf41ce0a85368"
+          },
+          "provenance": {
+            "source": "https://github.com/Huxpro/octane",
+            "ref": "new-lynx",
+            "commit": "b2a50ae0873b2b4be40fde4f5d4b9bdf18b137d6",
+            "patchFile": null,
+            "patchSha256": null
+          },
+          "bundles": {
+            "0": {
+              "rel": "rows-0/main.lynx.bundle",
+              "bytes": 246675,
+              "sha256": "85b23f2b6d9d28dbcc21283855d0f09f801ed9756c8e14d5f612e2ef2e0c53d8",
+              "protocols": {
+                "table": true,
+                "startup": true,
+                "startupTimingFlag": false
+              }
+            }
+          }
+        }
+      },
+      "sha256": "12ae7cf27e494e84158d2ab87c9105752bff326550a649a5c6ed1371a2e54b96"
+    },
+    "entryCommits": {
+      "octane-m4-final": "b2a50ae0873b2b4be40fde4f5d4b9bdf18b137d6"
+    }
+  },
+  "nativeCoverage": {
+    "version": "native-featured-black-box-matrix-v2",
+    "contractSha256": "5eb5c94b55e1779720957b83f69ed3c5008121c62b38be533248cada6b19f09d",
+    "expectedCellCount": 23,
+    "entryIds": ["octane-m4-final"],
+    "summary": {
+      "measured": 3,
+      "unscheduled": 20
+    },
+    "cells": [
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "create",
+        "scale": 1000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|create|1000|latency",
+        "status": "measured",
+        "reason": null,
+        "record": {
+          "n": 5,
+          "dnfCount": 0,
+          "median": 780,
+          "boundary": "native-input-handler-to-second-native-frame",
+          "unit": "ms",
+          "runFile": null,
+          "machineId": null,
+          "failureCategories": []
+        }
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "create",
+        "scale": 3000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|create|3000|latency",
+        "status": "measured",
+        "reason": null,
+        "record": {
+          "n": 5,
+          "dnfCount": 0,
+          "median": 3475,
+          "boundary": "native-input-handler-to-second-native-frame",
+          "unit": "ms",
+          "runFile": null,
+          "machineId": null,
+          "failureCategories": []
+        }
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "create",
+        "scale": 5000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|create|5000|latency",
+        "status": "measured",
+        "reason": null,
+        "record": {
+          "n": 5,
+          "dnfCount": 0,
+          "median": 7930,
+          "boundary": "native-input-handler-to-second-native-frame",
+          "unit": "ms",
+          "runFile": null,
+          "machineId": null,
+          "failureCategories": []
+        }
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "create",
+        "scale": 10000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|create|10000|latency",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "create",
+        "scale": 20000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|create|20000|latency",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "create",
+        "scale": 30000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|create|30000|latency",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "replace",
+        "scale": 1000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|replace|1000|latency",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "append1k",
+        "scale": 1000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|append1k|1000|latency",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "update10th",
+        "scale": 1000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|update10th|1000|latency",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "update10th",
+        "scale": 10000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|update10th|10000|latency",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "select",
+        "scale": 1000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|select|1000|latency",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "select",
+        "scale": 10000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|select|10000|latency",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "swap",
+        "scale": 1000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|swap|1000|latency",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "remove",
+        "scale": 1000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|remove|1000|latency",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "table",
+        "workload": "clear",
+        "scale": 10000,
+        "metric": "latency",
+        "unit": "ms",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "key": "octane-m4-final|table|clear|10000|latency",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "startup",
+        "workload": "startup",
+        "scale": 0,
+        "metric": "octaneCommitAck",
+        "unit": "ms",
+        "boundary": "native-open-request-to-octane-transport-ack",
+        "key": "octane-m4-final|startup|startup|0|octaneCommitAck",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "startup",
+        "workload": "startup",
+        "scale": 0,
+        "metric": "octaneSecondFrame",
+        "unit": "ms",
+        "boundary": "native-open-request-to-second-frame-after-octane-transport-ack",
+        "key": "octane-m4-final|startup|startup|0|octaneSecondFrame",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "startup",
+        "workload": "startup",
+        "scale": 1000,
+        "metric": "octaneCommitAck",
+        "unit": "ms",
+        "boundary": "native-open-request-to-octane-transport-ack",
+        "key": "octane-m4-final|startup|startup|1000|octaneCommitAck",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "startup",
+        "workload": "startup",
+        "scale": 1000,
+        "metric": "octaneSecondFrame",
+        "unit": "ms",
+        "boundary": "native-open-request-to-second-frame-after-octane-transport-ack",
+        "key": "octane-m4-final|startup|startup|1000|octaneSecondFrame",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "startup",
+        "workload": "startup",
+        "scale": 10000,
+        "metric": "octaneCommitAck",
+        "unit": "ms",
+        "boundary": "native-open-request-to-octane-transport-ack",
+        "key": "octane-m4-final|startup|startup|10000|octaneCommitAck",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "startup",
+        "workload": "startup",
+        "scale": 10000,
+        "metric": "octaneSecondFrame",
+        "unit": "ms",
+        "boundary": "native-open-request-to-second-frame-after-octane-transport-ack",
+        "key": "octane-m4-final|startup|startup|10000|octaneSecondFrame",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "startup",
+        "workload": "startup",
+        "scale": 30000,
+        "metric": "octaneCommitAck",
+        "unit": "ms",
+        "boundary": "native-open-request-to-octane-transport-ack",
+        "key": "octane-m4-final|startup|startup|30000|octaneCommitAck",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      },
+      {
+        "entry": "octane-m4-final",
+        "suite": "startup",
+        "workload": "startup",
+        "scale": 30000,
+        "metric": "octaneSecondFrame",
+        "unit": "ms",
+        "boundary": "native-open-request-to-second-frame-after-octane-transport-ack",
+        "key": "octane-m4-final|startup|startup|30000|octaneSecondFrame",
+        "status": "unscheduled",
+        "reason": null,
+        "record": null
+      }
+    ]
+  },
+  "records": [
+    {
+      "suite": "table",
+      "harness": "native",
+      "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216",
+      "entry": "octane-m4-final",
+      "workload": "create",
+      "scale": 1000,
+      "contractVersion": null,
+      "commitPolicy": null,
+      "metric": "latency",
+      "boundary": "native-input-handler-to-second-native-frame",
+      "unit": "ms",
+      "comparabilityCohort": null,
+      "value": null,
+      "samples": [847, 779, 780, 762, 808],
+      "detailSamples": [
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350272369,
+          "commitAckMs": 1789350273192,
+          "firstFrameMs": 1789350273200,
+          "endMs": 1789350273216,
+          "latencyMs": 847,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350273192
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "plain green car",
+            "selectedId": null
+          }
+        },
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350273754,
+          "commitAckMs": 1789350274516,
+          "firstFrameMs": 1789350274517,
+          "endMs": 1789350274533,
+          "latencyMs": 779,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350274516
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "elegant purple cookie",
+            "selectedId": null
+          }
+        },
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350275070,
+          "commitAckMs": 1789350275828,
+          "firstFrameMs": 1789350275835,
+          "endMs": 1789350275850,
+          "latencyMs": 780,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350275828
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "angry red keyboard",
+            "selectedId": null
+          }
+        },
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350276405,
+          "commitAckMs": 1789350277150,
+          "firstFrameMs": 1789350277150,
+          "endMs": 1789350277167,
+          "latencyMs": 762,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350277150
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "helpful yellow cookie",
+            "selectedId": null
+          }
+        },
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350277697,
+          "commitAckMs": 1789350278471,
+          "firstFrameMs": 1789350278484,
+          "endMs": 1789350278505,
+          "latencyMs": 808,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350278471
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 1000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "odd white car",
+            "selectedId": null
+          }
+        }
+      ],
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789350275070,
+        "commitAckMs": 1789350275828,
+        "firstFrameMs": 1789350275835,
+        "endMs": 1789350275850,
+        "latencyMs": 780,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789350275828
+        },
+        "ackPipelineEvidence": {
+          "queueMaxDepthBefore": 0,
+          "queueMaxDepthAfter": 0,
+          "merges": 0,
+          "preparations": 0,
+          "preparationsWhileAck": 0,
+          "roundTrips": 0
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 1000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "angry red keyboard",
+          "selectedId": null
+        }
+      },
+      "dnfCount": 0,
+      "failures": [],
+      "attemptedCount": 5,
+      "acceptedCount": 5,
+      "n": 5,
+      "median": 780,
+      "mean": 795.2,
+      "std": 33.327166096144445,
+      "min": 762,
+      "max": 847,
+      "p95": 847,
+      "ci95": 41.3745082948426,
+      "detailKind": "sample-nearest-median"
+    },
+    {
+      "suite": "table",
+      "harness": "native",
+      "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216",
+      "entry": "octane-m4-final",
+      "workload": "create",
+      "scale": 3000,
+      "contractVersion": null,
+      "commitPolicy": null,
+      "metric": "latency",
+      "boundary": "native-input-handler-to-second-native-frame",
+      "unit": "ms",
+      "comparabilityCohort": null,
+      "value": null,
+      "samples": [3407, 3515, 3475, 3468, 3600],
+      "detailSamples": [
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350280261,
+          "commitAckMs": 1789350283644,
+          "firstFrameMs": 1789350283651,
+          "endMs": 1789350283668,
+          "latencyMs": 3407,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350283644
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 3000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "unsightly blue keyboard",
+            "selectedId": null
+          }
+        },
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350284203,
+          "commitAckMs": 1789350287688,
+          "firstFrameMs": 1789350287701,
+          "endMs": 1789350287718,
+          "latencyMs": 3515,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350287688
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 3000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "cheap pink mouse",
+            "selectedId": null
+          }
+        },
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350288277,
+          "commitAckMs": 1789350291732,
+          "firstFrameMs": 1789350291735,
+          "endMs": 1789350291752,
+          "latencyMs": 3475,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350291732
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 3000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "helpful orange cookie",
+            "selectedId": null
+          }
+        },
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350292301,
+          "commitAckMs": 1789350295744,
+          "firstFrameMs": 1789350295752,
+          "endMs": 1789350295769,
+          "latencyMs": 3468,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350295744
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 3000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "small green burger",
+            "selectedId": null
+          }
+        },
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350296303,
+          "commitAckMs": 1789350299877,
+          "firstFrameMs": 1789350299886,
+          "endMs": 1789350299903,
+          "latencyMs": 3600,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350299877
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 3000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "cheap blue table",
+            "selectedId": null
+          }
+        }
+      ],
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789350288277,
+        "commitAckMs": 1789350291732,
+        "firstFrameMs": 1789350291735,
+        "endMs": 1789350291752,
+        "latencyMs": 3475,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789350291732
+        },
+        "ackPipelineEvidence": {
+          "queueMaxDepthBefore": 0,
+          "queueMaxDepthAfter": 0,
+          "merges": 0,
+          "preparations": 0,
+          "preparationsWhileAck": 0,
+          "roundTrips": 0
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 3000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "helpful orange cookie",
+          "selectedId": null
+        }
+      },
+      "dnfCount": 0,
+      "failures": [],
+      "attemptedCount": 5,
+      "acceptedCount": 5,
+      "n": 5,
+      "median": 3475,
+      "mean": 3493,
+      "std": 71.20042134706789,
+      "min": 3407,
+      "max": 3600,
+      "p95": 3600,
+      "ci95": 88.3928268944941,
+      "detailKind": "sample-nearest-median"
+    },
+    {
+      "suite": "table",
+      "harness": "native",
+      "environment": "lynx-native-android-aries_10-10-devtool-direct-recycle5-explorer-6ae29787a216",
+      "entry": "octane-m4-final",
+      "workload": "create",
+      "scale": 5000,
+      "contractVersion": null,
+      "commitPolicy": null,
+      "metric": "latency",
+      "boundary": "native-input-handler-to-second-native-frame",
+      "unit": "ms",
+      "comparabilityCohort": null,
+      "value": null,
+      "samples": [7492, 7946, 7930, 7804, 8220],
+      "detailSamples": [
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350301662,
+          "commitAckMs": 1789350309124,
+          "firstFrameMs": 1789350309137,
+          "endMs": 1789350309154,
+          "latencyMs": 7492,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350309124
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 5000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "crazy orange keyboard",
+            "selectedId": null
+          }
+        },
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350309709,
+          "commitAckMs": 1789350317634,
+          "firstFrameMs": 1789350317638,
+          "endMs": 1789350317655,
+          "latencyMs": 7946,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350317634
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 5000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "inexpensive pink table",
+            "selectedId": null
+          }
+        },
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350318226,
+          "commitAckMs": 1789350326129,
+          "firstFrameMs": 1789350326139,
+          "endMs": 1789350326156,
+          "latencyMs": 7930,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350326129
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 5000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "inexpensive yellow desk",
+            "selectedId": null
+          }
+        },
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350326720,
+          "commitAckMs": 1789350334493,
+          "firstFrameMs": 1789350334507,
+          "endMs": 1789350334524,
+          "latencyMs": 7804,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350334493
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 5000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "adorable yellow bbq",
+            "selectedId": null
+          }
+        },
+        {
+          "protocol": "lynx-native-bench-v2",
+          "name": "create",
+          "source": "native-tap",
+          "boundary": "native-input-handler-to-second-native-frame",
+          "startMs": 1789350335138,
+          "commitAckMs": 1789350343329,
+          "firstFrameMs": 1789350343341,
+          "endMs": 1789350343358,
+          "latencyMs": 8220,
+          "renderEvidence": {
+            "kind": "native-animation-frame",
+            "frames": 2
+          },
+          "transportEvidence": {
+            "kind": "octane-root.flushTransport",
+            "acknowledged": true,
+            "ackMs": 1789350343329
+          },
+          "ackPipelineEvidence": {
+            "queueMaxDepthBefore": 0,
+            "queueMaxDepthAfter": 0,
+            "merges": 0,
+            "preparations": 0,
+            "preparationsWhileAck": 0,
+            "roundTrips": 0
+          },
+          "preState": {
+            "rowCount": 0,
+            "firstId": null,
+            "secondId": null,
+            "thirdId": null,
+            "row998Id": null,
+            "firstLabel": null,
+            "selectedId": null
+          },
+          "postState": {
+            "rowCount": 5000,
+            "firstId": 1,
+            "secondId": 2,
+            "thirdId": 3,
+            "row998Id": 999,
+            "firstLabel": "expensive red pony",
+            "selectedId": null
+          }
+        }
+      ],
+      "detail": {
+        "protocol": "lynx-native-bench-v2",
+        "name": "create",
+        "source": "native-tap",
+        "boundary": "native-input-handler-to-second-native-frame",
+        "startMs": 1789350318226,
+        "commitAckMs": 1789350326129,
+        "firstFrameMs": 1789350326139,
+        "endMs": 1789350326156,
+        "latencyMs": 7930,
+        "renderEvidence": {
+          "kind": "native-animation-frame",
+          "frames": 2
+        },
+        "transportEvidence": {
+          "kind": "octane-root.flushTransport",
+          "acknowledged": true,
+          "ackMs": 1789350326129
+        },
+        "ackPipelineEvidence": {
+          "queueMaxDepthBefore": 0,
+          "queueMaxDepthAfter": 0,
+          "merges": 0,
+          "preparations": 0,
+          "preparationsWhileAck": 0,
+          "roundTrips": 0
+        },
+        "preState": {
+          "rowCount": 0,
+          "firstId": null,
+          "secondId": null,
+          "thirdId": null,
+          "row998Id": null,
+          "firstLabel": null,
+          "selectedId": null
+        },
+        "postState": {
+          "rowCount": 5000,
+          "firstId": 1,
+          "secondId": 2,
+          "thirdId": 3,
+          "row998Id": 999,
+          "firstLabel": "inexpensive yellow desk",
+          "selectedId": null
+        }
+      },
+      "dnfCount": 0,
+      "failures": [],
+      "attemptedCount": 5,
+      "acceptedCount": 5,
+      "n": 5,
+      "median": 7930,
+      "mean": 7878.4,
+      "std": 263.99015133144644,
+      "min": 7492,
+      "max": 8220,
+      "p95": 8220,
+      "ci95": 327.73451767575534,
+      "detailKind": "sample-nearest-median"
+    }
+  ]
+}

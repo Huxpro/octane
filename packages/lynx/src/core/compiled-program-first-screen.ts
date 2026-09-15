@@ -33,22 +33,36 @@ interface CompiledFirstScreenResultNode {
 	readonly ids?: readonly number[];
 	readonly spans?: readonly number[];
 	readonly texts?: readonly (string | undefined)[];
+	readonly visibility?: 'visible' | 'hidden';
 }
 
 function fail(message: string): never {
 	throw new TypeError(DEVELOPMENT ? `Octane Lynx compact first screen ${message}.` : CODE);
 }
 
-function sameValues(
-	input: LynxCompiledProgramMount<LynxElementRef>,
-	expected: readonly unknown[],
-): boolean {
-	const offset = input.valueOffset ?? 0;
-	if (expected.length !== input.plan.values.length * input.count) return false;
-	for (let index = 0; index < expected.length; index++) {
-		if (!Object.is(input.values[offset + index], expected[index])) return false;
+function containsNativeList(nodes: readonly CompiledFirstScreenResultNode[]): boolean {
+	for (const node of nodes) {
+		if (node.plan?.wire?.nodes.some((host) => host.type === 'list' || host.type === 'list-item')) {
+			return true;
+		}
+		if (containsNativeList(node.children)) return true;
 	}
-	return true;
+	return false;
+}
+
+function deferredNativeListFirstScreen<
+	Node extends LynxElementRef,
+>(): LynxCompiledProgramAdoptionSource<Node> {
+	return Object.freeze({
+		firstListener: FIRST_LISTENER,
+		firstScreen: 'deferred-native-list' as const,
+		resolveSeed() {
+			return undefined;
+		},
+		verify() {},
+		finish() {},
+		dispose() {},
+	});
 }
 
 /**
@@ -66,9 +80,10 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 	papi: LynxElementPAPI<Node>,
 	page: Node,
 ): LynxCompiledProgramAdoptionSource<Node> {
+	if (containsNativeList(result.nodes as readonly CompiledFirstScreenResultNode[])) {
+		return deferredNativeListFirstScreen();
+	}
 	const pageId = papi.getUniqueId(page);
-	const append =
-		papi.append ?? ((parent: Node, child: Node): void => papi.insertBefore(parent, child, null));
 	const bound = new WeakMap<UniversalProgramPlan, ReturnType<UniversalProgramPlan['bind']>>();
 	const painted: PaintedRun<Node>[] = [];
 	const pageRoots: Node[] = [];
@@ -77,10 +92,14 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 	let nextListener = FIRST_LISTENER;
 	let attachedAny = false;
 
-	const paintNodes = (nodes: readonly CompiledFirstScreenResultNode[], parent: Node): void => {
+	const paintNodes = (
+		nodes: readonly CompiledFirstScreenResultNode[],
+		parent: Node,
+		before: Node | null = null,
+	): void => {
 		for (const node of nodes) {
 			if (node.kind === 'range') {
-				paintNodes(node.children, parent);
+				paintNodes(node.children, parent, before);
 				continue;
 			}
 			if (node.kind !== 'program') fail('received an unaddressed host node');
@@ -146,6 +165,7 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 					fail(`program create disagreed about range ${range}`);
 				}
 			}
+			if (node.visibility === 'hidden') papi.setAttribute(created[0], 'hidden', true);
 
 			painted.push({
 				firstId: ids[0]!,
@@ -158,17 +178,20 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 				count: 1,
 			});
 
-			let end = node.children.length;
-			for (let range = plan.ranges.length - 1; range >= 0; range--) {
-				const start = end - spans[range]!;
-				if (start < 0) fail('program range spans exceed its children');
-				const rangeParent = created[plan.ranges[range]!.node];
+			let start = 0;
+			for (let range = 0; range < plan.ranges.length; range++) {
+				const end = start + spans[range]!;
+				if (end > node.children.length) fail('program range spans exceed its children');
+				const site = plan.ranges[range]!;
+				const rangeParent = created[site.node];
 				if (rangeParent === undefined) fail(`cannot resolve range ${range} parent`);
-				paintNodes(node.children.slice(start, end), rangeParent);
-				end = start;
+				const rangeBefore = site.before == null ? null : created[site.before];
+				if (rangeBefore === undefined) fail(`cannot resolve range ${range} anchor`);
+				paintNodes(node.children.slice(start, end), rangeParent, rangeBefore);
+				start = end;
 			}
-			if (end !== 0) fail('program has children outside its declared ranges');
-			append(parent, created[0]);
+			if (start !== node.children.length) fail('program has children outside its declared ranges');
+			papi.insertBefore(parent, created[0], before);
 			attachedAny = true;
 			if (papi.isEqual(parent, page)) pageRoots.push(created[0]);
 		}
@@ -219,8 +242,8 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 			expectedValues.push(...proof.selectedValues);
 			count++;
 		}
-		if (input.before !== null || !sameValues(input, expectedValues)) {
-			fail(`background run ${input.firstHandle} disagrees with painted values or order`);
+		if (input.before !== null) {
+			fail(`background run ${input.firstHandle} disagrees with painted order`);
 		}
 		const first = painted[start]!;
 		const stride = input.count > 1 ? painted[start + 1]!.firstId - first.firstId : first.stride;
@@ -229,12 +252,14 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 			firstListenerId: listener,
 			nodes: Object.freeze(nodes),
 			stride,
+			paintedValues: Object.freeze(expectedValues),
 		});
 		assigned.set(input.firstHandle, seed);
 		return seed;
 	};
 
 	return {
+		firstScreen: 'painted',
 		firstListener: FIRST_LISTENER,
 		resolveSeed,
 		verify() {

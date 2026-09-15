@@ -1,7 +1,7 @@
-// Issue-#163 C1b: deriving a main-thread program from a plan at build time.
+// Issue #373: deriving the shared Lynx program IR from a plan at build time.
 //
-// `deriveLynxMainThreadProgram` does not implement the lowering — it calls the
-// same `octane/universal/template-program` functions that `block-component.ts`
+// `deriveLynxProgramIR` delegates to the same
+// `octane/universal/template-program` functions that `block-component.ts`
 // calls at run time, through the same renderer driver, on the same plan object
 // the compiler already holds. So the test that matters is not "does it lower
 // correctly" but the two questions the caller answers rather than the lowering:
@@ -37,7 +37,12 @@ import { compileLynxBlockTemplate, createLynxBlockCore } from '../src/core/block
 import { createLynxClientContainer, createLynxClientDriver } from '../src/core/client-driver.js';
 import { createLynxHostContainer, prepareLynxHostBatch } from '../src/core/host-driver.js';
 import { LYNX_TRANSPORT_RENDERER } from '../src/core/protocol.js';
-import { deriveLynxMainThreadProgram, emitLynxMainThreadProgram } from '../src/compiler/index.js';
+import {
+	deriveLynxMainThreadProgram,
+	deriveLynxProgramIR,
+	emitLynxMainThreadProgram,
+	LYNX_PROGRAM_IR_VERSION,
+} from '../src/compiler/index.js';
 
 import { createFakePAPI, shape, withoutAllocatorIdentity } from './_fixtures/fake-element-papi.js';
 
@@ -81,6 +86,22 @@ const TABLE_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
 		// to; the `kind: 'text'` above is what a content hole lowers to, and that
 		// is the whole distinction a build reads instead of a value.
 		{ kind: 'slot', slot: 1 },
+	],
+}).root as UniversalHostPlan;
+
+/** A keyed range followed by a retained static sibling in the same host. */
+const NON_TAIL_TABLE_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
+	kind: 'host',
+	type: 'view',
+	props: { class: 'table' },
+	children: [
+		{ kind: 'slot', slot: 0 },
+		{
+			kind: 'host',
+			type: 'text',
+			props: { class: 'footer' },
+			children: [{ kind: 'text', value: 'tail' }],
+		},
 	],
 }).root as UniversalHostPlan;
 
@@ -185,32 +206,90 @@ function throughEmission(
 	return shape(papi.pages[0]!);
 }
 
-describe('deriving a main-thread program from a plan', () => {
+describe('deriving the shared Lynx program IR from a plan', () => {
+	it('versions and freezes the thread-neutral compiler boundary', () => {
+		const ir = deriveLynxProgramIR(CARD_PLAN);
+		expect(ir).not.toBeNull();
+		expect(LYNX_PROGRAM_IR_VERSION).toBe(1);
+		expect(ir!.version).toBe(LYNX_PROGRAM_IR_VERSION);
+		expect(Object.isFrozen(ir)).toBe(true);
+		const { version, ...derived } = ir!;
+		expect(version).toBe(1);
+		expect(derived).toEqual(deriveLynxMainThreadProgram(CARD_PLAN));
+	});
+
 	it('lowers a plan the way the run-time lowering lowers it', () => {
-		const derived = deriveLynxMainThreadProgram(CARD_PLAN);
+		const derived = deriveLynxProgramIR(CARD_PLAN);
 		expect(derived).not.toBeNull();
-		const { addressable, ...lowered } = derived!;
+		const { version, addressable, resident, ...lowered } = derived!;
 		// No range holes in this plan, so both arms are told the same thing and
 		// the only variable left is the container the build-time driver lacks.
+		expect(version).toBe(1);
 		expect(addressable).toBe(true);
+		expect(resident).toEqual([0, 1, 2, 3, 5]);
+		expect(Object.isFrozen(resident)).toBe(true);
 		expect(lowered).toEqual(throughRuntimeLowering(CARD_PLAN, () => false));
 	});
 
-	it('reads its keyed range holes off the plan rather than off a value', () => {
-		const derived = deriveLynxMainThreadProgram(TABLE_PLAN);
+	it('extracts host refs into stable resident-node addresses without mutating the plan', () => {
+		const plan = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			bindings: [['ref', 0]],
+			children: [
+				{ kind: 'host', type: 'text', children: [{ kind: 'text', slot: 1 }] },
+				{ kind: 'host', type: 'view', bindings: [['ref', 2]] },
+			],
+		}).root as UniversalHostPlan;
+		const originalBindings = plan.bindings;
+		const nestedBindings = (plan.children![1] as UniversalHostPlan).bindings;
+
+		const derived = deriveLynxProgramIR(plan);
+
 		expect(derived).not.toBeNull();
-		const { addressable, ...lowered } = derived!;
+		expect(derived!.refs).toEqual([
+			{ node: 0, slot: 0 },
+			{ node: 3, slot: 2 },
+		]);
+		expect(Object.isFrozen(derived!.refs)).toBe(true);
+		expect(Object.isFrozen(derived!.refs![0])).toBe(true);
+		expect(derived!.wire.nodes[0]!.bindings).toBeUndefined();
+		expect(derived!.wire.nodes[3]!.bindings).toBeUndefined();
+		expect(derived!.values.map((site) => site.slot)).toEqual([1]);
+		expect(plan.bindings).toBe(originalBindings);
+		expect(plan.bindings).toEqual([['ref', 0]]);
+		expect((plan.children![1] as UniversalHostPlan).bindings).toBe(nestedBindings);
+		expect((plan.children![1] as UniversalHostPlan).bindings).toEqual([['ref', 2]]);
+	});
+
+	it('reads its keyed range holes off the plan rather than off a value', () => {
+		const derived = deriveLynxProgramIR(TABLE_PLAN);
+		expect(derived).not.toBeNull();
+		const { version, addressable, resident, ...lowered } = derived!;
 		// Slot 1 is the `kind: 'slot'` hole and slot 0 is the `kind: 'text'` one.
 		// A build that could not tell them apart would either mount the range as
 		// a stray empty text node or drop the caption.
+		expect(version).toBe(1);
 		expect(addressable).toBe(true);
-		expect(derived!.ranges).toEqual([{ slot: 1, node: 0 }]);
+		expect(derived!.ranges).toEqual([{ slot: 1, node: 0, before: null }]);
+		expect(resident).toEqual([0, 2]);
 		expect(derived!.wire.nodes).toHaveLength(3);
 		expect(lowered).toEqual(throughRuntimeLowering(TABLE_PLAN, (slot) => slot === 1));
 	});
 
+	it('records the next retained sibling for a non-tail keyed range', () => {
+		const derived = deriveLynxProgramIR(NON_TAIL_TABLE_PLAN);
+		expect(derived).not.toBeNull();
+		const { version, addressable, resident, ...lowered } = derived!;
+		expect(version).toBe(1);
+		expect(addressable).toBe(true);
+		expect(derived!.ranges).toEqual([{ slot: 0, node: 0, before: 1 }]);
+		expect(resident).toEqual([0, 1]);
+		expect(lowered).toEqual(throughRuntimeLowering(NON_TAIL_TABLE_PLAN, (slot) => slot === 0));
+	});
+
 	it('paints what the applier paints, through the emission', () => {
-		const derived = deriveLynxMainThreadProgram(CARD_PLAN);
+		const derived = deriveLynxProgramIR(CARD_PLAN);
 		const program = derived!.wire;
 		// The plan's slots in wire order: `values` says which plan slot each `v`
 		// reads, and `events` the same for each `e`. Reading them rather than
@@ -240,7 +319,7 @@ describe('deriving a main-thread program from a plan', () => {
 			type: 'view',
 			propsSlot: 0,
 		}).root as UniversalHostPlan;
-		expect(deriveLynxMainThreadProgram(SPREAD)).toBeNull();
+		expect(deriveLynxProgramIR(SPREAD)).toBeNull();
 	});
 
 	it('declines a described program whose props require the command path', () => {
@@ -263,15 +342,40 @@ describe('deriving a main-thread program from a plan', () => {
 		// Default compilation must leave the plan on the command path before either
 		// thread gives it a positional address.
 		expect(throughRuntimeLowering(COMMAND_ONLY_PROP, () => false)).not.toBeNull();
-		expect(deriveLynxMainThreadProgram(COMMAND_ONLY_PROP)).toBeNull();
+		expect(deriveLynxProgramIR(COMMAND_ONLY_PROP)).toBeNull();
 	});
 
+	it('retains compiler-slot identity for two independently owned ranges under one host', () => {
+		const SIBLINGS = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'view',
+			children: [
+				{ kind: 'slot', slot: 0 },
+				{ kind: 'slot', slot: 1 },
+			],
+		}).root as UniversalHostPlan;
+		expect(deriveLynxProgramIR(SIBLINGS)).toMatchObject({
+			ranges: [
+				{ slot: 0, node: 0, before: null },
+				{ slot: 1, node: 0, before: null },
+			],
+		});
+	});
+	it('declines a native-list row with a structural range until cells can retain nested ownership', () => {
+		const RANGED_LIST_ROW = universalPlan(LYNX_TRANSPORT_RENDERER, {
+			kind: 'host',
+			type: 'list-item',
+			props: { 'item-key': 'row-1' },
+			children: [{ kind: 'slot', slot: 0 }],
+		}).root as UniversalHostPlan;
+		expect(deriveLynxProgramIR(RANGED_LIST_ROW)).toBeNull();
+	});
 	it('declines a range that would be the whole program', () => {
 		// Nothing would be left to insert and nothing to hold the rows.
 		const BARE = universalPlan(LYNX_TRANSPORT_RENDERER, {
 			kind: 'slot',
 			slot: 0,
 		}).root as UniversalHostPlan;
-		expect(deriveLynxMainThreadProgram(BARE)).toBeNull();
+		expect(deriveLynxProgramIR(BARE)).toBeNull();
 	});
 });

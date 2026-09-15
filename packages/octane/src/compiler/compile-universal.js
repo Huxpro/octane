@@ -1144,10 +1144,121 @@ function isStaticThreadImportSource(source) {
 	return source?.type === 'Literal' && typeof source.value === 'string';
 }
 
+/**
+ * Remove pure module-local function declarations whose only live path began in
+ * an erased background-effect argument.
+ *
+ * This is intentionally narrower than general dead-code elimination. A helper
+ * imported from another module can carry initialization side effects, and an
+ * arbitrary variable initializer can execute while the module loads, so those
+ * remain for the bundler to reason about. Function declarations and a single
+ * arrow/function declarator have no definition-time behavior; after the
+ * main-thread capability replaces every effect argument with `undefined`, they
+ * are safe to omit when no surviving statement can reach them. Following the
+ * small candidate dependency graph also removes helper chains and cycles
+ * without mutating the parser AST.
+ */
+function pruneMainThreadEffectHelpers(ast, state, lexicalAnalysis, erasedArguments) {
+	if (erasedArguments.length === 0) return [];
+	const { nodeScopes, resolveBinding, rootScope } = lexicalAnalysis;
+	const candidates = new Map();
+	const candidateByStatement = new Map();
+	for (const statement of ast.body ?? []) {
+		if (statement.type === 'FunctionDeclaration' && statement.id?.type === 'Identifier') {
+			const candidate = { name: statement.id.name, statement };
+			candidates.set(candidate.name, candidate);
+			candidateByStatement.set(statement, candidate);
+			continue;
+		}
+		if (
+			statement.type === 'VariableDeclaration' &&
+			statement.declare !== true &&
+			statement.declarations?.length === 1
+		) {
+			const declaration = statement.declarations[0];
+			if (
+				declaration.id?.type === 'Identifier' &&
+				(declaration.init?.type === 'ArrowFunctionExpression' ||
+					declaration.init?.type === 'FunctionExpression')
+			) {
+				const candidate = { name: declaration.id.name, statement };
+				candidates.set(candidate.name, candidate);
+				candidateByStatement.set(statement, candidate);
+			}
+		}
+	}
+	if (candidates.size === 0) return [];
+
+	const erased = new WeakSet(erasedArguments);
+	const references = (root, skipErased) => {
+		const output = new Set();
+		const seen = new WeakSet();
+		const visit = (node, parent = null, key = null) => {
+			if (!node || typeof node !== 'object' || seen.has(node)) return;
+			if (skipErased && erased.has(node)) return;
+			seen.add(node);
+			if (Array.isArray(node)) {
+				for (const child of node) visit(child, parent, key);
+				return;
+			}
+			if (node.type === 'Identifier' && isIdentifierReference(node, parent, key, lexicalAnalysis)) {
+				const candidate = candidates.get(node.name);
+				if (
+					candidate !== undefined &&
+					resolveBinding(nodeScopes.get(node) ?? rootScope, node.name)?.scope === rootScope
+				) {
+					output.add(candidate.name);
+				}
+			}
+			forEachRuntimeAstChild(node, (child, childKey) => visit(child, node, childKey));
+		};
+		visit(root);
+		return output;
+	};
+	const dependencies = new Map();
+	for (const candidate of candidates.values()) {
+		const refs = references(candidate.statement, true);
+		refs.delete(candidate.name);
+		dependencies.set(candidate.name, refs);
+	}
+	const expand = (roots) => {
+		const output = new Set(roots);
+		const pending = [...output];
+		for (let index = 0; index < pending.length; index++) {
+			for (const dependency of dependencies.get(pending[index]) ?? []) {
+				if (output.has(dependency)) continue;
+				output.add(dependency);
+				pending.push(dependency);
+			}
+		}
+		return output;
+	};
+	const erasedReachable = expand(
+		erasedArguments.flatMap((argument) => [...references(argument, false)]),
+	);
+	if (erasedReachable.size === 0) return [];
+	const liveRoots = new Set();
+	for (const statement of ast.body ?? []) {
+		if (candidateByStatement.has(statement)) continue;
+		for (const name of references(statement, true)) liveRoots.add(name);
+	}
+	const live = expand(liveRoots);
+	const pruned = [];
+	for (const name of erasedReachable) {
+		if (live.has(name)) continue;
+		const statement = candidates.get(name).statement;
+		state.astNodeReplacements.set(statement, null);
+		pruned.push(statement);
+	}
+	return pruned;
+}
+
 function prepareMainThreadRenderOnlyAstReplacements(ast, state) {
-	if (!isMainThreadRenderOnly(state)) return;
+	if (!isMainThreadRenderOnly(state)) return null;
 	state.astNodeReplacements ??= new WeakMap();
-	const { nodeScopes, resolveBinding, rootScope } = createLexicalAnalysis(ast);
+	const lexicalAnalysis = createLexicalAnalysis(ast);
+	const { nodeScopes, resolveBinding, rootScope } = lexicalAnalysis;
+	const erasedArguments = [];
 	const seen = new WeakSet();
 	const visit = (node) => {
 		if (!node || typeof node !== 'object' || seen.has(node)) return;
@@ -1165,6 +1276,7 @@ function prepareMainThreadRenderOnlyAstReplacements(ast, state) {
 		) {
 			for (const argument of node.arguments ?? []) {
 				if (argument && typeof argument === 'object') {
+					erasedArguments.push(argument);
 					state.astNodeReplacements.set(
 						argument,
 						inheritGeneratedOrigin(b.id('undefined'), argument),
@@ -1178,6 +1290,38 @@ function prepareMainThreadRenderOnlyAstReplacements(ast, state) {
 		}
 	};
 	visit(ast);
+	const prunedStatements = pruneMainThreadEffectHelpers(
+		ast,
+		state,
+		lexicalAnalysis,
+		erasedArguments,
+	);
+	return { erasedArguments, prunedStatements };
+}
+
+/**
+ * Source-range form of the main-thread pruning contract for surgical plain
+ * `.ts`/`.js` hook slotting. Universal template lowering consumes the same
+ * implementation through AST replacements below.
+ */
+export function collectMainThreadRenderOnlySourcePruning(ast, renderer, universalRuntime) {
+	const runtimeImports = new Map();
+	for (const statement of ast.body ?? []) {
+		if (statement.type !== 'ImportDeclaration' || statement.source?.value !== 'octane') continue;
+		for (const specifier of statement.specifiers ?? []) {
+			if (specifier.type !== 'ImportSpecifier' || specifier.importKind === 'type') continue;
+			const imported = specifier.imported?.name ?? specifier.imported?.value;
+			if (specifier.local?.name && typeof imported === 'string') {
+				runtimeImports.set(specifier.local.name, imported);
+			}
+		}
+	}
+	return prepareMainThreadRenderOnlyAstReplacements(ast, {
+		astNodeReplacements: new WeakMap(),
+		renderer,
+		runtimeImports,
+		universalRuntime,
+	});
 }
 
 function threadFunctionExpression(site) {
@@ -2198,7 +2342,94 @@ function keyedRangeRowNode(node) {
 	return body.length === 1 ? body[0] : null;
 }
 
-function blockTemplateFeature(node, rangeRowNodes) {
+function immutableLocalComponentName(node, state) {
+	const componentName = node.openingElement?.name ?? node.name;
+	const trusted = state.immutableLocalComponents;
+	if (componentName?.type !== 'JSXIdentifier' || !trusted.names.has(componentName.name)) {
+		return null;
+	}
+	const componentBinding = trusted.lexical.resolveBinding(
+		trusted.lexical.nodeScopes.get(componentName) ?? trusted.lexical.rootScope,
+		componentName.name,
+	);
+	return componentBinding?.scope === trusted.lexical.rootScope ? componentName.name : null;
+}
+
+function componentHoleLeaf(node, state) {
+	const value = unwrapFirstScreenExpression(node);
+	if (
+		(value?.type === 'JSXElement' || value?.type === 'Element') &&
+		isComponentElement(value) &&
+		immutableLocalComponentName(value, state) !== null
+	) {
+		return { kind: 'component', node: value };
+	}
+	if (
+		(value?.type === 'Literal' && (value.value === null || typeof value.value === 'boolean')) ||
+		(value?.type === 'UnaryExpression' && value.operator === 'void')
+	) {
+		return { kind: 'empty', node: value };
+	}
+	return null;
+}
+
+/** A host child expression whose complete value set is local components or empty. */
+function componentHoleProof(node, state) {
+	const value = unwrapFirstScreenExpression(node);
+	const leaf = componentHoleLeaf(value, state);
+	if (leaf?.kind === 'component') return { kind: 'component', value: leaf };
+	if (value?.type !== 'ConditionalExpression') return null;
+	const consequent = componentHoleLeaf(value.consequent, state);
+	const alternate = componentHoleLeaf(value.alternate, state);
+	if (
+		consequent === null ||
+		alternate === null ||
+		(consequent.kind !== 'component' && alternate.kind !== 'component')
+	) {
+		return null;
+	}
+	return { kind: 'conditional', node: value, consequent, alternate };
+}
+
+function importedRuntimeCall(node, imported, state) {
+	const callee = node?.type === 'CallExpression' ? node.callee : null;
+	if (callee?.type !== 'Identifier' || state.runtimeImports.get(callee.name) !== imported) {
+		return false;
+	}
+	const lexical = state.immutableLocalComponents.lexical;
+	const binding = lexical.resolveBinding(
+		lexical.nodeScopes.get(callee) ?? lexical.rootScope,
+		callee.name,
+	);
+	return binding?.scope === lexical.rootScope;
+}
+
+function portalHoleLeaf(node, state) {
+	const value = unwrapFirstScreenExpression(node);
+	if (importedRuntimeCall(value, 'createPortal', state)) return 'portal';
+	if (
+		(value?.type === 'Literal' && (value.value === null || typeof value.value === 'boolean')) ||
+		(value?.type === 'UnaryExpression' && value.operator === 'void')
+	) {
+		return 'empty';
+	}
+	return null;
+}
+
+/** A host child expression whose complete value set is a portal or empty. */
+function portalHoleProof(node, state) {
+	const value = unwrapFirstScreenExpression(node);
+	const leaf = portalHoleLeaf(value, state);
+	if (leaf === 'portal') return true;
+	if (value?.type !== 'ConditionalExpression') return false;
+	const consequent = portalHoleLeaf(value.consequent, state);
+	const alternate = portalHoleLeaf(value.alternate, state);
+	return (
+		consequent !== null && alternate !== null && (consequent === 'portal' || alternate === 'portal')
+	);
+}
+
+function blockTemplateFeature(node, rangeRowNodes, state) {
 	if (node.type === 'JSXActivityExpression') {
 		return Object.freeze({ kind: 'activity', name: null, ...sourcePosition(node) });
 	}
@@ -2216,13 +2447,54 @@ function blockTemplateFeature(node, rangeRowNodes) {
 	}
 	if (node.type !== 'JSXElement' && node.type !== 'Element') return null;
 	const name = jsxName(node);
+	if (name === 'Activity') {
+		return Object.freeze({ kind: 'activity', name: null, ...sourcePosition(node) });
+	}
 	if (name === 'list' || name === 'list-item') {
 		return Object.freeze({ kind: 'native-list', name, ...sourcePosition(node) });
 	}
-	if (isComponentElement(node) && !rangeRowNodes.has(node)) {
-		return Object.freeze({ kind: 'component', name, ...sourcePosition(node) });
+	if (
+		isComponentElement(node) &&
+		!rangeRowNodes.has(node) &&
+		contextProviderExpressionAst(node, state) === null
+	) {
+		return Object.freeze({
+			kind: immutableLocalComponentName(node, state) === null ? 'component' : 'local-component',
+			name,
+			...sourcePosition(node),
+		});
 	}
 	return null;
+}
+
+function blockInlineRenderPropFeatures(node, state) {
+	if (
+		(node.type !== 'JSXElement' && node.type !== 'Element') ||
+		!isComponentElement(node) ||
+		contextProviderExpressionAst(node, state) !== null
+	) {
+		return null;
+	}
+	const features = [];
+	for (const attribute of node.openingElement?.attributes ?? node.attributes ?? []) {
+		if (attribute.type === 'JSXSpreadAttribute' || attribute.type === 'SpreadAttribute') continue;
+		const expression = unwrapFirstScreenExpression(attribute.value?.expression);
+		if (
+			(expression?.type !== 'ArrowFunctionExpression' &&
+				expression?.type !== 'FunctionExpression') ||
+			(!isTemplateNode(expression.body) && !hasOwnTemplateReturn(expression))
+		) {
+			continue;
+		}
+		features.push(
+			Object.freeze({
+				kind: 'inline-render-prop',
+				name: attributeName(attribute),
+				...sourcePosition(attribute),
+			}),
+		);
+	}
+	return features.length === 0 ? null : features;
 }
 
 function blockProgramRootEventFeatures(state) {
@@ -2257,10 +2529,9 @@ function blockProgramRootEventFeatures(state) {
 /**
  * Independent Block feature facts that runtime-use names cannot express.
  *
- * This deliberately carries no eligibility bit. A main-thread prop is supported
- * by the Block transport, while an @empty range or hooked row is not; preserving
- * the authored sites lets the application-graph selector apply that versioned
- * support matrix without reparsing source or learning from a runtime refusal.
+ * This deliberately carries no eligibility bit. Preserving every authored site
+ * lets the application-graph selector apply its versioned support matrix without
+ * reparsing source or learning from a runtime refusal.
  */
 function lynxBlockFeatureRequirements(ast, state) {
 	if (state.universalRuntime?.runtime !== 'lynx') return undefined;
@@ -2288,8 +2559,18 @@ function lynxBlockFeatureRequirements(ast, state) {
 			node.expression?.type !== 'JSXEmptyExpression' &&
 			!isStaticallyPrimitiveTextExpression(node.expression)
 		) {
+			const portalHole = portalHoleProof(node.expression, state);
+			const componentHole = portalHole ? null : componentHoleProof(node.expression, state);
 			templateFeatures.push(
-				Object.freeze({ kind: 'renderable-hole', name: null, ...sourcePosition(node) }),
+				Object.freeze({
+					kind: portalHole
+						? 'portal'
+						: componentHole === null
+							? 'renderable-hole'
+							: 'component-hole',
+					name: null,
+					...sourcePosition(node),
+				}),
 			);
 		}
 		if (node.type === 'JSXAttribute' || node.type === 'Attribute') {
@@ -2318,8 +2599,10 @@ function lynxBlockFeatureRequirements(ast, state) {
 			keyedRanges.push(range);
 			rangeAncestors.push(range);
 		}
-		const templateFeature = blockTemplateFeature(node, rangeRowNodes);
+		const templateFeature = blockTemplateFeature(node, rangeRowNodes, state);
 		if (templateFeature !== null) templateFeatures.push(templateFeature);
+		const inlineRenderProps = blockInlineRenderPropFeatures(node, state);
+		if (inlineRenderProps !== null) templateFeatures.push(...inlineRenderProps);
 		if ((node.type === 'JSXElement' || node.type === 'Element') && !isComponentElement(node)) {
 			for (const attribute of node.openingElement?.attributes ?? node.attributes ?? []) {
 				if (
@@ -3021,7 +3304,6 @@ function templateProgramForHost(node, state) {
 
 function templateProgramForComponent(node, state) {
 	if (
-		node.empty != null ||
 		(!rendererHasCapability(state, 'template-program-mount') &&
 			!rendererHasCapability(state, COMPONENT_SCOPE_FOR_CAPABILITY)) ||
 		!isOwnerFreeForExpression(node.right) ||
@@ -3455,17 +3737,309 @@ function contextProviderExpressionAst(node, state) {
 	return null;
 }
 
-function compileRenderableExpressionAst(node, state) {
+const DIRTY_EXPRESSION_WRAPPERS = new Set([
+	'TSAsExpression',
+	'TSTypeAssertion',
+	'TSNonNullExpression',
+	'TSSatisfiesExpression',
+	'ParenthesizedExpression',
+	'ChainExpression',
+]);
+
+function dirtyPureExpression(node) {
+	if (!node || typeof node !== 'object') return false;
+	if (node.type === 'Literal' || node.type === 'Identifier') return true;
+	if (DIRTY_EXPRESSION_WRAPPERS.has(node.type)) return dirtyPureExpression(node.expression);
+	if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
+		// Creating a closure is pure. Its body runs later, but its captures still
+		// participate in dependency grouping through collectEntryCaptures.
+		return true;
+	}
+	if (node.type === 'TemplateLiteral') {
+		return (node.expressions ?? []).every(dirtyPureExpression);
+	}
+	if (node.type === 'UnaryExpression') return dirtyPureExpression(node.argument);
+	if (node.type === 'BinaryExpression' || node.type === 'LogicalExpression') {
+		return dirtyPureExpression(node.left) && dirtyPureExpression(node.right);
+	}
+	if (node.type === 'ConditionalExpression') {
+		return (
+			dirtyPureExpression(node.test) &&
+			dirtyPureExpression(node.consequent) &&
+			dirtyPureExpression(node.alternate)
+		);
+	}
+	if (node.type === 'SequenceExpression') {
+		return (node.expressions ?? []).every(dirtyPureExpression);
+	}
+	if (node.type === 'ArrayExpression') {
+		return (node.elements ?? []).every(
+			(element) =>
+				element === null || (element.type !== 'SpreadElement' && dirtyPureExpression(element)),
+		);
+	}
+	if (node.type === 'ObjectExpression') {
+		return (node.properties ?? []).every((property) => {
+			if (property.type !== 'Property' || property.kind !== 'init' || property.method === true) {
+				return false;
+			}
+			return (
+				(!property.computed || dirtyPureExpression(property.key)) &&
+				dirtyPureExpression(property.value)
+			);
+		});
+	}
+	return false;
+}
+
+function dirtyExpressionReferences(expression) {
+	return collectEntryCaptures(expression, new Set()).map((capture) => capture.source);
+}
+
+function typeOnlySetupStatement(statement) {
+	return (
+		statement.type === 'TSInterfaceDeclaration' ||
+		statement.type === 'TSTypeAliasDeclaration' ||
+		statement.type === 'TSDeclareFunction' ||
+		statement.declare === true
+	);
+}
+
+/**
+ * Prove the setup slice a dirty computation may replay without the component.
+ * Calls, member reads, mutable declarations, control flow, and non-state hooks
+ * all decline. The proof is intentionally smaller than JavaScript purity.
+ */
+function dirtyComponentCandidate(render, hooks, state) {
+	if (
+		render.render === null ||
+		state.hmr ||
+		state.profile ||
+		!rendererHasCapability(state, 'compiler-program-ir')
+	) {
+		return null;
+	}
+	const sources = [];
+	const derived = [];
+	const replacements = [];
+	for (const statement of render.setup ?? []) {
+		if (typeOnlySetupStatement(statement)) continue;
+		if (
+			statement.type !== 'VariableDeclaration' ||
+			statement.kind !== 'const' ||
+			statement.declarations?.length !== 1
+		) {
+			return null;
+		}
+		const declaration = statement.declarations[0];
+		const value = unwrapFirstScreenExpression(declaration.init);
+		const hookName =
+			value?.type === 'CallExpression' && value.callee?.type === 'Identifier'
+				? state.runtimeImports.get(value.callee.name)
+				: null;
+		if (hookName === 'useState' || hookName === 'useReducer') {
+			const pattern = declaration.id;
+			const elements = pattern?.type === 'ArrayPattern' ? (pattern.elements ?? []) : [];
+			if (
+				pattern?.type !== 'ArrayPattern' ||
+				elements[0]?.type !== 'Identifier' ||
+				elements.slice(3).some((element) => element !== null) ||
+				elements.some((element) => element?.type === 'RestElement') ||
+				(elements[2] !== null && elements[2] !== undefined && elements[2].type !== 'Identifier')
+			) {
+				return null;
+			}
+			const getter =
+				elements[2]?.name ??
+				allocName(state, `${state.planPrefix || '__octane'}Get${sources.length}`);
+			if (elements[2] == null) {
+				const nextElements = [
+					elements[0],
+					elements[1] ?? null,
+					generatedIdentifier(getter, pattern),
+				];
+				replacements.push([
+					pattern,
+					inheritGeneratedOrigin({ ...pattern, elements: nextElements }, pattern),
+				]);
+			}
+			sources.push({ value: elements[0].name, getter, hook: hookName, origin: declaration });
+			continue;
+		}
+		if (
+			declaration.id?.type !== 'Identifier' ||
+			declaration.init == null ||
+			!dirtyPureExpression(declaration.init)
+		) {
+			return null;
+		}
+		derived.push({
+			name: declaration.id.name,
+			statement,
+			refs: dirtyExpressionReferences(declaration.init),
+			deps: null,
+		});
+	}
+	if (
+		sources.length === 0 ||
+		hooks.length !== sources.length ||
+		hooks.some((hook, index) => hook.name !== sources[index].hook)
+	) {
+		return null;
+	}
+
+	const allDerivedNames = new Set(derived.map((entry) => entry.name));
+	const bindingDeps = new Map();
+	for (let index = 0; index < sources.length; index++) {
+		bindingDeps.set(sources[index].value, new Set([index]));
+	}
+	for (const entry of derived) {
+		if (bindingDeps.has(entry.name)) return null;
+		const deps = new Set();
+		for (const ref of entry.refs) {
+			if (allDerivedNames.has(ref) && !bindingDeps.has(ref)) return null;
+			for (const dep of bindingDeps.get(ref) ?? []) deps.add(dep);
+		}
+		entry.deps = deps;
+		bindingDeps.set(entry.name, deps);
+	}
+	return { sources, derived, bindingDeps, replacements };
+}
+
+function dirtyComputationArrayAst(candidate, values, root, state, origin) {
+	if (candidate === null || !lynxBlockCompilerProgramEligible(state, root, origin)) return null;
+	const structuralSlots = new Set(
+		deriveLynxProgramIROnce(state, root).ranges.map((range) => range.slot),
+	);
+	const groups = new Map();
+	for (let slot = 0; slot < values.length; slot++) {
+		const expression = values[slot];
+		const refs = dirtyExpressionReferences(expression);
+		const deps = new Set();
+		for (const ref of refs) {
+			for (const dep of candidate.bindingDeps.get(ref) ?? []) deps.add(dep);
+		}
+		if (deps.size === 0) continue;
+		const kind = structuralSlots.has(slot) ? 'structural' : 'scalar';
+		if (kind === 'scalar' && !dirtyPureExpression(expression)) return null;
+		const ordered = [...deps].sort((left, right) => left - right);
+		const key = `${kind}:${ordered.join(',')}`;
+		const group = groups.get(key) ?? {
+			kind,
+			deps: ordered,
+			slots: [],
+			values: kind === 'scalar' ? [] : null,
+			refs: kind === 'scalar' ? [] : null,
+		};
+		group.slots.push(slot);
+		if (kind === 'scalar') {
+			group.values.push(expression);
+			group.refs.push(...refs);
+		}
+		groups.set(key, group);
+	}
+	if (groups.size === 0) return null;
+	const derivedByName = new Map(candidate.derived.map((entry) => [entry.name, entry]));
+	const descriptors = [];
+	for (const group of groups.values()) {
+		let run = null;
+		if (group.kind === 'scalar') {
+			const required = new Set();
+			const visit = (name) => {
+				const entry = derivedByName.get(name);
+				if (entry === undefined || required.has(name)) return;
+				required.add(name);
+				for (const ref of entry.refs) visit(ref);
+			};
+			for (const ref of group.refs) visit(ref);
+			const body = [];
+			for (const dep of group.deps) {
+				const source = candidate.sources[dep];
+				body.push(
+					generatedConst(
+						source.value,
+						generatedCall(generatedIdentifier(source.getter, source.origin), [], source.origin),
+						source.origin,
+					),
+				);
+			}
+			for (const entry of candidate.derived) {
+				if (required.has(entry.name))
+					body.push(clone_ast_node(rewriteSourceAst(entry.statement, state)));
+			}
+			body.push(
+				inheritGeneratedOrigin(
+					b.return(b.array(group.values.map((value) => clone_ast_node(value)))),
+					origin,
+				),
+			);
+			run = b.prop(
+				'init',
+				b.literal('run', '"run"'),
+				generatedArrow([], inheritGeneratedOrigin(b.block(body), origin), origin),
+			);
+		}
+		descriptors.push(
+			inheritGeneratedOrigin(
+				b.object([
+					b.prop('init', b.literal('kind', '"kind"'), jsonValueToAst(group.kind, origin)),
+					b.prop(
+						'init',
+						b.literal('purity', '"purity"'),
+						jsonValueToAst(group.kind === 'scalar' ? 'pure' : 'unknown', origin),
+					),
+					b.prop(
+						'init',
+						b.literal('escape', '"escape"'),
+						b.literal('component-render', '"component-render"'),
+					),
+					b.prop(
+						'init',
+						b.literal('sources', '"sources"'),
+						b.array(
+							group.deps.map((dep) => generatedIdentifier(candidate.sources[dep].getter, origin)),
+						),
+					),
+					b.prop(
+						'init',
+						b.literal('slots', '"slots"'),
+						b.array(group.slots.map((slot) => b.literal(slot))),
+					),
+					...(run === null ? [] : [run]),
+				]),
+				origin,
+			),
+		);
+	}
+	state.astNodeReplacements ??= new WeakMap();
+	for (const [pattern, replacement] of candidate.replacements) {
+		state.astNodeReplacements.set(pattern, replacement);
+	}
+	return inheritGeneratedOrigin(b.array(descriptors), origin);
+}
+
+function compileRenderableExpressionAst(node, state, dirtyCandidate = null) {
+	const provider = compileContextProviderValueAst(node, state, dirtyCandidate);
+	if (provider !== null) return provider;
+	if (
+		(node.type === 'JSXElement' || node.type === 'Element') &&
+		isComponentElement(node) &&
+		jsxName(node) !== 'Activity'
+	) {
+		return compileComponentValueAst(node, state);
+	}
 	const context = { values: [] };
 	const nodes = compileChildAst(node, context, state);
 	const root =
 		nodes.length === 1 ? nodes[0] : withPlanOrigin({ kind: 'range', children: nodes }, node);
 	const plan = allocPlan(state, root, node);
-	return generatedCall(
-		state.helpers.value,
-		[generatedIdentifier(plan, node), inheritGeneratedOrigin(b.array(context.values), node)],
-		node,
-	);
+	const computations = dirtyComputationArrayAst(dirtyCandidate, context.values, root, state, node);
+	const args = [
+		generatedIdentifier(plan, node),
+		inheritGeneratedOrigin(b.array(context.values), node),
+	];
+	if (computations !== null) args.push(computations);
+	return generatedCall(universalValueHelperForPlan(state, root), args, node);
 }
 
 function rewriteSourceAst(node, state) {
@@ -3989,9 +4563,57 @@ function compileActivityElementAst(node, context, state) {
 	return addDynamicAst(context, generatedCall(state.helpers.activity, [mode, body], node));
 }
 
-function compileComponentElementAst(node, context, state) {
-	const component = jsxNameExpressionAst(node, state);
+function compileContextProviderValueAst(node, state, dirtyCandidate = null) {
 	const providerContext = contextProviderExpressionAst(node, state);
+	if (providerContext === null) return null;
+	const childNodes = node.children ?? [];
+	const meaningfulChildren = childNodes.filter(
+		(child) => child.type !== 'JSXText' || normalizeJsxText(child.value) !== '',
+	);
+	let childrenExpression = null;
+	if (
+		meaningfulChildren.length === 1 &&
+		meaningfulChildren[0].type === 'JSXExpressionContainer' &&
+		meaningfulChildren[0].expression?.type !== 'JSXEmptyExpression'
+	) {
+		childrenExpression = dynamicExpressionAst(meaningfulChildren[0].expression, state);
+	} else if (meaningfulChildren.length === 1 && isComponentElement(meaningfulChildren[0])) {
+		childrenExpression = compileRenderableExpressionAst(
+			meaningfulChildren[0],
+			state,
+			dirtyCandidate,
+		);
+	} else if (meaningfulChildren.length > 0) {
+		const body = compileBlockValueAst(childNodes, state, [], node, dirtyCandidate);
+		childrenExpression = generatedCall(
+			state.helpers.children,
+			[b.literal(state.renderer.id), body],
+			node,
+		);
+	}
+	const attributes = node.openingElement?.attributes ?? node.attributes ?? [];
+	const propsObject = compilePlainPropsObjectAst(attributes, state, node);
+	const propsName = generatedIdentifier('__octaneContextProps', node);
+	const selectedChildren =
+		childrenExpression ?? inheritGeneratedOrigin(b.member(propsName, 'children'), node);
+	const callback = generatedArrow(
+		[propsName],
+		generatedCall(
+			state.helpers.context,
+			[
+				providerContext,
+				inheritGeneratedOrigin(b.member(generatedIdentifier(propsName.name, node), 'value'), node),
+				selectedChildren,
+			],
+			node,
+		),
+		node,
+	);
+	return generatedCall(callback, [propsObject], node);
+}
+
+function compileComponentValueAst(node, state) {
+	const component = jsxNameExpressionAst(node, state);
 	const childNodes = node.children ?? [];
 	const meaningfulChildren = childNodes.filter(
 		(child) => child.type !== 'JSXText' || normalizeJsxText(child.value) !== '',
@@ -4006,6 +4628,8 @@ function compileComponentElementAst(node, context, state) {
 		// This is required for function-as-child APIs and scalar consumers. Nested
 		// JSX inside the expression is still lowered by dynamicExpressionAst.
 		childrenExpression = dynamicExpressionAst(meaningfulChildren[0].expression, state);
+	} else if (meaningfulChildren.length === 1 && isComponentElement(meaningfulChildren[0])) {
+		childrenExpression = compileRenderableExpressionAst(meaningfulChildren[0], state);
 	} else if (meaningfulChildren.length > 0) {
 		const body = compileBlockValueAst(childNodes, state, [], node);
 		childrenExpression = generatedCall(
@@ -4015,38 +4639,18 @@ function compileComponentElementAst(node, context, state) {
 		);
 	}
 	const attributes = node.openingElement?.attributes ?? node.attributes ?? [];
-	if (providerContext !== null) {
-		const propsObject = compilePlainPropsObjectAst(attributes, state, node);
-		const propsName = generatedIdentifier('__octaneContextProps', node);
-		const selectedChildren =
-			childrenExpression ?? inheritGeneratedOrigin(b.member(propsName, 'children'), node);
-		const callback = generatedArrow(
-			[propsName],
-			generatedCall(
-				state.helpers.context,
-				[
-					providerContext,
-					inheritGeneratedOrigin(
-						b.member(generatedIdentifier(propsName.name, node), 'value'),
-						node,
-					),
-					selectedChildren,
-				],
-				node,
-			),
-			node,
-		);
-		return addDynamicAst(context, generatedCall(callback, [propsObject], node));
-	}
 	const props = compilePropsAst(attributes, childrenExpression, state, node);
-	return addDynamicAst(
-		context,
-		generatedCall(
-			state.helpers.nestedComponent,
-			[b.literal(state.renderer.id), component, props],
-			node,
-		),
+	return generatedCall(
+		state.helpers.nestedComponent,
+		[b.literal(state.renderer.id), component, props],
+		node,
 	);
+}
+
+function compileComponentElementAst(node, context, state) {
+	const provider = compileContextProviderValueAst(node, state);
+	if (provider !== null) return addDynamicAst(context, provider);
+	return addDynamicAst(context, compileComponentValueAst(node, state));
 }
 
 function rewriteSetupStatementsAst(statements, state) {
@@ -4065,7 +4669,13 @@ function rewriteSetupStatementsAst(statements, state) {
 	return [...hoisted, ...body];
 }
 
-function compileBlockValueAst(statements, state, params = [], origin = null) {
+function compileBlockValueAst(
+	statements,
+	state,
+	params = [],
+	origin = null,
+	dirtyCandidate = null,
+) {
 	const context = { values: [] };
 	const templates = [];
 	const setup = [];
@@ -4092,12 +4702,21 @@ function compileBlockValueAst(statements, state, params = [], origin = null) {
 			? templates[0]
 			: withPlanOrigin({ kind: 'range', children: templates }, origin ?? statements?.[0]);
 	const plan = allocPlan(state, root, origin ?? statements?.[0]);
+	const args = [
+		generatedIdentifier(plan, origin ?? statements?.[0]),
+		inheritGeneratedOrigin(b.array(context.values), origin ?? statements?.[0]),
+	];
+	const computations = dirtyComputationArrayAst(
+		dirtyCandidate,
+		context.values,
+		root,
+		state,
+		origin ?? statements?.[0],
+	);
+	if (computations !== null) args.push(computations);
 	const value = generatedCall(
-		state.helpers.value,
-		[
-			generatedIdentifier(plan, origin ?? statements?.[0]),
-			inheritGeneratedOrigin(b.array(context.values), origin ?? statements?.[0]),
-		],
+		universalValueHelperForPlan(state, root),
+		args,
 		origin ?? statements?.[0],
 	);
 	const block = inheritGeneratedOrigin(
@@ -4284,7 +4903,9 @@ function compileForAst(node, context, state) {
 		);
 	} else if (templateComponent !== null) {
 		args.push(
-			b.literal(null, 'null'),
+			node.empty
+				? compileBlockValueAst(node.empty.body ?? [], state, [], node.empty)
+				: b.literal(null, 'null'),
 			b.literal(false),
 			b.literal(false),
 			inheritGeneratedOrigin(b.unary('void', b.literal(0)), templateComponent),
@@ -4416,6 +5037,39 @@ function compileChildAst(node, context, state) {
 		) {
 			return [withPlanOrigin({ kind: 'text', value: node.expression.value }, node)];
 		}
+		const componentHole = componentHoleProof(node.expression, state);
+		if (componentHole?.kind === 'component') {
+			return [addDynamicAst(context, compileComponentValueAst(componentHole.value.node, state))];
+		}
+		if (componentHole?.kind === 'conditional') {
+			assertNoResidualTemplate(componentHole.node.test, state, 'a component-hole condition');
+			const compileLeaf = (leaf) =>
+				leaf.kind === 'component'
+					? compileComponentValueAst(leaf.node, state)
+					: dynamicExpressionAst(leaf.node, state);
+			return [
+				addDynamicAst(
+					context,
+					generatedCall(
+						state.helpers.if,
+						[
+							dynamicExpressionAst(componentHole.node.test, state),
+							generatedArrow(
+								[],
+								compileLeaf(componentHole.consequent),
+								componentHole.consequent.node,
+							),
+							generatedArrow(
+								[],
+								compileLeaf(componentHole.alternate),
+								componentHole.alternate.node,
+							),
+						],
+						componentHole.node,
+					),
+				),
+			];
+		}
 		return [addDynamicAst(context, dynamicExpressionAst(node.expression, state))];
 	}
 	if (node.type === 'JSXElement' || node.type === 'Element') {
@@ -4519,25 +5173,26 @@ function emitComponentAst(shape, state) {
 	let name = shape.name ?? fn.id?.name;
 	if (!name) name = allocName(state, '__octaneUniversalDefault');
 	const loc = fn.loc?.start;
+	const hooks = collectAuthoredHookSites(fn, state);
 	state.components.push({
 		name,
 		exportKind,
 		line: loc?.line ?? 0,
 		column: loc?.column ?? 0,
-		hooks: collectAuthoredHookSites(fn, state),
+		hooks,
 	});
 	for (const parameter of fn.params ?? []) {
 		assertNoResidualTemplate(parameter, state, 'component parameters');
 	}
+	const dirtyCandidate = dirtyComponentCandidate(render, hooks, state);
+	const compiledRender =
+		render.render === null
+			? null
+			: compileRenderableExpressionAst(render.render, state, dirtyCandidate);
 	const setup = rewriteSetupStatementsAst(render.setup, state);
 	const body = [...setup];
-	if (render.render !== null) {
-		body.push(
-			inheritGeneratedOrigin(
-				b.return(compileRenderableExpressionAst(render.render, state)),
-				render.render,
-			),
-		);
+	if (compiledRender !== null) {
+		body.push(inheritGeneratedOrigin(b.return(compiledRender), render.render));
 	} else if (render.expression !== undefined) {
 		body.push(
 			inheritGeneratedOrigin(
@@ -4564,7 +5219,7 @@ function emitComponentAst(shape, state) {
 		[
 			b.literal(state.renderer.id),
 			componentFunction,
-			jsonValueToAst({ module: state.renderer.module }, fn),
+			jsonValueToAst({ module: state.renderer.module, hookScope: hooks.length !== 0 }, fn),
 		],
 		fn,
 	);
@@ -4645,14 +5300,49 @@ function threadHelperImportPairs(state) {
 		['invokeThreadFunction', state.helpers.invokeThreadFunction],
 	].filter(([, local]) => local !== undefined);
 }
+function hasLynxCompilerProgramRefs(state) {
+	if (!rendererHasCapability(state, 'compiler-program-ir')) return false;
+	return state.plans.some((plan) => {
+		if (!lynxBlockCompilerProgramEligible(state, plan.root)) return false;
+		return deriveLynxProgramIROnce(state, plan.root)?.refs !== undefined;
+	});
+}
 
 function universalHelperImportAsts(state, extraPairs = [], origin = null) {
 	const threadPairs = threadHelperImportPairs(state);
 	const threadModule = state.renderer.threadFunctionsModule ?? state.renderer.module;
+	const compilerPrograms = rendererHasCapability(state, 'compiler-program-ir');
+	const hasCompilerPrograms =
+		compilerPrograms &&
+		state.plans.some((plan) => lynxBlockCompilerProgramEligible(state, plan.root));
+	const hasCompilerProgramRefs = hasLynxCompilerProgramRefs(state);
+	const hasFallbackPlans =
+		compilerPrograms &&
+		state.plans.some((plan) => !lynxBlockCompilerProgramEligible(state, plan.root));
 	const pairs = [
 		['defineUniversalComponent', state.helpers.component],
-		['universalPlan', state.helpers.plan],
-		['universalValue', state.helpers.value],
+		...(compilerPrograms
+			? [
+					...(hasCompilerPrograms
+						? [
+								['lynxProgram', state.helpers.plan],
+								['lynxProgramValue', state.helpers.value],
+							]
+						: []),
+					...(hasFallbackPlans
+						? [
+								['universalPlan', state.helpers.fallbackPlan],
+								['universalValue', state.helpers.fallbackValue],
+							]
+						: []),
+				]
+			: [
+					['universalPlan', state.helpers.plan],
+					['universalValue', state.helpers.value],
+				]),
+		...(hasCompilerProgramRefs
+			? [['enableLynxCompilerProgramRefs', state.helpers.compilerProgramRefs]]
+			: []),
 		['universalComponent', state.helpers.nestedComponent],
 		...(state.helpers.hostComponentLeafPlan === undefined
 			? []
@@ -4685,6 +5375,16 @@ function universalHelperImportAsts(state, extraPairs = [], origin = null) {
 		imports.push(inheritGeneratedOrigin(b.imports(threadPairs, threadModule), origin));
 	}
 	return imports;
+}
+
+function lynxCompilerProgramRefFeatureAsts(state, origin = null) {
+	if (!hasLynxCompilerProgramRefs(state)) return [];
+	return [
+		inheritGeneratedOrigin(
+			b.stmt(generatedCall(state.helpers.compilerProgramRefs, [], origin)),
+			origin,
+		),
+	];
 }
 
 function threeHostIntrinsicStatementsAst(state, origin = null) {
@@ -4734,8 +5434,9 @@ const LYNX_EVENT_PROP = /^(?:capture-bind|capture-catch|global-bind|bind|catch)[
  * A plan is lowered to a create function only when every node is compile-time
  * host structure: host/text/slot nodes, no props program (`propsSlot`), no
  * component/if/switch/range nodes, and no prop that the record path would
- * filter (`key`/`ref`/`children`) or classify by value (a static prop with an
- * event-shaped name). Anything else keeps the interpreted plan encoding, so
+ * filter (`key`/`children`) or classify by value (a static prop with an
+ * event-shaped name). Authored host refs are extracted into resource IR and
+ * omitted from the physical wire; only a static non-null ref is ineligible. Anything else keeps the interpreted plan encoding, so
  * mixed modules stay correct while the hot host templates go straight-line.
  */
 function lynxTemplateEligible(node) {
@@ -4744,11 +5445,15 @@ function lynxTemplateEligible(node) {
 	if (node.kind !== 'host') return false;
 	if (node.propsSlot !== undefined) return false;
 	for (const name of Object.keys(node.props || {})) {
-		if (name === 'key' || name === 'ref' || name === 'children') return false;
+		if (name === 'ref') {
+			if (node.props[name] !== null && node.props[name] !== undefined) return false;
+			continue;
+		}
+		if (name === 'key' || name === 'children') return false;
 		if (LYNX_EVENT_PROP.test(name)) return false;
 	}
 	for (const binding of node.bindings || []) {
-		if (binding[0] === 'key' || binding[0] === 'ref' || binding[0] === 'children') return false;
+		if (binding[0] === 'key' || binding[0] === 'children') return false;
 	}
 	return (node.children || []).every(lynxTemplateEligible);
 }
@@ -4976,8 +5681,8 @@ function generatedExpressionFromSource(source, filename, origin) {
  * makes: the walk happens once per program at build time instead of once per
  * mount, and the chunk carries `ranges.length` small integers instead of the
  * parent table a consumer would need to redo the walk. `universalTemplate-
- * ProgramWithoutRanges` guarantees a range hole is the last child of its host,
- * so a range is emitted after that host's whole subtree.
+ * ProgramWithoutRanges` records the next static sibling, so ranges are emitted
+ * immediately before that child's subtree or after all children at the tail.
  */
 function lynxProgramRangeOrder(wire, ranges) {
 	const children = wire.nodes.map(() => []);
@@ -4994,8 +5699,16 @@ function lynxProgramRangeOrder(wire, ranges) {
 	let next = 0;
 	const visit = (index) => {
 		next++;
-		for (const child of children[index]) visit(child);
-		for (const range of pending.get(index) ?? []) order.set(range, next++);
+		const rangesAtNode = pending.get(index) ?? [];
+		for (const child of children[index]) {
+			for (const range of rangesAtNode) {
+				if (range.before === child) order.set(range, next++);
+			}
+			visit(child);
+		}
+		for (const range of rangesAtNode) {
+			if (range.before === null) order.set(range, next++);
+		}
 	};
 	if (wire.nodes.length !== 0) visit(0);
 	// A range whose node the walk never reached would silently lose its position
@@ -5039,12 +5752,25 @@ function canonicalDigestSource(value) {
  * FNV-1a over the canonical bytes, as 16 lowercase hex digits.
  *
  * Hand-rolled rather than `node:crypto` because this module has no node imports
- * and gains nothing by acquiring one: the digest is a build-time equality
- * witness between two compiles of the same source, not a security primitive.
+ * and gains nothing by acquiring one: these digests are build-time identity
+ * and equality witnesses, not security primitives.
  * What it has to be is deterministic across machines and package managers,
  * which a fixed integer recurrence over a canonical string is and a hash of an
  * object's iteration order is not.
  */
+function lynxCanonicalDigest(source) {
+	let high = 0x811c9dc5;
+	let low = 0x9dc5811c;
+	for (let index = 0; index < source.length; index++) {
+		const code = source.charCodeAt(index);
+		high = (high ^ code) >>> 0;
+		low = (low ^ ((code << 7) | (code >>> 9))) >>> 0;
+		high = Math.imul(high, 0x01000193) >>> 0;
+		low = Math.imul(low, 0x85ebca6b) >>> 0;
+	}
+	return `${high.toString(16).padStart(8, '0')}${low.toString(16).padStart(8, '0')}`;
+}
+
 function programDigest(derived) {
 	let source = canonicalDigestSource(derived.wire);
 	if (derived.ranges.length !== 0) {
@@ -5058,20 +5784,18 @@ function programDigest(derived) {
 			derived.ranges.map((range) => ({
 				slot: range.slot,
 				node: range.node,
+				before: range.before,
 				id: order.get(range),
 			})),
 		)}`;
 	}
-	let high = 0x811c9dc5;
-	let low = 0x9dc5811c;
-	for (let index = 0; index < source.length; index++) {
-		const code = source.charCodeAt(index);
-		high = (high ^ code) >>> 0;
-		low = (low ^ ((code << 7) | (code >>> 9))) >>> 0;
-		high = Math.imul(high, 0x01000193) >>> 0;
-		low = Math.imul(low, 0x85ebca6b) >>> 0;
+	// Ref values stay background-local, but their resident-node and slot topology
+	// is a cross-realm ABI and must invalidate an address that was built without it.
+	if (derived.refs !== undefined && derived.refs.length !== 0) {
+		source += '\0' + canonicalDigestSource(derived.refs);
 	}
-	return `${high.toString(16).padStart(8, '0')}${low.toString(16).padStart(8, '0')}`;
+	if (derived.resident !== undefined) source += '\0' + canonicalDigestSource(derived.resident);
+	return lynxCanonicalDigest(source);
 }
 
 /**
@@ -5084,25 +5808,43 @@ function programDigest(derived) {
  * to ask the same question, of the same plan root, through the same derivation,
  * rather than to have each infer it from its own emission.
  *
- * The background is `target: 'universal'` and emits an ordinary host plan, so it
- * never builds a program and cannot decide eligibility from what it emitted. It
- * runs the derivation purely as an oracle: `deriveLynxMainThreadProgram` is a
- * pure build-time lowering with no side effects, and its `null` is exactly the
- * main thread's "no program here". So the two threads agree by construction
+ * The normal background target emits an ordinary host plan and consumes this
+ * derivation only as an addressing oracle. The explicit Block program target
+ * serializes the same derived wire and maps instead. In both cases, its
+ * `null` is exactly the main thread's "no program here", so the two threads
+ * agree by construction
  * instead of by a rule each implements separately.
  *
- * The digest covers the derived wire and, for a structural program, its open
- * range topology. Derivation by execution is what makes that complete rather
+ * The digest covers the derived wire, structural range topology, and host-ref
+ * resource topology. Derivation by execution is what makes that complete rather
  * than hopeful: the emission reads nothing outside the surface the derivation
  * produced, so hashing that surface hashes everything the emission depends on.
  */
 // The derivation is a full lowering of the plan tree and a pure oracle, and an
 // addressing build asks for the same root twice in one pass — once for the
 // address digest, once for the emission. One derivation per root per compile.
-function deriveMainThreadProgramOnce(state, root) {
-	const cache = (state.derivedMainThreadPrograms ??= new Map());
+const LYNX_PROGRAM_IR_VERSION = 1;
+
+function deriveLynxProgramIROnce(state, root) {
+	const cache = (state.derivedLynxProgramIRs ??= new Map());
 	if (cache.has(root)) return cache.get(root);
-	const derived = state.mainThreadProgramBackend.deriveLynxMainThreadProgram(root) ?? null;
+	const backend = state.mainThreadProgramBackend;
+	const deriveIR = backend.deriveLynxProgramIR;
+	const hasSharedIR = typeof deriveIR === 'function';
+	if (!hasSharedIR && deriveIR !== undefined) {
+		throw new TypeError(
+			'Octane Lynx compiler backend deriveLynxProgramIR must be a function when provided.',
+		);
+	}
+	const derived = hasSharedIR
+		? (backend.deriveLynxProgramIR(root) ?? null)
+		: (backend.deriveLynxMainThreadProgram(root) ?? null);
+	if (hasSharedIR && derived !== null && derived.version !== LYNX_PROGRAM_IR_VERSION) {
+		throw new Error(
+			`Octane Lynx compiler expected program IR version ${LYNX_PROGRAM_IR_VERSION}, ` +
+				`but the configured backend derived version ${String(derived.version)}.`,
+		);
+	}
 	cache.set(root, derived);
 	return derived;
 }
@@ -5123,11 +5865,47 @@ function addressableMainThreadProgram(derived) {
 	return derived !== null && (derived.ranges.length === 0 || derived.addressable === true);
 }
 
+function assertLynxBlockCompilerProgramState(state, origin = null) {
+	if (
+		state.universalRuntime?.runtime !== 'lynx' ||
+		state.universalRuntime.thread !== 'background'
+	) {
+		throw universalError(
+			state.filename,
+			origin,
+			'the compiler-program-ir capability is only valid for a Lynx background runtime.',
+		);
+	}
+	if (state.mainThreadProgramBackend === undefined || state.programModuleId === undefined) {
+		throw universalError(
+			state.filename,
+			origin,
+			'a Block background program requires a paired main-thread backend and module address.',
+		);
+	}
+}
+
+function lynxBlockCompilerProgramEligible(state, root, origin = null) {
+	assertLynxBlockCompilerProgramState(state, origin);
+	return (
+		lynxTemplateEligible(root) &&
+		root.kind === 'host' &&
+		addressableMainThreadProgram(deriveLynxProgramIROnce(state, root))
+	);
+}
+
+function universalValueHelperForPlan(state, root) {
+	return rendererHasCapability(state, 'compiler-program-ir') &&
+		!lynxBlockCompilerProgramEligible(state, root)
+		? state.helpers.fallbackValue
+		: state.helpers.value;
+}
+
 function universalProgramAddressAst(state, plan, index, origin) {
 	const backend = state.mainThreadProgramBackend;
 	if (backend === undefined || state.programModuleId === undefined) return null;
 	if (!lynxTemplateEligible(plan.root) || plan.root.kind !== 'host') return null;
-	const derived = deriveMainThreadProgramOnce(state, plan.root);
+	const derived = deriveLynxProgramIROnce(state, plan.root);
 	if (!addressableMainThreadProgram(derived)) return null;
 	const address = { module: state.programModuleId, index, digest: programDigest(derived) };
 	// Reported as well as emitted. The digest in the chunk is what a reader can
@@ -5137,11 +5915,80 @@ function universalProgramAddressAst(state, plan, index, origin) {
 	return jsonValueToAst(address, origin);
 }
 
+/**
+ * Collect one SDK Template Definition and emit only its fixed runtime identity.
+ *
+ * The compiled tree stays out of JavaScript and reaches Lynx through the
+ * template encoder metadata. The runtime descriptor carries only the stable
+ * key and positional arities needed to verify that the main-thread store and
+ * the independently compiled background program still consume the shared IR in
+ * the same order.
+ */
+function lynxElementTemplateObjectAst(state, derived, origin) {
+	const backend = state.mainThreadProgramBackend;
+	if (backend?.elementTemplate !== true || state.universalRuntime?.thread !== 'main-thread') {
+		return null;
+	}
+	if (typeof backend.deriveLynxElementTemplateProgram !== 'function') {
+		throw new TypeError(
+			'Octane Lynx Element Template backend deriveLynxElementTemplateProgram must be a function.',
+		);
+	}
+	const lowered = backend.deriveLynxElementTemplateProgram(derived);
+	if (lowered === null) return null;
+	const valueAndEventSlots = derived.values.length + derived.events.length;
+	const hasVisibility = lowered?.visibilitySlot !== undefined;
+	if (
+		lowered === undefined ||
+		typeof lowered !== 'object' ||
+		lowered.template === null ||
+		typeof lowered.template !== 'object' ||
+		!Number.isSafeInteger(lowered.attributeSlots) ||
+		lowered.attributeSlots !== valueAndEventSlots + (hasVisibility ? 1 : 0) ||
+		!Number.isSafeInteger(lowered.childSlots) ||
+		lowered.childSlots !== derived.ranges.length ||
+		(hasVisibility && lowered.visibilitySlot !== lowered.attributeSlots - 1)
+	) {
+		throw new TypeError('Octane Lynx Element Template backend returned an invalid program.');
+	}
+	// Lynx reserves the `_et_<12 hex>` identity envelope for content-addressed
+	// user Template Definitions. Keep the native identifier in that envelope;
+	// the full resident-program digest remains on the independent program address.
+	const templateId = `_et_${lynxCanonicalDigest(canonicalDigestSource(lowered.template)).slice(0, 12)}`;
+	const record = Object.freeze({
+		templateId,
+		compiledTemplate: lowered.template,
+		sourceFile: state.filename,
+	});
+	const templates = (state.lynxElementTemplates ??= new Map());
+	const existing = templates.get(templateId);
+	if (
+		existing !== undefined &&
+		JSON.stringify(existing.compiledTemplate) !== JSON.stringify(record.compiledTemplate)
+	) {
+		throw new Error(`Octane Lynx Element Template id collision for ${templateId}.`);
+	}
+	templates.set(templateId, existing ?? record);
+	state.lynxElementTemplateLowered = (state.lynxElementTemplateLowered ?? 0) + 1;
+	if (hasVisibility) {
+		state.lynxElementTemplateVisibilitySlots = (state.lynxElementTemplateVisibilitySlots ?? 0) + 1;
+	}
+	return jsonValueToAst(
+		{
+			templateId,
+			attributeSlots: lowered.attributeSlots,
+			childSlots: lowered.childSlots,
+			...(hasVisibility ? { visibilitySlot: lowered.visibilitySlot } : null),
+		},
+		origin,
+	);
+}
+
 function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	const backend = state.mainThreadProgramBackend;
 	if (backend === undefined) return null;
 	if (state.universalRuntime?.thread !== 'main-thread') return null;
-	const derived = deriveMainThreadProgramOnce(state, plan.root);
+	const derived = deriveLynxProgramIROnce(state, plan.root);
 	if (derived === null) return null;
 	// Not `plan.name`: the module already binds that, and the emission's name
 	// becomes a named function expression whose binding would shadow it.
@@ -5154,6 +6001,7 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	// every value and keeps its parameter without compiling anything.
 	const emission = backend.emitLynxMainThreadProgram(derived.wire, {
 		name,
+		residentNodes: derived.resident,
 		ranges: derived.ranges,
 		slotUpdates: true,
 		structuralRuns: true,
@@ -5177,9 +6025,11 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 		);
 	}
 	const rangeOrder = lynxProgramRangeOrder(derived.wire, derived.ranges);
+	const elementTemplate = lynxElementTemplateObjectAst(state, derived, origin);
 	return inheritGeneratedOrigin(
 		b.object([
 			b.prop('init', b.literal('kind', '"kind"'), b.literal('program', '"program"')),
+			b.prop('init', b.literal('version', '"version"'), b.literal(LYNX_PROGRAM_IR_VERSION)),
 			// The keyed slot map is the contract #163 keeps, so the compiled object
 			// carries the same one the interpreted object does. It is per program and
 			// fixed size — the update path's dispatch table, not a per-node
@@ -5190,6 +6040,15 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 			// nodes come back from `bind` in this order, so nothing walks anything to
 			// pair them up.
 			b.prop('init', b.literal('nodes', '"nodes"'), b.literal(derived.wire.nodes.length)),
+			...(derived.resident === undefined
+				? []
+				: [
+						b.prop(
+							'init',
+							b.literal('resident', '"resident"'),
+							jsonValueToAst(derived.resident, origin),
+						),
+					]),
 			// Still reduced to plan-slot indices. A value site also carries the node
 			// and prop name it was derived from, and neither has a reader until #163's
 			// C4 applies updates through them — the chunk whose size is the point does
@@ -5235,12 +6094,28 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 					derived.ranges.map((range, index) => ({
 						slot: range.slot,
 						node: range.node,
+						before: range.before,
 						id: rangeOrder.get(range),
 						paintsText: emission.paintsText[index] === true,
 					})),
 					origin,
 				),
 			),
+			...(derived.refs === undefined
+				? []
+				: [
+						b.prop(
+							'init',
+							b.literal('refs', '"refs"'),
+							jsonValueToAst(
+								derived.refs.map((ref) => ref.node),
+								origin,
+							),
+						),
+					]),
+			...(elementTemplate === null
+				? []
+				: [b.prop('init', b.literal('elementTemplate', '"elementTemplate"'), elementTemplate)]),
 			// The descriptor the background would otherwise have sent with every
 			// mount, resident here instead (issue #246 E1).
 			//
@@ -5272,9 +6147,58 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	);
 }
 
+function lynxBackgroundProgramObjectAst(state, plan, index, origin) {
+	assertLynxBlockCompilerProgramState(state, origin);
+	const derived = deriveLynxProgramIROnce(state, plan.root);
+	if (!addressableMainThreadProgram(derived)) {
+		throw universalError(
+			state.filename,
+			origin,
+			'a Block background program requires addressable shared Lynx IR; this plan needs the Universal core.',
+		);
+	}
+	const address = universalProgramAddressAst(state, plan, index, origin);
+	if (address === null) {
+		throw universalError(
+			state.filename,
+			origin,
+			'a Block background program could not allocate its paired program address.',
+		);
+	}
+	return inheritGeneratedOrigin(
+		b.object([
+			b.prop('init', b.literal('version', '"version"'), b.literal(LYNX_PROGRAM_IR_VERSION)),
+			b.prop('init', b.literal('address', '"address"'), address),
+			b.prop('init', b.literal('wire', '"wire"'), jsonValueToAst(derived.wire, origin)),
+			b.prop('init', b.literal('values', '"values"'), jsonValueToAst(derived.values, origin)),
+			b.prop('init', b.literal('events', '"events"'), jsonValueToAst(derived.events, origin)),
+			b.prop('init', b.literal('ranges', '"ranges"'), jsonValueToAst(derived.ranges, origin)),
+			...(derived.refs === undefined
+				? []
+				: [b.prop('init', b.literal('refs', '"refs"'), jsonValueToAst(derived.refs, origin))]),
+		]),
+		origin,
+	);
+}
+
 function universalPlanDeclarationsAst(state, origin = null) {
+	const compilerPrograms = rendererHasCapability(state, 'compiler-program-ir');
 	return state.plans.map((plan, index) => {
 		const planOrigin = plan.origin ?? origin;
+		if (compilerPrograms && lynxBlockCompilerProgramEligible(state, plan.root, planOrigin)) {
+			return generatedConst(
+				plan.name,
+				generatedCall(
+					state.helpers.plan,
+					[
+						b.literal(state.renderer.id),
+						lynxBackgroundProgramObjectAst(state, plan, index, planOrigin),
+					],
+					planOrigin,
+				),
+				planOrigin,
+			);
+		}
 		const rootAst =
 			state.lynxTemplates && lynxTemplateEligible(plan.root) && plan.root.kind === 'host'
 				? (lynxMainThreadProgramObjectAst(state, plan, planOrigin) ??
@@ -5288,7 +6212,7 @@ function universalPlanDeclarationsAst(state, origin = null) {
 		return generatedConst(
 			plan.name,
 			generatedCall(
-				state.helpers.plan,
+				compilerPrograms ? state.helpers.fallbackPlan : state.helpers.plan,
 				addressAst === null
 					? [b.literal(state.renderer.id), rootAst]
 					: [b.literal(state.renderer.id), rootAst, addressAst],
@@ -5588,6 +6512,11 @@ export function lowerUniversalRendererRegionAst(
 	state.helpers.component = allocName(state, `${prefix}Define`);
 	state.helpers.plan = allocName(state, `${prefix}Plan`);
 	state.helpers.value = allocName(state, `${prefix}Value`);
+	if (rendererHasCapability(state, 'compiler-program-ir')) {
+		state.helpers.fallbackPlan = allocName(state, `${prefix}FallbackPlan`);
+		state.helpers.fallbackValue = allocName(state, `${prefix}FallbackValue`);
+		state.helpers.compilerProgramRefs = allocName(state, `${prefix}CompilerProgramRefs`);
+	}
 	state.helpers.nestedComponent = allocName(state, `${prefix}Component`);
 	state.helpers.props = allocName(state, `${prefix}Props`);
 	state.helpers.if = allocName(state, `${prefix}If`);
@@ -5732,12 +6661,13 @@ export function lowerUniversalRendererRegionAst(
 		b.function(generatedIdentifier(componentName, origin), [entryProps], b.block(componentBody)),
 		origin,
 	);
+	const hooks = collectAuthoredHookSites({ body: regionExpression }, state);
 	let componentValue = generatedCall(
 		state.helpers.component,
 		[
 			b.literal(renderer.id),
 			componentFunction,
-			jsonValueToAst({ module: renderer.module }, origin),
+			jsonValueToAst({ module: renderer.module, hookScope: hooks.length !== 0 }, origin),
 		],
 		origin,
 	);
@@ -5746,7 +6676,7 @@ export function lowerUniversalRendererRegionAst(
 		exportKind: 'named',
 		line: origin?.loc?.start?.line ?? 0,
 		column: origin?.loc?.start?.column ?? 0,
-		hooks: collectAuthoredHookSites({ body: regionExpression }, state),
+		hooks,
 	});
 	if (state.hmr) {
 		componentValue = generatedCall(
@@ -5832,6 +6762,7 @@ export function lowerUniversalRendererRegionAst(
 		}),
 		statements: Object.freeze([
 			...universalHelperImportAsts(state, helperImportPairs, origin),
+			...lynxCompilerProgramRefFeatureAsts(state, origin),
 			...threeHostIntrinsics.imports,
 			...(profileImport === null ? [] : [profileImport]),
 			...hmrBlocks.prelude,
@@ -5850,7 +6781,7 @@ export function lowerUniversalRendererRegionAst(
 /**
  * @param {string} source
  * @param {string} filename
- * @param {{ id: string, module: string, target: 'universal', text?: 'host'|'ignore'|'reject', capabilities?: readonly string[], firstScreenEvents?: readonly string[] }} renderer
+ * @param {{ id: string, module: string, target: 'universal'|'lynx', text?: 'host'|'ignore'|'reject', capabilities?: readonly string[], firstScreenEvents?: readonly string[] }} renderer
  * @param {(ast: import('@tsrx/core/types').AST.Program, metadata: any) => { code: string, map: any }} compileClient
  * @param {Record<string, any>} [options]
  * @param {import('@tsrx/core/types').AST.Program | null} [parsedAst]
@@ -5922,6 +6853,11 @@ export function compileUniversal(
 	state.helpers.component = allocName(state, '__octaneDefineUniversalComponent');
 	state.helpers.plan = allocName(state, '__octaneUniversalPlan');
 	state.helpers.value = allocName(state, '__octaneUniversalValue');
+	if (rendererHasCapability(state, 'compiler-program-ir')) {
+		state.helpers.fallbackPlan = allocName(state, '__octaneUniversalFallbackPlan');
+		state.helpers.fallbackValue = allocName(state, '__octaneUniversalFallbackValue');
+		state.helpers.compilerProgramRefs = allocName(state, '__octaneCompilerProgramRefs');
+	}
 	state.helpers.nestedComponent = allocName(state, '__octaneUniversalComponent');
 	state.helpers.props = allocName(state, '__octaneUniversalProps');
 	state.helpers.if = allocName(state, '__octaneUniversalIf');
@@ -5993,6 +6929,7 @@ export function compileUniversal(
 		...ast,
 		body: [
 			...universalHelperImportAsts(state, [], moduleOrigin),
+			...lynxCompilerProgramRefFeatureAsts(state, moduleOrigin),
 			...threeHostIntrinsics.imports,
 			...(profileImport === null ? [] : [profileImport]),
 			...hmrBlocks.prelude,
@@ -6016,6 +6953,17 @@ export function compileUniversal(
 			? null
 			: { lynxBlockFeatureRequirements: blockFeatureRequirements }),
 		...(state.programAddresses === undefined ? null : { programAddresses: state.programAddresses }),
+		...(state.mainThreadProgramBackend?.elementTemplate !== true ||
+		state.universalRuntime?.thread !== 'main-thread'
+			? null
+			: {
+					lynxElementTemplates: Object.freeze([...(state.lynxElementTemplates?.values() ?? [])]),
+					lynxElementTemplateCoverage: Object.freeze({
+						total: state.plans.length,
+						lowered: state.lynxElementTemplateLowered ?? 0,
+						visibilitySlots: state.lynxElementTemplateVisibilitySlots ?? 0,
+					}),
+				}),
 		// A graph-level selector cannot infer complete resident-program coverage
 		// from the addresses alone: an empty list means either "no plans" or "every
 		// plan declined". Preserve both sides of that proof whenever addressing was

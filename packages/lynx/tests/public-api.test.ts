@@ -32,6 +32,8 @@ describe('@octanejs/lynx Milestone 8 private surface', () => {
 			'./first-screen-compiled-program',
 			'./block',
 			'./compiler',
+			'./compiler/element-template',
+			'./compiler/element-template/structural',
 			'./intrinsics',
 			'./intrinsics/jsx-runtime',
 			'./main-thread',

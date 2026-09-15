@@ -6,15 +6,21 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const RSPEEDY_DEPENDENCY_REQUESTS = Object.freeze({
-	'@lynx-js/cache-events-webpack-plugin': '^0.2.0',
-	'@lynx-js/chunk-loading-webpack-plugin': '^0.4.1',
-	'@lynx-js/debug-metadata-rsbuild-plugin': '^0.2.0',
-	'@lynx-js/web-rsbuild-server-middleware': '0.22.2',
-	'@lynx-js/webpack-dev-transport': '^0.3.0',
+	'@lynx-js/rsbuild-plugin': '0.1.1',
+	'@rsbuild/core': '2.2.3',
+	'@rsdoctor/rspack-plugin': '~1.6.1',
+});
+
+const RSBUILD_PLUGIN_DEPENDENCY_REQUESTS = Object.freeze({
+	'@lynx-js/cache-events-webpack-plugin': '^0.2.1',
+	'@lynx-js/chunk-loading-webpack-plugin': '^0.4.2',
+	'@lynx-js/debug-metadata-rsbuild-plugin': '^0.2.2',
+	'@lynx-js/runtime-wrapper-webpack-plugin': '^0.2.4',
+	'@lynx-js/template-webpack-plugin': '^0.16.0',
+	'@lynx-js/web-rsbuild-server-middleware': '0.26.0',
+	'@lynx-js/webpack-dev-transport': '^0.4.0',
 	'@lynx-js/websocket': '^0.0.4',
-	'@rsbuild/core': '2.1.4',
-	'@rsbuild/plugin-css-minimizer': '2.0.0',
-	'@rsdoctor/rspack-plugin': '~1.5.6',
+	'@rsbuild/plugin-css-minimizer': '2.0.1',
 });
 
 function readPackage(request, packageName) {
@@ -94,18 +100,23 @@ function assertPackageRelations(request, versions) {
 	for (const [packageName, expectedRequest] of Object.entries(RSPEEDY_DEPENDENCY_REQUESTS)) {
 		assert.equal(rspeedy.dependencies?.[packageName], expectedRequest);
 	}
-	assert.equal(rspeedy.peerDependencies?.typescript, '5.1.6 - 5.9.x');
+	assert.equal(rspeedy.peerDependencies?.typescript, '5.1.6 - 6.0.x');
+
+	const rsbuildPlugin = readPackage(request, '@lynx-js/rsbuild-plugin').manifest;
+	for (const [packageName, expectedRequest] of Object.entries(RSBUILD_PLUGIN_DEPENDENCY_REQUESTS)) {
+		assert.equal(rsbuildPlugin.dependencies?.[packageName], expectedRequest);
+	}
 
 	const rsbuild = readPackage(request, '@rsbuild/core').manifest;
-	assert.equal(rsbuild.dependencies?.['@rspack/core'], '~2.1.2');
+	assert.equal(rsbuild.dependencies?.['@rspack/core'], '~2.2.2');
 
 	const template = readPackage(request, '@lynx-js/template-webpack-plugin').manifest;
 	assert.equal(template.dependencies?.['@lynx-js/tasm'], versions['@lynx-js/tasm']);
 	assert.equal(template.dependencies?.['@lynx-js/web-core'], versions['@lynx-js/web-core']);
-	assert.equal(template.dependencies?.['@lynx-js/webpack-runtime-globals'], '^0.0.7');
+	assert.equal(template.dependencies?.['@lynx-js/webpack-runtime-globals'], '^0.0.8');
 
 	const css = readPackage(request, '@lynx-js/css-extract-webpack-plugin').manifest;
-	assert.equal(css.peerDependencies?.['@lynx-js/template-webpack-plugin'], '^0.13.0');
+	assert.equal(css.peerDependencies?.['@lynx-js/template-webpack-plugin'], '^0.16.0');
 
 	const wrapper = readPackage(request, '@lynx-js/runtime-wrapper-webpack-plugin').manifest;
 	assert.equal(
@@ -118,7 +129,7 @@ function assertPackageRelations(request, versions) {
 		'@lynx-js/chunk-loading-webpack-plugin',
 	]) {
 		const manifest = readPackage(request, packageName).manifest;
-		assert.match(manifest.dependencies?.['@lynx-js/webpack-runtime-globals'], /^\^?0\.0\.7$/);
+		assert.match(manifest.dependencies?.['@lynx-js/webpack-runtime-globals'], /^\^?0\.0\.8$/);
 	}
 
 	const debugMetadata = readPackage(request, '@lynx-js/debug-metadata-rsbuild-plugin').manifest;

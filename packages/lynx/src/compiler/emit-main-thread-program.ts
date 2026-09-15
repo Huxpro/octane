@@ -55,7 +55,9 @@
  *   * route 1 — a `#text` whose only prop and only bindings are `value`; its
  *     content is passed to `rawText()` at creation and never written again.
  *   * route 2 — a `view` or `text` whose only props and bindings are `class`,
- *     `className` and `id`, applied by `applyDenseScalarHostProps`.
+ *     `className` and `id`, or the same scalar identity plus the declared
+ *     attributes of an `image` or `list-item`. The common identity is applied
+ *     by `applyDenseScalarHostProps`; declared attributes are direct PAPI writes.
  *
  * Two things the dense path allows are refused here anyway, and both are the
  * first slice's surface rather than the design's:
@@ -67,10 +69,11 @@
  *     first screen that differs from the one the command path would have
  *     painted is worse than one that was never compiled. So an unbound node is
  *     held to the same scalar set as a bound one.
- *   * **Host types with no proven factory/prop route** — `scroll-view`, `image`
- *     and anything else. `<list-item>` is the one generic-factory exception: it
- *     carries the scalar attributes declared by `LynxListItemProps`, and admitting it is what
- *     lets a deferred native-list row retain this program for per-cell paint.
+ *   * **Host types with no proven factory/prop route** — `scroll-view` and
+ *     anything else. `<image>` and `<list-item>` are the two generic-factory
+ *     exceptions: each carries exactly the scalar attributes declared by its
+ *     public prop contract; list-item admission lets a deferred native-list row
+ *     retain this program for per-cell paint.
  *     The interpreter creates the remaining types through `createElement`, and
  *     so could this; what it could not yet do is *prove* it writes their props
  *     the way `applyProps` would. Widening stays one type at a time, with the
@@ -92,7 +95,7 @@ import type {
 	UniversalHostTemplateProgramNode,
 } from 'octane/universal/native';
 
-import { parseLynxNativeEventProp } from '../core/native-events.js';
+import { parseLynxMainThreadEventProp, parseLynxNativeEventProp } from '../core/native-events.js';
 
 /** Host types this backend can construct, and the factory route for each. */
 const INTRINSIC_FACTORY: Readonly<Record<string, 'view' | 'text' | 'rawText' | 'element'>> =
@@ -101,6 +104,8 @@ const INTRINSIC_FACTORY: Readonly<Record<string, 'view' | 'text' | 'rawText' | '
 		text: 'text',
 		'#text': 'rawText',
 		'raw-text': 'rawText',
+		image: 'element',
+		list: 'element',
 		'list-item': 'element',
 	});
 
@@ -109,9 +114,52 @@ const SCALAR_HOST_PROPS: readonly string[] = Object.freeze(['class', 'className'
 
 const TEXT_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([...SCALAR_HOST_PROPS, 'text']);
 
-/** Scalar attributes declared by the public `LynxListItemProps` contract. */
-const LIST_ITEM_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
+/** Scalar attributes declared by the public `LynxImageProps` contract. */
+const IMAGE_ATTRIBUTE_PROPS: readonly string[] = Object.freeze([
+	'src',
+	'mode',
+	'placeholder',
+	'blur-radius',
+	'cap-insets',
+	'cap-insets-scale',
+	'loop-count',
+	'auto-size',
+	'autoplay',
+	'tint-color',
+]);
+const IMAGE_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
 	...SCALAR_HOST_PROPS,
+	...IMAGE_ATTRIBUTE_PROPS,
+]);
+
+/** Scalar attributes declared by the public `LynxListProps` contract. */
+const LIST_ATTRIBUTE_PROPS: readonly string[] = Object.freeze([
+	'scroll-orientation',
+	'span-count',
+	'list-type',
+	'enable-scroll',
+	'enable-nested-scroll',
+	'sticky',
+	'sticky-offset',
+	'bounces',
+	'initial-scroll-index',
+	'need-visible-item-info',
+	'lower-threshold-item-count',
+	'upper-threshold-item-count',
+	'scroll-event-throttle',
+	'preload-buffer-count',
+	'experimental-search-ref-anchor-strategy',
+	'scroll-bar-enable',
+	'need-layout-complete-info',
+	'layout-id',
+]);
+const LIST_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
+	...SCALAR_HOST_PROPS,
+	...LIST_ATTRIBUTE_PROPS,
+]);
+
+/** Scalar attributes declared by the public `LynxListItemProps` contract. */
+const LIST_ITEM_ATTRIBUTE_PROPS: readonly string[] = Object.freeze([
 	'item-key',
 	'sticky-top',
 	'sticky-bottom',
@@ -120,6 +168,10 @@ const LIST_ITEM_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
 	'reuse-identifier',
 	'recyclable',
 	'defer',
+]);
+const LIST_ITEM_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
+	...SCALAR_HOST_PROPS,
+	...LIST_ITEM_ATTRIBUTE_PROPS,
 ]);
 
 /**
@@ -133,6 +185,8 @@ const LIST_ITEM_SCALAR_HOST_PROPS: readonly string[] = Object.freeze([
  */
 function scalarHostProps(type: string): readonly string[] {
 	if (type === 'text') return TEXT_SCALAR_HOST_PROPS;
+	if (type === 'image') return IMAGE_SCALAR_HOST_PROPS;
+	if (type === 'list') return LIST_SCALAR_HOST_PROPS;
 	return type === 'list-item' ? LIST_ITEM_SCALAR_HOST_PROPS : SCALAR_HOST_PROPS;
 }
 
@@ -241,6 +295,8 @@ const EMISSION_LOCAL = /^[nvecrt]\d+$/;
  */
 export interface LynxMainThreadProgramRange {
 	readonly node: number;
+	/** Omitted by legacy hand-written plans; equivalent to a tail range. */
+	readonly before?: number | null;
 }
 
 export interface LynxMainThreadProgramEmission {
@@ -347,6 +403,14 @@ function refuse(what: string): never {
  * the same reason it is not there — only `#text` is — so every `raw-text` is
  * refused, carrying anything or nothing, rather than half-written.
  */
+function emittedHostProp(type: string, name: string): boolean {
+	return (
+		scalarHostProps(type).includes(name) ||
+		name === 'main-thread:ref' ||
+		parseLynxMainThreadEventProp(name) !== null
+	);
+}
+
 function dynamicRoute(node: UniversalHostTemplateProgramNode): 0 | 1 | 2 {
 	const bindings = node.bindings ?? [];
 	const names = Object.keys(node.props);
@@ -358,9 +422,13 @@ function dynamicRoute(node: UniversalHostTemplateProgramNode): 0 | 1 | 2 {
 		return 1;
 	}
 	if (
-		(node.type === 'view' || node.type === 'text' || node.type === 'list-item') &&
-		names.every((name) => scalarHostProps(node.type).includes(name)) &&
-		bindings.every((binding) => scalarHostProps(node.type).includes(binding.name))
+		(node.type === 'view' ||
+			node.type === 'text' ||
+			node.type === 'image' ||
+			node.type === 'list' ||
+			node.type === 'list-item') &&
+		names.every((name) => emittedHostProp(node.type, name)) &&
+		bindings.every((binding) => emittedHostProp(node.type, binding.name))
 	) {
 		return 2;
 	}
@@ -465,24 +533,22 @@ function emitScalarProps(
 			lines.push(`\t\tif (c${index} !== '') papi.setClasses(n${index}, c${index});`);
 		}
 	}
-	if (node.type !== 'list-item') return;
+	const attributeProps =
+		node.type === 'image'
+			? IMAGE_ATTRIBUTE_PROPS
+			: node.type === 'list'
+				? LIST_ATTRIBUTE_PROPS
+				: node.type === 'list-item'
+					? LIST_ITEM_ATTRIBUTE_PROPS
+					: null;
+	if (attributeProps === null) return;
 	const names = [
 		...Object.keys(node.props),
 		...(node.bindings ?? []).map((binding) => binding.name),
 	];
 	const emitted = new Set<string>();
 	for (const name of names) {
-		if (
-			emitted.has(name) ||
-			(name !== 'item-key' &&
-				name !== 'sticky-top' &&
-				name !== 'sticky-bottom' &&
-				name !== 'full-span' &&
-				name !== 'estimated-main-axis-size-px' &&
-				name !== 'reuse-identifier' &&
-				name !== 'recyclable' &&
-				name !== 'defer')
-		) {
+		if (emitted.has(name) || !attributeProps.includes(name)) {
 			continue;
 		}
 		emitted.add(name);
@@ -500,6 +566,32 @@ function emitScalarProps(
 					` papi.setAttribute(n${index}, ${JSON.stringify(name)}, ${read});`,
 			);
 		}
+	}
+}
+
+/** Emit direct main-thread bindings after scalar host props are initialized. */
+function emitMainThreadProps(
+	node: UniversalHostTemplateProgramNode,
+	index: number,
+	lines: string[],
+): void {
+	for (const binding of node.bindings ?? []) {
+		if (binding.name === 'main-thread:ref') continue;
+		const event = parseLynxMainThreadEventProp(binding.name);
+		if (event === null) continue;
+		lines.push(
+			'\t\tif (v' +
+				binding.valueIndex +
+				' != null) papi.setEvent(n' +
+				index +
+				', ' +
+				JSON.stringify(event.type) +
+				', ' +
+				JSON.stringify(event.name) +
+				', v' +
+				binding.valueIndex +
+				');',
+		);
 	}
 }
 
@@ -575,6 +667,20 @@ function emitSlotUpdate(
 ): void {
 	const node = program.nodes[site.node]!;
 	const target = site.node === 0 ? 'nodes[offset]' : `nodes[offset + ${site.node}]`;
+	if (site.name === 'main-thread:ref') return;
+	const mainThreadEvent = parseLynxMainThreadEventProp(site.name);
+	if (mainThreadEvent !== null) {
+		lines.push(
+			'\t\t\tpapi.setEvent(' +
+				target +
+				', ' +
+				JSON.stringify(mainThreadEvent.type) +
+				', ' +
+				JSON.stringify(mainThreadEvent.name) +
+				', value == null ? undefined : value);',
+		);
+		return;
+	}
 	if (site.name === 'id') {
 		lines.push(`\t\t\tpapi.setId(${target}, value == null ? null : String(value));`);
 		return;
@@ -603,6 +709,18 @@ function emitSlotUpdate(
 	if (node.type === 'text' && site.name === 'text') {
 		lines.push(
 			`\t\t\tpapi.setAttribute(${target}, 'text', typeof value === 'string' ? value : '');`,
+		);
+		return;
+	}
+	if (node.type === 'image' && IMAGE_ATTRIBUTE_PROPS.includes(site.name)) {
+		lines.push(
+			`\t\t\tpapi.setAttribute(${target}, ${JSON.stringify(site.name)}, value == null ? null : value);`,
+		);
+		return;
+	}
+	if (node.type === 'list' && LIST_ATTRIBUTE_PROPS.includes(site.name)) {
+		lines.push(
+			`\t\t\tpapi.setAttribute(${target}, ${JSON.stringify(site.name)}, value == null ? null : value);`,
 		);
 		return;
 	}
@@ -677,6 +795,8 @@ export function emitLynxMainThreadProgram(
 	program: UniversalHostTemplateProgram,
 	options: {
 		readonly name: string;
+		/** Compiler-proved physical node indexes that remain addressable after a dense run. */
+		readonly residentNodes?: readonly number[];
 		/**
 		 * Also emit a direct value-slot setter on the returned create function.
 		 *
@@ -721,6 +841,19 @@ export function emitLynxMainThreadProgram(
 
 	const sites = bindingSites(program);
 	const valueCount = sites.length;
+	let resident: Set<number> | null = null;
+	if (options.residentNodes !== undefined) {
+		resident = new Set<number>();
+		let previous = -1;
+		for (const node of options.residentNodes) {
+			if (!Number.isSafeInteger(node) || node <= previous || node >= program.nodes.length) {
+				refuse('resident node indexes must be sorted, unique, and inside the program');
+			}
+			resident.add(node);
+			previous = node;
+		}
+		if (!resident.has(0)) refuse('a resident run must retain its root node');
+	}
 	const body: string[] = [];
 
 	for (let index = 0; index < program.nodes.length; index++) {
@@ -743,7 +876,7 @@ export function emitLynxMainThreadProgram(
 				...Object.keys(node.props),
 				...(node.bindings ?? []).map((binding) => binding.name),
 			].find((name) =>
-				node.type === '#text' ? name !== 'value' : !scalarHostProps(node.type).includes(name),
+				node.type === '#text' ? name !== 'value' : !emittedHostProp(node.type, name),
 			);
 			// A node carrying nothing at all still reaches this: `raw-text` is the
 			// one type with an intrinsic factory that takes neither route, because
@@ -782,9 +915,11 @@ export function emitLynxMainThreadProgram(
 				`\t\tvar n${index} = papi.createElement(${JSON.stringify(node.type)}, pageId, '');`,
 			);
 			emitScalarProps(node, index, body);
+			emitMainThreadProps(node, index, body);
 		} else {
 			body.push(`\t\tvar n${index} = ${factory}(pageId);`);
 			emitScalarProps(node, index, body);
+			emitMainThreadProps(node, index, body);
 		}
 	}
 
@@ -809,6 +944,15 @@ export function emitLynxMainThreadProgram(
 		// wrongly, and it is the parser that decides what a malformed name is.
 		if (binding === null)
 			refuse(`event site ${JSON.stringify(event.type)} is not a Lynx event prop`);
+		const collision = program.nodes[event.node]!.bindings?.find((candidate) => {
+			const direct = parseLynxMainThreadEventProp(candidate.name);
+			return direct !== null && direct.type === binding.type && direct.name === binding.name;
+		});
+		if (collision !== undefined) {
+			refuse(
+				`main-thread event ${JSON.stringify(collision.name)} conflicts with background event ${JSON.stringify(event.type)} on node ${event.node}`,
+			);
+		}
 		const seen = installed.get(event.node);
 		if (seen === undefined) installed.set(event.node, new Set([event.type]));
 		else if (seen.has(event.type)) {
@@ -848,7 +992,7 @@ export function emitLynxMainThreadProgram(
 	// A range site's value is the one thing a build cannot know and a run cannot
 	// avoid knowing, so the decision is emitted rather than made.
 	//
-	// `deriveLynxMainThreadProgram` answers "every renderable hole is a keyed
+	// `deriveLynxProgramIR` answers "every renderable hole is a keyed
 	// range", because a plan the compiler produced lowers a `@for`, a component
 	// and a `{row.label as string}` to the same `kind: 'slot'` node. The
 	// run-time lowering answers the same question by looking at the value, and
@@ -861,11 +1005,8 @@ export function emitLynxMainThreadProgram(
 	// other value is left exactly where it is today — a hole the renderer fills
 	// by key.
 	//
-	// Emitted after the appends, because a range hole is its host's last child
-	// by construction: `universalTemplateProgramWithoutRanges` declines a program
-	// where a dropped hole is not the last entry naming its parent, so appending
-	// behind everything the node loop just placed *is* the position the command
-	// path would have given it.
+	// Emitted after the static subtree is assembled. A non-tail text hole inserts
+	// before its compiler-selected static sibling; a tail hole keeps the append.
 	//
 	// The created node is returned, in a trailing slot of its own, and a hole
 	// this emission leaves open returns `undefined` there. That is not
@@ -877,18 +1018,23 @@ export function emitLynxMainThreadProgram(
 	// container does not own, and both are one identity check away from being
 	// caught at the mount instead of showing up as a blank cell.
 	const ranges = options.ranges ?? [];
-	const ranged = new Set<number>();
 	const painted = new Set<number>();
 	for (let index = 0; index < ranges.length; index++) {
-		const node = ranges[index]!.node;
+		const range = ranges[index]!;
+		const node = range.node;
+		const before = range.before ?? null;
 		if (!Number.isSafeInteger(node) || node < 0 || node >= program.nodes.length) {
 			refuse(`a keyed range names node ${node}, which the program does not have`);
 		}
-		// The reduction cannot produce two on one host — only one child can be
-		// the last one — so a program that says otherwise was not reduced from a
-		// shape, and appending both would put them in an order neither arm chose.
-		if (ranged.has(node)) refuse(`node ${node} holds more than one keyed range`);
-		ranged.add(node);
+		if (
+			before !== null &&
+			(!Number.isSafeInteger(before) ||
+				before < 0 ||
+				before >= program.nodes.length ||
+				program.nodes[before]!.parent !== node)
+		) {
+			refuse(`keyed range ${index} names a static anchor outside node ${node}`);
+		}
 		const host = program.nodes[node]!.type;
 		if (host === '#text' || host === 'raw-text') {
 			refuse(`raw-text node ${node} cannot hold a keyed range`);
@@ -902,8 +1048,27 @@ export function emitLynxMainThreadProgram(
 		painted.add(index);
 		body.push(`\t\tvar t${index};`);
 		body.push(
-			`\t\tif (typeof r${index} === 'string') { t${index} = rawText(r${index}); append(n${node}, t${index}); }`,
+			before === null
+				? `\t\tif (typeof r${index} === 'string') { t${index} = rawText(r${index}); append(n${node}, t${index}); }`
+				: `\t\tif (typeof r${index} === 'string') { t${index} = rawText(r${index}); papi.insertBefore(n${node}, t${index}, n${before}); }`,
 		);
+	}
+
+	if (resident !== null) {
+		const requireResident = (node: number, purpose: string): void => {
+			if (!resident!.has(node)) refuse('resident nodes omit ' + purpose + ' node ' + node);
+		};
+		for (const site of sites) requireResident(site.node, 'value');
+		for (const event of program.events) requireResident(event.node, 'event');
+		for (const range of ranges) {
+			requireResident(range.node, 'range-parent');
+			if (range.before !== undefined && range.before !== null) {
+				requireResident(range.before, 'range-anchor');
+			}
+		}
+		for (let index = 0; index < program.nodes.length; index++) {
+			if (program.nodes[index]!.type === 'list') requireResident(index, 'list');
+		}
 	}
 
 	const params = ['pageId'];
@@ -918,12 +1083,11 @@ export function emitLynxMainThreadProgram(
 		.map((_node, index) => `n${index}`)
 		.concat(ranges.map((_range, index) => (painted.has(index) ? `t${index}` : 'undefined')))
 		.join(', ');
-	// Publish each created host into the caller-owned output table immediately.
-	// A later PAPI write may throw, and an incremental command-path mount needs
-	// every already-created node to remain discoverable for fault cleanup. The
-	// old tail writes exposed nodes only after a whole instance completed. Moving
-	// the same writes beside creation changes no successful-path work and lets a
-	// failed driver retain the prefix it actually made.
+	// Publish each created host into the caller-owned dense table immediately.
+	// A later PAPI write may throw, and first-screen capture still needs every
+	// already-created node for logical identity. A resident consumer may compact
+	// this table only after creation succeeds; keeping that policy outside the
+	// emitter preserves the run ABI and one straight-line create implementation.
 	const driverBody = body.flatMap((line) => {
 		const created = /^\t\tvar n(\d+) =/.exec(line);
 		if (created === null) return [line];
@@ -947,6 +1111,7 @@ export function emitLynxMainThreadProgram(
 	// number of logical IDs. Keep this explicit so existing callers preserve both
 	// their source bytes and the stronger dense-run meaning by default.
 	const runDriver = denseRun || options.structuralRuns === true;
+	const runValueOffset = runDriver && program.nodes[0]!.type === 'list-item';
 	const stride = program.nodes.length + ranges.length;
 
 	const preamble = [
@@ -1000,8 +1165,8 @@ export function emitLynxMainThreadProgram(
 								// straight into `out` at this instance's offset instead of into a
 								// returned array, which is the second allocation per instance this
 								// deletes; `out` is one array the caller sizes once.
-								`\t${options.name}.run = function (pageId, count, values, events, ranges, out) {`,
-								`\t\tvar vi = 0, ei = 0, ri = 0, oi = 0;`,
+								`\t${options.name}.run = function (pageId, count, values, events, ranges, out${runValueOffset ? ', valueOffset' : ''}) {`,
+								`\t\tvar vi = ${runValueOffset ? 'valueOffset === undefined ? 0 : valueOffset' : '0'}, ei = 0, ri = 0, oi = 0;`,
 								`\t\tfor (var i = 0; i < count; i++) {`,
 								...Array.from(
 									{ length: valueCount },
@@ -1024,6 +1189,7 @@ export function emitLynxMainThreadProgram(
 								`\t\t\tvi += ${valueCount}; ei += ${program.events.length}; ri += ${ranges.length}; oi += ${stride};`,
 								`\t\t}`,
 								`\t};`,
+								...(runValueOffset ? [`\t${options.name}.runValueOffset = true;`] : []),
 							]
 						: []),
 					...setter,

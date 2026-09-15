@@ -54,9 +54,9 @@
     "@octanejs/rspack-plugin": "workspace:*"
   },
   "peerDependencies": {
-    "@lynx-js/rspeedy": "0.16.0",
-    "@rsbuild/core": "2.1.4",
-    "@rspack/core": "2.1.3 || 2.1.5",
+    "@lynx-js/rspeedy": "0.17.1",
+    "@rsbuild/core": "2.2.3",
+    "@rspack/core": "2.2.2 || 2.2.3",
     "octane": "workspace:*"
   },
   "devDependencies": {
