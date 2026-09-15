@@ -32,6 +32,7 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import { sameLynxUniversalHostPropValue } from './host-props.js';
 import type { LynxBlockDeltaProducer } from './block-delta-producer.js';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './compiled-program-host-ref-feature.js';
 import { LYNX_PROFILE } from './profiling.js';
 
 import {
@@ -186,24 +187,31 @@ export function compileLynxBlockTemplate(
 	});
 	let frozenRefs: readonly number[] | undefined;
 	if (refs !== undefined) {
-		if (!Array.isArray(refs) || refs.length === 0) {
-			fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'host refs must be a non-empty node-index array');
-		}
-		const seen = new Set<number>();
-		for (const node of refs) {
-			if (
-				!Number.isSafeInteger(node) ||
-				node < 0 ||
-				node >= nodes.length ||
-				nodes[node]!.type === '#text' ||
-				nodes[node]!.type === 'raw-text' ||
-				seen.has(node)
-			) {
-				fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'invalid host-ref node ' + String(node));
+		if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+			if (!Array.isArray(refs) || refs.length === 0) {
+				fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'host refs must be a non-empty node-index array');
 			}
-			seen.add(node);
+			const seen = new Set<number>();
+			for (const node of refs) {
+				if (
+					!Number.isSafeInteger(node) ||
+					node < 0 ||
+					node >= nodes.length ||
+					nodes[node]!.type === '#text' ||
+					nodes[node]!.type === 'raw-text' ||
+					seen.has(node)
+				) {
+					fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'invalid host-ref node ' + String(node));
+				}
+				seen.add(node);
+			}
+			frozenRefs = Object.freeze([...refs]);
+		} else {
+			fail(
+				LYNX_BLOCK_CORE_DEVELOPMENT &&
+					'host refs reached a bundle compiled without host-ref support',
+			);
 		}
-		frozenRefs = Object.freeze([...refs]);
 	}
 	return Object.freeze({
 		program: frozen,

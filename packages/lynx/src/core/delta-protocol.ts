@@ -2,6 +2,7 @@ import type {
 	UniversalHostProgramAddress,
 	UniversalSerializableValue,
 } from 'octane/universal/native';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './compiled-program-host-ref-feature.js';
 import { decodeLynxTransportValue, encodeLynxTransportValue } from './transport-codec.js';
 
 /**
@@ -328,11 +329,15 @@ export function encodeLynxDeltaMessage(
 				]);
 				break;
 			case 'ref-run':
-				pushFrame(encoded, LynxDeltaOpcode.RefRun, [
-					requireInstance(operation.firstInstance, 'REF-RUN first instance'),
-					requireInstance(operation.firstId, 'REF-RUN first host id'),
-					requirePositiveCount(operation.stride, 'REF-RUN stride'),
-				]);
+				if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+					pushFrame(encoded, LynxDeltaOpcode.RefRun, [
+						requireInstance(operation.firstInstance, 'REF-RUN first instance'),
+						requireInstance(operation.firstId, 'REF-RUN first host id'),
+						requirePositiveCount(operation.stride, 'REF-RUN stride'),
+					]);
+				} else {
+					fail('REF-RUN reached a bundle compiled without host-ref support');
+				}
 				break;
 		}
 	}
@@ -439,13 +444,17 @@ export function decodeLynxDeltaMessage(input: unknown): LynxDeltaMessage {
 				break;
 			}
 			case LynxDeltaOpcode.RefRun:
-				if (arity !== 3) fail('REF-RUN requires exactly three fields');
-				operations.push({
-					op: 'ref-run',
-					firstInstance: requireInstance(input[cursor], 'REF-RUN first instance'),
-					firstId: requireInstance(input[cursor + 1], 'REF-RUN first host id'),
-					stride: requirePositiveCount(input[cursor + 2], 'REF-RUN stride'),
-				});
+				if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+					if (arity !== 3) fail('REF-RUN requires exactly three fields');
+					operations.push({
+						op: 'ref-run',
+						firstInstance: requireInstance(input[cursor], 'REF-RUN first instance'),
+						firstId: requireInstance(input[cursor + 1], 'REF-RUN first host id'),
+						stride: requirePositiveCount(input[cursor + 2], 'REF-RUN stride'),
+					});
+				} else {
+					fail('REF-RUN reached a bundle compiled without host-ref support');
+				}
 				break;
 		}
 		cursor = end;

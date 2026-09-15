@@ -18,6 +18,7 @@ import {
 	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO,
 	LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO,
+	LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_ASSET_INFO,
 	LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
 	LYNX_BLOCK_SELECTION_ASSET_INFO,
@@ -294,6 +295,8 @@ class ProgramCoverageProbePlugin {
 						const application = asset.info[LYNX_APPLICATION_SELECTION_ASSET_INFO];
 						const componentFeatures = asset.info[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO];
 						const compiledFeatures = asset.info[LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO];
+						const hostRefFeature =
+							asset.info[LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_ASSET_INFO];
 						const nativeListFeature =
 							asset.info[LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO];
 						if (
@@ -305,6 +308,7 @@ class ProgramCoverageProbePlugin {
 							application !== undefined ||
 							componentFeatures !== undefined ||
 							compiledFeatures !== undefined ||
+							hostRefFeature !== undefined ||
 							nativeListFeature !== undefined
 						) {
 							this.reports.push({
@@ -316,6 +320,7 @@ class ProgramCoverageProbePlugin {
 								application,
 								componentFeatures,
 								compiledFeatures,
+								hostRefFeature,
 								nativeListFeature,
 							});
 						}
@@ -347,6 +352,7 @@ async function collectCoreSelections(
 		| 'compiledFeatures'
 		| 'componentFeatures'
 		| 'core'
+		| 'hostRefFeature'
 		| 'nativeListFeature' = 'core',
 ): Promise<unknown[]> {
 	const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-core-selection-'));
@@ -384,6 +390,25 @@ async function collectCoreSelections(
 }
 
 describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
+	it('selects host-ref support from paired authored template facts', async () => {
+		expect(
+			await collectCoreSelections(
+				'production',
+				{ main: './src/block-eligible.ts' },
+				'hostRefFeature',
+			),
+		).toEqual([{ version: 1, selected: 'no-host-refs', reasons: [] }]);
+		expect(
+			await collectCoreSelections('production', { main: './src/block-ref.ts' }, 'hostRefFeature'),
+		).toEqual([
+			{
+				version: 1,
+				selected: 'full',
+				reasons: [{ code: 'entry-requires-host-refs', entry: 'main__octane_main_thread' }],
+			},
+		]);
+	}, 120_000);
+
 	it('selects native-list support from paired authored template facts', async () => {
 		expect(
 			await collectCoreSelections(
@@ -723,6 +748,11 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selected: 'no-thread-functions',
 					reasons: [],
 				},
+				hostRefFeature: {
+					version: 1,
+					selected: 'no-host-refs',
+					reasons: [],
+				},
 				nativeListFeature: {
 					version: 1,
 					selected: 'no-native-list',
@@ -787,6 +817,19 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			expect(
 				retained.some((identifier) =>
 					identifier.endsWith(
+						'/packages/lynx/src/core/compiled-program-host-ref-feature.no-host-refs.ts',
+					),
+				),
+				retained.join('\n'),
+			).toBe(true);
+			expect(
+				retained.some((identifier) =>
+					identifier.endsWith('/packages/lynx/src/core/compiled-program-host-ref-feature.ts'),
+				),
+			).toBe(false);
+			expect(
+				retained.some((identifier) =>
+					identifier.endsWith(
 						'/packages/lynx/src/core/compiled-program-native-list-feature.no-native-list.ts',
 					),
 				),
@@ -830,12 +873,19 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			expect(mainProgram?.code).toContain('"version": 1');
 			expect(mainProgram?.code).toContain('papi.createElement("image", pageId');
 			const decoded = await decodeNativeBundle(product);
-			expect(nativeScriptText(decoded['background-thread-script'])).toContain(
-				'octane-r10-background-selection',
-			);
-			expect(nativeScriptText(decoded['main-thread-script'])).not.toContain(
-				'octane-r10-background-selection',
-			);
+			const backgroundScript = nativeScriptText(decoded['background-thread-script']);
+			const mainThreadScript = nativeScriptText(decoded['main-thread-script']);
+			expect(backgroundScript).toContain('octane-r10-background-selection');
+			expect(mainThreadScript).not.toContain('octane-r10-background-selection');
+			const scripts = `${backgroundScript}\n${mainThreadScript}`;
+			for (const fullHostRefPath of [
+				'REF-RUN first instance',
+				'received the wrong host-attachment field count',
+				'host attachment id',
+			]) {
+				expect(scripts).not.toContain(fullHostRefPath);
+			}
+			expect(scripts).toContain('REF-RUN reached a bundle compiled without host-ref support');
 		} finally {
 			await result?.close();
 			rmSync(temporaryRoot, { recursive: true, force: true });
@@ -1382,6 +1432,16 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						reasons: [
 							{
 								code: 'compiled-feature-specialization-requires-compiled-application',
+							},
+							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
+						],
+					},
+					hostRefFeature: {
+						version: 1,
+						selected: 'full',
+						reasons: [
+							{
+								code: 'host-ref-specialization-requires-compiled-application',
 							},
 							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
 						],

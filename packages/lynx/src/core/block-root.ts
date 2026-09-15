@@ -54,9 +54,11 @@ import {
 } from './client-driver.js';
 import type { LynxHostAttachmentChange } from './protocol.js';
 import { createLynxBlockCore, type LynxBlock, type LynxBlockCore } from './block-core.js';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './compiled-program-host-ref-feature.js';
 import { LYNX_PROFILE, lynxWireProfile } from './profiling.js';
 
 const LYNX_BLOCK_ROOT_EVENT_SITE_ERROR = 'Octane Lynx OL019';
+const LYNX_BLOCK_ROOT_HOST_REF_ERROR = 'Octane Lynx OL514';
 
 /** One native handler bound to one event site of one block. */
 export type LynxBlockListener = (payload: unknown) => unknown;
@@ -161,6 +163,13 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 		);
 	}
 	const core = options.core ?? createLynxBlockCore();
+	const rejectUnavailableHostRefs = (): never => {
+		throw new Error(
+			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+				? 'Octane Lynx host refs reached a bundle compiled without host-ref support.'
+				: LYNX_BLOCK_ROOT_HOST_REF_ERROR,
+		);
+	};
 	const listeners = new Map<number, BoundListener>();
 	const refs = new Map<number, BoundHostRef>();
 	let attemptActive = false;
@@ -301,8 +310,8 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 		attemptActive = false;
 		const writes = listenerWrites;
 		listenerWrites = null;
-		const acceptedRefWrites = refWrites;
-		refWrites = null;
+		const acceptedRefWrites = LYNX_COMPILED_PROGRAM_HOST_REFS ? refWrites : null;
+		if (LYNX_COMPILED_PROGRAM_HOST_REFS) refWrites = null;
 		for (let index = 0; index < (writes?.length ?? 0); index += 2) {
 			const id = writes![index] as number;
 			const listener = writes![index + 1] as BoundListener | undefined;
@@ -314,7 +323,7 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 		return () => {
 			if (published) return;
 			published = true;
-			applyRefWrites(acceptedRefWrites);
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS) applyRefWrites(acceptedRefWrites);
 		};
 	};
 	const finishAccepted = (onAccept?: (publishRefs: () => void) => void): void => {
@@ -360,7 +369,7 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 			if (!attemptActive) return false;
 			attemptActive = false;
 			listenerWrites = null;
-			refWrites = null;
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS) refWrites = null;
 			core.abortAttempt();
 			return true;
 		},
@@ -413,56 +422,62 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 			}
 		},
 
-		bindRefs(block, values) {
-			const sites = block.template.refs;
-			if (sites === undefined || values.length !== sites.length) {
-				throw new Error('Octane Lynx Block ref values do not match their template sites.');
-			}
-			const writes = (refWrites ??= new Map());
-			for (let index = 0; index < sites.length; index++) {
-				const node = sites[index]!;
-				const id = block.firstId + node;
-				writes.set(id, {
-					id,
-					type: block.template.program.nodes[node]!.type,
-					attached: !block.deferred,
-					value: values[index],
-				});
-			}
-		},
-
-		releaseRefs(block) {
-			const sites = block.template.refs;
-			if (sites === undefined) return;
-			const writes = (refWrites ??= new Map());
-			for (const node of sites) writes.set(block.firstId + node, null);
-		},
-
-		dispatchHostAttachments(changes) {
-			const live: LynxHostAttachmentChange[] = [];
-			for (const change of changes) {
-				if (refs.has(change.id)) live.push(change);
-				else if (change.attached) {
-					throw new Error('Octane Lynx Block attachment lost its ref owner.');
+		bindRefs: LYNX_COMPILED_PROGRAM_HOST_REFS
+			? (block, values) => {
+					const sites = block.template.refs;
+					if (sites === undefined || values.length !== sites.length) {
+						throw new Error('Octane Lynx Block ref values do not match their template sites.');
+					}
+					const writes = (refWrites ??= new Map());
+					for (let index = 0; index < sites.length; index++) {
+						const node = sites[index]!;
+						const id = block.firstId + node;
+						writes.set(id, {
+							id,
+							type: block.template.program.nodes[node]!.type,
+							attached: !block.deferred,
+							value: values[index],
+						});
+					}
 				}
-			}
-			if (live.length === 0) return;
-			const batch = applyLynxHostAttachments(container, live);
-			const tasks: (() => void)[] = [];
-			for (const id of batch.detached) {
-				const record = refs.get(id);
-				if (record === undefined)
-					throw new Error('Octane Lynx Block attachment lost its ref owner.');
-				tasks.push(() => detachRef(record));
-			}
-			for (const id of batch.attached) {
-				const record = refs.get(id);
-				if (record === undefined)
-					throw new Error('Octane Lynx Block attachment lost its ref owner.');
-				tasks.push(() => attachRef(record));
-			}
-			runRefTasks(tasks);
-		},
+			: rejectUnavailableHostRefs,
+
+		releaseRefs: LYNX_COMPILED_PROGRAM_HOST_REFS
+			? (block) => {
+					const sites = block.template.refs;
+					if (sites === undefined) return;
+					const writes = (refWrites ??= new Map());
+					for (const node of sites) writes.set(block.firstId + node, null);
+				}
+			: () => {},
+
+		dispatchHostAttachments: LYNX_COMPILED_PROGRAM_HOST_REFS
+			? (changes) => {
+					const live: LynxHostAttachmentChange[] = [];
+					for (const change of changes) {
+						if (refs.has(change.id)) live.push(change);
+						else if (change.attached) {
+							throw new Error('Octane Lynx Block attachment lost its ref owner.');
+						}
+					}
+					if (live.length === 0) return;
+					const batch = applyLynxHostAttachments(container, live);
+					const tasks: (() => void)[] = [];
+					for (const id of batch.detached) {
+						const record = refs.get(id);
+						if (record === undefined)
+							throw new Error('Octane Lynx Block attachment lost its ref owner.');
+						tasks.push(() => detachRef(record));
+					}
+					for (const id of batch.attached) {
+						const record = refs.get(id);
+						if (record === undefined)
+							throw new Error('Octane Lynx Block attachment lost its ref owner.');
+						tasks.push(() => attachRef(record));
+					}
+					runRefTasks(tasks);
+				}
+			: rejectUnavailableHostRefs,
 
 		dispatchTransportEvent(message) {
 			if (message.type !== 'event') {

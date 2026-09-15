@@ -18,6 +18,7 @@ import {
 	type LynxCompiledProgramAdoptionSource,
 	type LynxCompiledProgramStore,
 } from './compiled-program-store.js';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './compiled-program-host-ref-feature.js';
 import type { LynxElementPAPI, LynxElementRef } from './papi.js';
 import type { LynxHostAttachmentChange, LynxHostAttachmentMessage } from './protocol.js';
 
@@ -117,7 +118,9 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 	let faulted = false;
 	let closed = false;
 	let pendingAdoption = adoption;
-	let pendingAttachments: LynxHostAttachmentChange[] = [];
+	let pendingAttachments: LynxHostAttachmentChange[] | null = LYNX_COMPILED_PROGRAM_HOST_REFS
+		? []
+		: null;
 
 	const report = (value: unknown, fallback = CONTROLLER_ERROR): Error => {
 		const error = normalizeLynxCompiledProgramError(value, fallback);
@@ -157,24 +160,27 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 		}
 	};
 
-	const onStoreAttachments = (changes: readonly LynxHostAttachmentChange[]): void => {
-		if (closed || faulted || changes.length === 0) return;
-		if (applying !== null) {
-			pendingAttachments.push(...changes);
-			return;
-		}
-		if (active === null) {
-			onStoreCallbackFault(
-				new Error(
-					CONTROLLER_DEVELOPMENT
-						? 'Octane Lynx compact receiver observed a host attachment without an active root.'
-						: CONTROLLER_ERROR,
-				),
-			);
-			return;
-		}
-		send({ ...active, type: 'host-attachment', changes: Object.freeze([...changes]) });
-	};
+	const onStoreAttachments: ((changes: readonly LynxHostAttachmentChange[]) => void) | undefined =
+		LYNX_COMPILED_PROGRAM_HOST_REFS
+			? (changes) => {
+					if (closed || faulted || changes.length === 0) return;
+					if (applying !== null) {
+						pendingAttachments!.push(...changes);
+						return;
+					}
+					if (active === null) {
+						onStoreCallbackFault(
+							new Error(
+								CONTROLLER_DEVELOPMENT
+									? 'Octane Lynx compact receiver observed a host attachment without an active root.'
+									: CONTROLLER_ERROR,
+							),
+						);
+						return;
+					}
+					send({ ...active, type: 'host-attachment', changes: Object.freeze([...changes]) });
+				}
+			: undefined;
 
 	const onStoreCallbackFault = (value: unknown): void => {
 		if (closed || faulted) return;
@@ -291,7 +297,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 					onStoreAttachments,
 				);
 			applying = candidate;
-			pendingAttachments = [];
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS) pendingAttachments = [];
 			try {
 				applyLynxCompiledProgramFrame(candidateStore, page, resolveProgram, frame, () => {
 					if (closed) {
@@ -330,7 +336,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 				});
 			} catch (error) {
 				applying = null;
-				pendingAttachments = [];
+				if (LYNX_COMPILED_PROGRAM_HOST_REFS) pendingAttachments = [];
 				let rollbackFlushError: unknown = null;
 				try {
 					// `applyLynxCompiledProgramFrame` has already replayed its journal.
@@ -371,8 +377,10 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 				reject(identity, error);
 				return;
 			}
-			const acceptedAttachments = Object.freeze(pendingAttachments);
-			pendingAttachments = [];
+			const acceptedAttachments = LYNX_COMPILED_PROGRAM_HOST_REFS
+				? Object.freeze(pendingAttachments!)
+				: null;
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS) pendingAttachments = [];
 			applying = null;
 			if (closed) {
 				releaseClosedStore(candidateStore);
@@ -386,7 +394,7 @@ export function createLynxCompiledProgramController<Node extends LynxElementRef>
 			store = candidateStore;
 			active = candidate;
 			if (!send({ ...candidate, type: 'ack' })) return;
-			if (acceptedAttachments.length !== 0) {
+			if (acceptedAttachments !== null && acceptedAttachments.length !== 0) {
 				if (!send({ ...candidate, type: 'host-attachment', changes: acceptedAttachments })) return;
 			}
 			send({ ...candidate, type: 'complete' });

@@ -7,6 +7,7 @@ import { lynxBlockRspeedyBackgroundRenderers } from '@octanejs/lynx/config';
 import { installLynxBackgroundCoreReplacement } from './background-core.js';
 import { installLynxBlockComponentFeatureReplacement } from './block-component-features.js';
 import { installLynxCompiledProgramFeatureReplacement } from './compiled-program-features.js';
+import { installLynxCompiledProgramHostRefFeatureReplacement } from './compiled-program-host-ref-feature.js';
 import { installLynxCompiledProgramNativeListFeatureReplacement } from './compiled-program-native-list-feature.js';
 import { installLynxApplicationSelectionReplacement } from './application-selection.js';
 
@@ -29,6 +30,9 @@ export const LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_VERSION = 1;
 export const LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO =
 	'octane:lynx-compiled-program-feature-selection';
 export const LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_VERSION = 1;
+export const LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_ASSET_INFO =
+	'octane:lynx-compiled-program-host-ref-feature-selection';
+export const LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_VERSION = 1;
 export const LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO =
 	'octane:lynx-compiled-program-native-list-feature-selection';
 export const LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_VERSION = 1;
@@ -164,6 +168,69 @@ function isLynxCompiledProgramNativeListFeatureOwner(module) {
 			resource.endsWith('/packages/lynx/src/core/papi.ts') ||
 			resource.includes('/node_modules/@octanejs/lynx/src/core/papi.ts'))
 	);
+}
+
+function isLynxCompiledProgramHostRefFeatureOwner(module) {
+	const resource = moduleResource(module);
+	if (resource === null) return false;
+	return [
+		'/packages/lynx/src/root.ts',
+		'/packages/lynx/src/core/block-component.ts',
+		'/packages/lynx/src/core/block-core.ts',
+		'/packages/lynx/src/core/block-delta-producer.ts',
+		'/packages/lynx/src/core/block-root.ts',
+		'/packages/lynx/src/core/client-driver.compiled-program.ts',
+		'/packages/lynx/src/core/compiled-program-block-transport.ts',
+		'/packages/lynx/src/core/compiled-program-controller.ts',
+		'/packages/lynx/src/core/delta-protocol.ts',
+		'/packages/lynx/src/core/compiled-program-frame.ts',
+		'/packages/lynx/src/core/compiled-program-store.ts',
+		'/packages/lynx/src/core/compiled-program-transport.ts',
+		'/packages/lynx/src/core/compiled-program-wire.ts',
+		'/packages/lynx/src/core/compiler-program.ts',
+		'/packages/lynx/src/core/papi.ts',
+	].some(
+		(suffix) =>
+			resource.endsWith(suffix) ||
+			resource.includes(
+				`/node_modules/@octanejs/lynx/src${suffix.slice('/packages/lynx/src'.length)}`,
+			),
+	);
+}
+
+function isLynxCompiledProgramHostRefFeature(module, selected) {
+	const resource = moduleResource(module);
+	if (resource === null) return false;
+	return selected === 'no-host-refs'
+		? resource.endsWith('/compiled-program-host-ref-feature.no-host-refs.ts')
+		: resource.endsWith('/compiled-program-host-ref-feature.ts');
+}
+
+function verifyCompiledProgramHostRefFeatureSelection(compilation, owners, selected) {
+	if (selected === 'no-host-refs' && owners.length === 0) {
+		throw new Error(
+			'@octanejs/rspeedy-plugin: compiled-program application disappeared during host-ref specialization.',
+		);
+	}
+	for (const owner of owners) {
+		const featureConnections = [...compilation.moduleGraph.getOutgoingConnections(owner)].filter(
+			(connection) =>
+				activeConnection(connection) &&
+				connection.module != null &&
+				(isLynxCompiledProgramHostRefFeature(connection.module, 'full') ||
+					isLynxCompiledProgramHostRefFeature(connection.module, 'no-host-refs')),
+		);
+		if (featureConnections.length === 0) continue;
+		if (
+			!featureConnections.some((connection) =>
+				isLynxCompiledProgramHostRefFeature(connection.module, selected),
+			)
+		) {
+			throw new Error(
+				`@octanejs/rspeedy-plugin: compiled-program host-ref owner ${moduleResource(owner)} did not resolve the selected ${selected} module.`,
+			);
+		}
+	}
 }
 
 function isLynxCompiledProgramNativeListFeature(module, selected) {
@@ -1607,6 +1674,61 @@ export function decideLynxCompiledProgramNativeListFeature(
 	});
 }
 
+function reportRequiresHostRefs(report) {
+	if (report?.featureRequirements?.paired !== true) return true;
+	for (const module of report.featureRequirements.modules) {
+		for (const requirements of [module.background, module.mainThread]) {
+			for (const feature of requirements.templateFeatures) {
+				if (feature.kind === 'host-ref') return true;
+			}
+		}
+	}
+	return false;
+}
+
+/**
+ * Remove resident host-ref publication only when every paired compiler ledger
+ * proves that neither thread can author a ref. Unknown, non-production, and
+ * general application graphs retain the source-safe full implementation.
+ */
+export function decideLynxCompiledProgramHostRefFeature(
+	compiler,
+	entries,
+	reports,
+	applicationDecision,
+) {
+	const reasons = [];
+	if (!oneShotProduction(compiler)) {
+		reasons.push(reason('host-ref-specialization-requires-one-shot-production'));
+	}
+	if (
+		applicationDecision?.selected !== 'compiled-program' &&
+		applicationDecision?.selected !== 'compiled-program-element-template'
+	) {
+		reasons.push(reason('host-ref-specialization-requires-compiled-application'));
+	}
+	for (const entry of entries) {
+		const report = reports.get(entry.mainThreadEntry);
+		if (report === undefined) {
+			reasons.push(reason('selection-report-missing', { entry: entry.mainThreadEntry }));
+			continue;
+		}
+		if (report.compiledProgramSelection?.eligible !== true) {
+			reasons.push(reason('entry-ineligible', { entry: entry.mainThreadEntry }));
+			continue;
+		}
+		if (reportRequiresHostRefs(report)) {
+			reasons.push(reason('entry-requires-host-refs', { entry: entry.mainThreadEntry }));
+		}
+	}
+	if (entries.length === 0) reasons.push(reason('no-authored-entries'));
+	return Object.freeze({
+		version: LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_VERSION,
+		selected: reasons.length === 0 ? 'no-host-refs' : 'full',
+		reasons: Object.freeze(reasons),
+	});
+}
+
 /** Attach versioned proofs and specialize the one-core production graph. */
 export class LynxProgramCoveragePlugin {
 	constructor(
@@ -1642,6 +1764,10 @@ export class LynxProgramCoveragePlugin {
 			compiler,
 			() => activeState?.compiledProgramFeatures.selected ?? 'full',
 		);
+		installLynxCompiledProgramHostRefFeatureReplacement(
+			compiler,
+			() => activeState?.compiledProgramHostRefFeature.selected ?? 'full',
+		);
 		installLynxCompiledProgramNativeListFeatureReplacement(
 			compiler,
 			() => activeState?.compiledProgramNativeListFeature.selected ?? 'full',
@@ -1673,6 +1799,11 @@ export class LynxProgramCoveragePlugin {
 				}),
 				compiledProgramFeatures: Object.freeze({
 					version: LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_VERSION,
+					selected: 'full',
+					reasons: Object.freeze([reason('application-graph-not-collected')]),
+				}),
+				compiledProgramHostRefFeature: Object.freeze({
+					version: LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_VERSION,
 					selected: 'full',
 					reasons: Object.freeze([reason('application-graph-not-collected')]),
 				}),
@@ -1708,6 +1839,8 @@ export class LynxProgramCoveragePlugin {
 									[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO]: state.blockComponentFeatures,
 									[LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO]:
 										state.compiledProgramFeatures,
+									[LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_ASSET_INFO]:
+										state.compiledProgramHostRefFeature,
 									[LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO]:
 										state.compiledProgramNativeListFeature,
 								});
@@ -1752,6 +1885,12 @@ export class LynxProgramCoveragePlugin {
 				state.reports,
 				state.applicationDecision,
 			);
+			state.compiledProgramHostRefFeature = decideLynxCompiledProgramHostRefFeature(
+				compiler,
+				this.entries,
+				state.reports,
+				state.applicationDecision,
+			);
 			state.compiledProgramNativeListFeature = decideLynxCompiledProgramNativeListFeature(
 				compiler,
 				this.entries,
@@ -1786,6 +1925,13 @@ export class LynxProgramCoveragePlugin {
 			}
 			if (state.compiledProgramFeatures.selected !== 'full') {
 				for (const owner of [...compilation.modules].filter(isLynxCompiledProgramFeatureOwner)) {
+					rebuild.add(owner);
+				}
+			}
+			if (state.compiledProgramHostRefFeature.selected !== 'full') {
+				for (const owner of [...compilation.modules].filter(
+					isLynxCompiledProgramHostRefFeatureOwner,
+				)) {
 					rebuild.add(owner);
 				}
 			}
@@ -1832,6 +1978,11 @@ export class LynxProgramCoveragePlugin {
 				compilation,
 				[...compilation.modules].filter(isLynxCompiledProgramFeatureOwner),
 				state.compiledProgramFeatures.selected,
+			);
+			verifyCompiledProgramHostRefFeatureSelection(
+				compilation,
+				[...compilation.modules].filter(isLynxCompiledProgramHostRefFeatureOwner),
+				state.compiledProgramHostRefFeature.selected,
 			);
 			verifyCompiledProgramNativeListFeatureSelection(
 				compilation,
