@@ -536,6 +536,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'createContext',
 								'memo',
 								'useContext',
+								'useId',
 								'useInsertionEffect',
 								'useLayoutEffect',
 								'useMemo',
@@ -548,6 +549,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'createContext',
 								'memo',
 								'useContext',
+								'useId',
 								'useInsertionEffect',
 								'useLayoutEffect',
 								'useMemo',
@@ -585,6 +587,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 											name: 'BlockEligibleRow',
 											hooks: [
 												expect.objectContaining({ name: 'useReducer' }),
+												expect.objectContaining({ name: 'useId' }),
 												expect.objectContaining({ name: 'useContext' }),
 												expect.objectContaining({ name: 'useMemo' }),
 												expect.objectContaining({ name: 'useInsertionEffect' }),
@@ -635,6 +638,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 											name: 'BlockEligibleRow',
 											hooks: [
 												expect.objectContaining({ name: 'useReducer' }),
+												expect.objectContaining({ name: 'useId' }),
 												expect.objectContaining({ name: 'useContext' }),
 												expect.objectContaining({ name: 'useMemo' }),
 												expect.objectContaining({ name: 'useInsertionEffect' }),
@@ -1236,7 +1240,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 21,
+							version: 22,
 							runtimeNames: [
 								'Activity',
 								'createContext',
@@ -1249,6 +1253,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'useContext',
 								'useDeferredValue',
 								'useEffect',
+								'useId',
 								'useInsertionEffect',
 								'useLayoutEffect',
 								'useMemo',

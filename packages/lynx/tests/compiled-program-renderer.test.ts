@@ -34,6 +34,7 @@ import {
 	useBatch,
 	useContext,
 	useDeferredValue,
+	useId,
 	useInsertionEffect,
 	useLayoutEffect,
 	useMemo,
@@ -77,6 +78,42 @@ const PLAN: UniversalProgramPlan = {
 };
 
 describe('@octanejs/lynx compact compiled-program renderer', () => {
+	it('allocates distinct deterministic useId values for the first screen', () => {
+		const plan = universalPlan('lynx', PLAN);
+		const App = defineUniversalComponent('lynx', () => {
+			const first = useId();
+			const second = useId();
+			return universalValue(plan, [first, second, first + ':' + second]);
+		});
+
+		const first = renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues;
+		const repeated = renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues;
+		expect(first).toEqual(repeated);
+		expect(first?.slice(0, 2)).toEqual([':octane-u4:', ':octane-u8:']);
+	});
+
+	it('reclaims useId values from discarded first-screen try arms', () => {
+		const plan = universalPlan('lynx', PLAN);
+		const never = new Promise<never>(() => {});
+		for (const discard of ['error', 'suspend'] as const) {
+			let discarded = '';
+			const App = defineUniversalComponent('lynx', () =>
+				universalTry(
+					() => {
+						discarded = useId();
+						if (discard === 'error') throw new Error('discard compact try arm');
+						return use(never);
+					},
+					() => universalValue(plan, [useId(), 'pending', 'pending']),
+					() => universalValue(plan, [useId(), 'caught', 'caught']),
+				),
+			);
+
+			const selected = renderLynxFirstScreen(App, {}).nodes[0]?.children[0]?.selectedValues;
+			expect(selected?.[0]).toBe(discarded);
+		}
+	});
+
 	it('normalizes every resident value exactly once before the scalar transport', () => {
 		const plan = universalPlan('lynx', PLAN);
 		const authoredClass = ['row', { active: true, disabled: false }] as const;

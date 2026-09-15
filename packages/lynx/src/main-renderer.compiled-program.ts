@@ -589,9 +589,14 @@ function materialize(value: unknown, visibility: 'visible' | 'hidden' = 'visible
 	}
 	if (record?.$$kind === UNIVERSAL_TRY) {
 		const boundary = value as unknown as TryValue;
+		const universalIdCheckpoint = nextUniversalId;
 		try {
 			return [range(materialize(boundary.body(), visibility))];
 		} catch (error) {
+			// The body never becomes part of the first tree. Let the pending or
+			// catch arm consume the same deterministic positions, matching both the
+			// complete main-thread renderer and the accepted background attempt.
+			nextUniversalId = universalIdCheckpoint;
 			if (error instanceof FirstScreenSuspense) {
 				if (boundary.pending === null) throw error;
 				return [range(materialize(boundary.pending(), visibility))];
@@ -722,6 +727,7 @@ function collectEvents(
 let rendering = false;
 let renderingContexts: CompactContexts = null;
 let nextHookSlot = 0;
+let nextUniversalId = 1;
 const NOOP_UPDATE = () => {};
 
 export function renderLynxFirstScreen<Props>(
@@ -733,11 +739,13 @@ export function renderLynxFirstScreen<Props>(
 		{ readonly id?: unknown } | undefined;
 	if (metadata?.id !== 'lynx') fail('requires a compiled Lynx component');
 	rendering = true;
+	nextUniversalId = 1;
 	let nodes: CompactNode[];
 	try {
 		nodes = materialize(component(props, componentContext()));
 	} finally {
 		renderingContexts = null;
+		nextUniversalId = 1;
 		rendering = false;
 	}
 	const ids = { id: 1 };
@@ -835,6 +843,17 @@ export function useCallback<T extends (...args: any[]) => any>(
 export function useRef<T>(initial: T, _slot?: unknown): { current: T } {
 	requireRender();
 	return { current: initial };
+}
+
+export function useId(_slot?: unknown): string {
+	requireRender();
+	const index = nextUniversalId++;
+	// The compact first screen is the first Universal root in its isolated main-
+	// thread realm. Match that root's Cantor-paired namespace so this renderer
+	// stays byte-identical to the complete main-thread implementation.
+	const sum = 1 + index;
+	const paired = (sum * (sum + 1)) / 2 + index;
+	return `:octane-u${paired.toString(36)}:`;
 }
 
 export function useEffect(): void {

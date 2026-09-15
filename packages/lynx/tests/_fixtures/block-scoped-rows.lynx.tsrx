@@ -5,6 +5,7 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useId,
 	useInsertionEffect,
 	useLayoutEffect,
 	useState,
@@ -44,18 +45,22 @@ export interface BlockScopedRowsProps {
 	readonly rows: readonly BlockScopedRowValue[];
 	readonly log: (entry: string) => void;
 	readonly observe: (entry: string) => void;
+	readonly observeId?: (row: number, id: string) => void;
 }
 
 export function BlockScopedRow(props: {
 	readonly row: BlockScopedRowValue;
 	readonly log: (entry: string) => void;
 	readonly observe: (entry: string) => void;
+	readonly observeId?: (row: number, id: string) => void;
 }) @{
 	const [tone, setTone] = useState('quiet');
+	const hookId = useId();
 	const row = props.row;
 	const label = row.label;
 	const log = props.log;
 	props.observe('row:' + row.id);
+	props.observeId?.(row.id, hookId);
 	const onTap = useCallback(() => setTone((value) => (value === 'quiet' ? 'loud' : 'quiet')), [
 		tone,
 	]);
@@ -79,7 +84,12 @@ export function BlockScopedRowsFixture(props: BlockScopedRowsProps) @{
 		<text class="title">rows</text>
 		<view class="rows">
 			@for (const row of props.rows; key row.id) {
-				<BlockScopedRow row={row} log={props.log} observe={props.observe} />
+				<BlockScopedRow
+					row={row}
+					log={props.log}
+					observe={props.observe}
+					observeId={props.observeId}
+				/>
 			}
 		</view>
 	</view>

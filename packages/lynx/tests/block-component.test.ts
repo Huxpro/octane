@@ -2375,6 +2375,39 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		expect(lifecycle.slice(-2)).toEqual(['cleanup:two:quiet', 'cleanup:one:quiet']);
 	});
 
+	it('keeps compiled keyed-row useId values stable through moves and isolates remounts', async () => {
+		const one = { id: 1, label: 'one' };
+		const two = { id: 2, label: 'two' };
+		const observed = new Map<number, string[]>();
+		const observeId = (row: number, id: string): void => {
+			const values = observed.get(row);
+			if (values === undefined) observed.set(row, [id]);
+			else values.push(id);
+		};
+		const block = blockColumn<BlockScopedRowsProps>();
+		const component = BlockScopedRowsFixture as never as LynxComponent<BlockScopedRowsProps>;
+		const props = (rows: readonly BlockScopedRowsProps['rows'][number][]) => ({
+			rows,
+			log: noop,
+			observe: noop,
+			observeId,
+		});
+
+		await block.render(component, props([one, two]));
+		const oneId = observed.get(1)![0]!;
+		const twoId = observed.get(2)![0]!;
+		expect(oneId).not.toBe(twoId);
+
+		await block.render(component, props([two, one]));
+		expect(observed.get(1)!.at(-1)).toBe(oneId);
+		expect(observed.get(2)!.at(-1)).toBe(twoId);
+
+		await block.render(component, props([two]));
+		await block.render(component, props([two, one]));
+		expect(observed.get(1)!.at(-1)).not.toBe(oneId);
+		expect(observed.get(2)!.at(-1)).toBe(twoId);
+	});
+
 	it('propagates context updates through keyed moves without resetting row state', async () => {
 		const Theme = createContext('default');
 		const lifecycle: string[] = [];

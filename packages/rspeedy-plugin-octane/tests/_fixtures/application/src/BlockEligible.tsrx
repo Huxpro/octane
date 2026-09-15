@@ -4,6 +4,7 @@ import {
 	createContext,
 	memo,
 	useContext,
+	useId,
 	useInsertionEffect,
 	useLayoutEffect,
 	useMemo,
@@ -28,6 +29,7 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 	readonly onSelect: (label: string) => void;
 }) @{
 	const [taps, incrementTaps] = useReducer((value: number, amount: number) => value + amount, 0);
+	const hookId = useId();
 	const theme = useContext(BlockTheme);
 	const rowClass = useMemo(() => ['row', theme, 'taps-' + taps], [theme, taps]);
 	useInsertionEffect(() => undefined, [theme]);
@@ -37,7 +39,7 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 		props.onSelect(item.label);
 		incrementTaps(1);
 	};
-	<view id={'row-' + item.id} class={rowClass}>
+	<view id={'row-' + item.id + '-' + hookId} class={rowClass}>
 		<image id={'image-' + item.id} src={item.image} mode="aspectFill" />
 		<text bindtap={onTap}>{item.label + ':' + taps as string}</text>
 	</view>
