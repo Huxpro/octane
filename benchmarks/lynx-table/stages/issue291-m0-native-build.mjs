@@ -56,18 +56,17 @@ function git(directory, args) {
 	return execFileSync('git', args, { cwd: directory, encoding: 'utf8' }).trim();
 }
 
-function version(directory, command, args) {
+function commandIdentity(directory, command, args) {
 	const result = spawnSync(command, args, { cwd: directory, encoding: 'utf8' });
 	const output = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
-	if (result.error !== undefined || result.status !== 0 || output === '') {
-		throw (
-			result.error ??
-			new Error(
-				`could not identify ${command}: exit ${String(result.status)}${output && `\n${output}`}`,
-			)
-		);
+	if (result.error !== undefined || output === '') {
+		throw result.error ?? new Error(`could not identify ${command}`);
 	}
-	return output;
+	return {
+		output,
+		exitStatus: result.status,
+		signal: result.signal,
+	};
 }
 
 const { values } = parseArgs({
@@ -176,8 +175,6 @@ for (const marker of bundleProbeMarkers) {
 	}
 }
 
-fs.mkdirSync(output, { recursive: false });
-fs.writeFileSync(path.join(output, 'main.lynx.bundle'), bundle);
 const receipt = {
 	protocol: 'octane-issue291-m0-native-build-v1',
 	label,
@@ -209,8 +206,8 @@ const receipt = {
 	},
 	toolchain: {
 		node: process.version,
-		pnpm: version(checkout, 'pnpm', ['--version']),
-		rspeedy: version(
+		pnpm: commandIdentity(checkout, 'pnpm', ['--version']),
+		rspeedy: commandIdentity(
 			path.join(checkout, 'packages/rspeedy-plugin-octane'),
 			path.join(checkout, 'packages/rspeedy-plugin-octane/node_modules/.bin/rspeedy'),
 			['--version'],
@@ -225,6 +222,8 @@ const receipt = {
 		probeMarkers: bundleProbeMarkers,
 	},
 };
+fs.mkdirSync(output, { recursive: false });
+fs.writeFileSync(path.join(output, 'main.lynx.bundle'), bundle);
 fs.writeFileSync(path.join(output, 'receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`);
 console.log(
 	`[issue291-m0] ${label} ${commit.slice(0, 12)} -> ${receipt.bundle.sha256} (${receipt.bundle.bytes} bytes)`,
