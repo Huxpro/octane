@@ -174,8 +174,8 @@ export function instrumentLynxStageSources(repositoryRoot) {
 			// is the one every other main-thread counter would have inherited.
 			let next = replaceOnce(
 				source,
-				"import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref.js';\n",
-				`import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref.js';
+				"import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref-attribute.js';\n",
+				`import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref-attribute.js';
 import { lynxWireProfile } from './profiling.js';
 `,
 				file,
