@@ -3867,6 +3867,16 @@ a 20-cycle memory window needs more than 316 seconds before launch and device
 overhead are included. A process-accounting parse failure aborts the run rather
 than emitting a partial memory result.
 
+Long device cohorts can stop cleanly at a complete cell-group boundary with
+`--checkpoint <file> --max-new-samples <N>`. For a two-cell AB/BA run, `N` must
+be even, so a lease never splits an adjacent pair. A later invocation with the
+same command and checkpoint resumes the sequence only when the runner commit,
+raw device serial and fingerprint, controls, and every bundle identity still
+match. This supports a second lease of the same physical device; it rejects
+combining different devices into one apparent session. The final invocation
+writes `--out` and removes the checkpoint only after the complete target is
+accepted.
+
 Re-judge a completed two-cell shipping window without leasing the device again:
 
 ```bash

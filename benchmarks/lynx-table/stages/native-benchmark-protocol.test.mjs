@@ -4,7 +4,9 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+	issue194CollectionState,
 	issue194DeviceCompletionMode,
+	issue194DeviceResumeMismatch,
 	issue194LifecycleSequence,
 	normalizeIssue194NativeReceipt,
 	parseIssue194AndroidProcessMemory,
@@ -108,6 +110,72 @@ test('issue #194 process-memory controls require the Native-only lifecycle lane'
 				mode: 'commit',
 				createClearRecreate: false,
 				settleMs: 0,
+			}),
+		/positive integer/,
+	);
+});
+
+test('issue #194 checkpoint resume preserves one runner and physical device identity', () => {
+	const current = {
+		protocol: 'octane-issue194-device-v1',
+		question: 'M0 memory',
+		octaneCommit: 'a'.repeat(40),
+		serial: 'device:1234',
+		device: { fingerprint: 'build/device', abi: 'arm64-v8a' },
+		controls: { ordering: 'AB/BA' },
+		scale: 1000,
+		targetAcceptedSamplesPerCell: 10,
+		disableDevToolBundle: { bundle: { sha256: 'b'.repeat(64) } },
+		cells: { baseline: { bundle: { sha256: 'c'.repeat(64) } } },
+	};
+	assert.equal(issue194DeviceResumeMismatch(structuredClone(current), current), null);
+	for (const [field, mutate] of [
+		['octaneCommit', (value) => (value.octaneCommit = 'd'.repeat(40))],
+		['serial', (value) => (value.serial = 'other:1234')],
+		['device', (value) => (value.device.fingerprint = 'other/device')],
+		['cells', (value) => (value.cells.baseline.bundle.sha256 = 'e'.repeat(64))],
+	]) {
+		const resumed = structuredClone(current);
+		mutate(resumed);
+		assert.equal(issue194DeviceResumeMismatch(resumed, current), field);
+	}
+});
+
+test('issue #194 bounded collection pauses only before the final target', () => {
+	assert.equal(
+		issue194CollectionState({
+			acceptedSamples: 6,
+			targetSamples: 20,
+			newlyAcceptedSamples: 6,
+			maxNewSamples: 6,
+		}),
+		'paused',
+	);
+	assert.equal(
+		issue194CollectionState({
+			acceptedSamples: 20,
+			targetSamples: 20,
+			newlyAcceptedSamples: 2,
+			maxNewSamples: 2,
+		}),
+		'complete',
+	);
+	assert.equal(
+		issue194CollectionState({
+			acceptedSamples: 4,
+			targetSamples: 20,
+			newlyAcceptedSamples: 4,
+			maxNewSamples: 6,
+		}),
+		'collecting',
+	);
+	assert.throws(
+		() =>
+			issue194CollectionState({
+				acceptedSamples: 0,
+				targetSamples: 20,
+				newlyAcceptedSamples: 0,
+				maxNewSamples: 0,
 			}),
 		/positive integer/,
 	);

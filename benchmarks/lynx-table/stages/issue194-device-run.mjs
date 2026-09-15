@@ -5,7 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+	issue194CollectionState,
 	issue194DeviceCompletionMode,
+	issue194DeviceResumeMismatch,
 	issue194LifecycleSequence,
 	normalizeIssue194NativeReceipt,
 	parseIssue194AndroidProcessMemory,
@@ -29,6 +31,8 @@ const disableFile = path.resolve(readArg('--disable-file'));
 const output = path.resolve(readArg('--out'));
 const checkpointArg = readOptionalArg('--checkpoint');
 const checkpoint = checkpointArg === null ? null : path.resolve(checkpointArg);
+const maxNewSamplesArg = readOptionalArg('--max-new-samples');
+const maxNewSamples = maxNewSamplesArg === null ? null : Number(maxNewSamplesArg);
 const workload = readOptionalArg('--workload');
 const tapXArg = readOptionalArg('--tap-x');
 const tapYArg = readOptionalArg('--tap-y');
@@ -89,6 +93,15 @@ if (!Number.isSafeInteger(scale) || scale < 1) throw new Error('scale must be po
 if (!Number.isSafeInteger(samples) || samples < 1) throw new Error('samples must be positive.');
 if (cells.length < 1 || cells.length > 2) {
 	throw new Error('this runner requires one cell or an AB/BA pair.');
+}
+if (
+	maxNewSamples !== null &&
+	(!Number.isSafeInteger(maxNewSamples) || maxNewSamples < 1 || maxNewSamples % cells.length !== 0)
+) {
+	throw new Error('--max-new-samples must be a positive integer preserving complete cell groups.');
+}
+if (maxNewSamples !== null && checkpoint === null) {
+	throw new Error('--max-new-samples requires --checkpoint.');
 }
 if (workload !== null && workload !== 'create' && workload !== 'clear') {
 	throw new Error('--workload must be create or clear.');
@@ -906,16 +919,9 @@ let report = {
 
 if (checkpoint !== null && fs.existsSync(checkpoint)) {
 	const resumed = JSON.parse(fs.readFileSync(checkpoint, 'utf8'));
-	if (
-		resumed.protocol !== report.protocol ||
-		resumed.question !== report.question ||
-		resumed.scale !== report.scale ||
-		resumed.targetAcceptedSamplesPerCell !== report.targetAcceptedSamplesPerCell ||
-		JSON.stringify(resumed.controls) !== JSON.stringify(report.controls) ||
-		JSON.stringify(resumed.disableDevToolBundle) !== JSON.stringify(report.disableDevToolBundle) ||
-		JSON.stringify(resumed.cells) !== JSON.stringify(report.cells)
-	) {
-		throw new Error(`checkpoint does not match this window: ${checkpoint}`);
+	const mismatch = issue194DeviceResumeMismatch(resumed, report);
+	if (mismatch !== null) {
+		throw new Error(`checkpoint does not match this window on ${mismatch}: ${checkpoint}`);
 	}
 	report = resumed;
 	console.log(
@@ -928,7 +934,8 @@ function saveCheckpoint() {
 	fs.writeFileSync(checkpoint, `${JSON.stringify(report, null, 2)}\n`);
 }
 
-for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
+let newlyAcceptedSamples = 0;
+collection: for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
 	if (report.samples.some((sample) => sample.ordinal === ordinal + 1)) continue;
 	const cell = cells[cellIndex];
 	let accepted = false;
@@ -939,6 +946,7 @@ for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
 		const sample = await measure(cell, ordinal + 1);
 		if (sample.accepted) {
 			report.samples.push(sample);
+			newlyAcceptedSamples++;
 			saveCheckpoint();
 			accepted = true;
 			console.log(
@@ -959,11 +967,35 @@ for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
 	}
 	if (!accepted)
 		throw new Error(`two invalid attempts for ${cell.label} at ordinal ${ordinal + 1}.`);
+	if (
+		issue194CollectionState({
+			acceptedSamples: report.samples.length,
+			targetSamples: samples * cells.length,
+			newlyAcceptedSamples,
+			maxNewSamples,
+		}) === 'paused'
+	) {
+		break collection;
+	}
 }
 
-fs.mkdirSync(path.dirname(output), { recursive: true });
-const temporaryOutput = `${output}.tmp`;
-fs.writeFileSync(temporaryOutput, `${JSON.stringify(report, null, 2)}\n`);
-fs.renameSync(temporaryOutput, output);
-if (checkpoint !== null) fs.rmSync(checkpoint, { force: true });
-console.log(`[issue194] wrote ${output}`);
+const collectionState = issue194CollectionState({
+	acceptedSamples: report.samples.length,
+	targetSamples: samples * cells.length,
+	newlyAcceptedSamples,
+	maxNewSamples,
+});
+if (collectionState === 'complete') {
+	fs.mkdirSync(path.dirname(output), { recursive: true });
+	const temporaryOutput = `${output}.tmp`;
+	fs.writeFileSync(temporaryOutput, `${JSON.stringify(report, null, 2)}\n`);
+	fs.renameSync(temporaryOutput, output);
+	if (checkpoint !== null) fs.rmSync(checkpoint, { force: true });
+	console.log(`[issue194] wrote ${output}`);
+} else if (collectionState === 'paused') {
+	console.log(
+		`[issue194] paused after ${newlyAcceptedSamples} new samples; checkpoint retains ${report.samples.length}/${samples * cells.length}`,
+	);
+} else {
+	throw new Error('issue #194 collection stopped before its target without a pause boundary.');
+}

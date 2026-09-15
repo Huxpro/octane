@@ -189,50 +189,75 @@ test('paired geometric bootstrap is deterministic and resamples whole pair ratio
 	assert.ok(first.ci95.upper >= first.pointEstimate);
 });
 
+function collectorArgs() {
+	return [
+		new URL('./issue194-device-run.mjs', import.meta.url).pathname,
+		'--serial',
+		'fixture',
+		'--disable-url',
+		'http://127.0.0.1/disable.lynx.bundle',
+		'--disable-file',
+		'missing-disable.lynx.bundle',
+		'--out',
+		'missing-output.json',
+		'--question',
+		'fixture',
+		'--scale',
+		'1000',
+		'--samples',
+		'10',
+		'--timeout-ms',
+		'600000',
+		'--workload',
+		'create',
+		'--tap-x',
+		'1',
+		'--tap-y',
+		'1',
+		'--clear-tap-x',
+		'2',
+		'--clear-tap-y',
+		'2',
+		'--create-clear-recreate',
+		'--sequence-cycles',
+		'20',
+		'--native-only',
+		'--process-memory',
+		'--cell',
+		'reference=http://127.0.0.1/reference.lynx.bundle',
+		'--cell',
+		'candidate=http://127.0.0.1/candidate.lynx.bundle',
+	];
+}
+
 test('the process-memory collector refuses cells without exact source provenance before ADB', () => {
-	const result = spawnSync(
-		process.execPath,
-		[
-			new URL('./issue194-device-run.mjs', import.meta.url).pathname,
-			'--serial',
-			'fixture',
-			'--disable-url',
-			'http://127.0.0.1/disable.lynx.bundle',
-			'--disable-file',
-			'missing-disable.lynx.bundle',
-			'--out',
-			'missing-output.json',
-			'--question',
-			'fixture',
-			'--scale',
-			'1000',
-			'--samples',
-			'10',
-			'--timeout-ms',
-			'600000',
-			'--workload',
-			'create',
-			'--tap-x',
-			'1',
-			'--tap-y',
-			'1',
-			'--clear-tap-x',
-			'2',
-			'--clear-tap-y',
-			'2',
-			'--create-clear-recreate',
-			'--sequence-cycles',
-			'20',
-			'--native-only',
-			'--process-memory',
-			'--cell',
-			'reference=http://127.0.0.1/reference.lynx.bundle',
-			'--cell',
-			'candidate=http://127.0.0.1/candidate.lynx.bundle',
-		],
-		{ encoding: 'utf8' },
-	);
+	const result = spawnSync(process.execPath, collectorArgs(), { encoding: 'utf8' });
 	assert.notEqual(result.status, 0);
 	assert.match(result.stderr, /requires one --cell-commit/);
 	assert.doesNotMatch(result.stderr, /adb/);
+});
+
+test('the process-memory collector pauses only on complete checkpointed cell groups', () => {
+	const identified = [
+		...collectorArgs(),
+		'--cell-commit',
+		`reference=${'a'.repeat(40)}`,
+		'--cell-commit',
+		`candidate=${'b'.repeat(40)}`,
+	];
+	const splitPair = spawnSync(
+		process.execPath,
+		[...identified, '--checkpoint', 'fixture-checkpoint.json', '--max-new-samples', '1'],
+		{ encoding: 'utf8' },
+	);
+	assert.notEqual(splitPair.status, 0);
+	assert.match(splitPair.stderr, /preserving complete cell groups/);
+	assert.doesNotMatch(splitPair.stderr, /adb/);
+
+	const noCheckpoint = spawnSync(process.execPath, [...identified, '--max-new-samples', '2'], {
+		encoding: 'utf8',
+	});
+	assert.notEqual(noCheckpoint.status, 0);
+	assert.match(noCheckpoint.stderr, /requires --checkpoint/);
+	assert.doesNotMatch(noCheckpoint.stderr, /adb/);
 });

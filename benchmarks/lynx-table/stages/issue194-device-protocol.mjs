@@ -39,6 +39,48 @@ export function validateIssue194ProcessMemoryControls({
 	}
 }
 
+/** Fail closed when a checkpoint would splice a different runner or device into one cohort. */
+export function issue194DeviceResumeMismatch(resumed, current) {
+	for (const field of [
+		'protocol',
+		'question',
+		'octaneCommit',
+		'serial',
+		'scale',
+		'targetAcceptedSamplesPerCell',
+	]) {
+		if (resumed[field] !== current[field]) return field;
+	}
+	for (const field of ['device', 'controls', 'disableDevToolBundle', 'cells']) {
+		if (JSON.stringify(resumed[field]) !== JSON.stringify(current[field])) return field;
+	}
+	return null;
+}
+
+export function issue194CollectionState({
+	acceptedSamples,
+	targetSamples,
+	newlyAcceptedSamples,
+	maxNewSamples,
+}) {
+	for (const [label, value] of [
+		['acceptedSamples', acceptedSamples],
+		['targetSamples', targetSamples],
+		['newlyAcceptedSamples', newlyAcceptedSamples],
+	]) {
+		if (!Number.isSafeInteger(value) || value < 0) {
+			throw new TypeError(`${label} must be a non-negative integer.`);
+		}
+	}
+	if (targetSamples < 1) throw new TypeError('targetSamples must be positive.');
+	if (maxNewSamples !== null && (!Number.isSafeInteger(maxNewSamples) || maxNewSamples < 1)) {
+		throw new TypeError('maxNewSamples must be null or a positive integer.');
+	}
+	if (acceptedSamples >= targetSamples) return 'complete';
+	if (maxNewSamples !== null && newlyAcceptedSamples >= maxNewSamples) return 'paused';
+	return 'collecting';
+}
+
 /** Repeated lifecycle cycles with an explicit reset between populated end states. */
 export function issue194LifecycleSequence(cycles, create, clear) {
 	if (!Number.isSafeInteger(cycles) || cycles < 1) {
