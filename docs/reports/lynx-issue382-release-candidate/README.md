@@ -135,7 +135,10 @@ functions, keeps Lynx PAPI/transport/list recycling as native owner boundaries,
 and selects the product only for an entire proven root. It does not introduce a
 React host config, DOM abstraction, or mid-tree interpreter fallback merely to
 mirror an unimplemented upstream interface. Upstream issue #1055 was still open
-and had no integration contract to target when this report was refreshed.
+and had no integration contract to target when this report was refreshed. A
+subsequent read-only review through upstream `277c10c3f` classifies the new
+Strong/context/style commits and their Lynx adoption boundaries in
+[`packages/lynx/UPSTREAM.md`](../../../packages/lynx/UPSTREAM.md#2026-09-15-upstream-tip-delta).
 
 ## #290/#291 handoff and R11 gates
 

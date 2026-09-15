@@ -160,6 +160,36 @@ The implementation remains narrower: it does not add signal-read ownership,
 Strong-mode projection caches, full semantic coverage, default migration, or
 old-path retirement. No upstream acceptance or merge is claimed.
 
+### 2026-09-15 upstream-tip delta
+
+A later read-only refresh found `Huxpro/octane:new-lynx` unchanged at
+`7a523bf20d04578c39fe0b5fe532cdef6dab3e9e`, while
+`octanejs/octane:main` had advanced to
+`277c10c3fa80f56ef162959832dba35c1b43b32e`; #1055 remained open without an
+implementation comment. The three compiler-touching commits after the frozen
+R11 comparator were reviewed separately:
+
+- `fdb790a6b` (#1082) reserves module-wide hook/memo slot ranges and changes the
+  DOM runtime's Provider/lazy shared-body ownership together. The compiler half
+  changes a shared ABI while the runtime half is written for DOM `Scope`; it is
+  not safe to cherry-pick only the numeric-slot rewrite into the independent
+  Universal/Block owners. It remains an input to the next coherent upstream
+  synchronization and must then rerun both Lynx thread products.
+- `527358c52` (#1083) expands the shared Strong diagnostics and automatic memo
+  front end. Those checks are useful upstream input, but they do not themselves
+  implement #1055's Lynx-owned reactive consumer, projection cache, or
+  main/background adoption protocol. Strong-on-Lynx therefore remains explicit
+  work rather than an implied capability of this branch.
+- `277c10c3f` (#1093) specializes DOM inline-style suffix updates after object
+  spreads and adds DOM setter/runtime support. Lynx style objects continue
+  through renderer-owned host-prop normalization, so that DOM lowering is not
+  copied into the Lynx backend.
+
+This audit does not move the frozen R11 comparator or claim those upstream
+commits are integrated. It records why the public `target: 'lynx'` type fix is a
+safe standalone seam while the new shared compiler/runtime work requires a
+separate synchronized candidate and qualification.
+
 The pinned Android evidence qualifies only the experimental 10,000-row table
 create/startup boundary and a safe 30,000-row rejection. It also records why
 pending PaintingContext work, synchronous-first-screen work, live instance
