@@ -1,6 +1,7 @@
 declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import type { UniversalHostBatch, UniversalHostProgramAddress } from 'octane/universal/native';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './compiled-program-host-ref-feature.js';
 import {
 	encodeLynxDeltaMessage,
 	isLynxDeltaValue,
@@ -248,7 +249,7 @@ export function createLynxBlockDeltaProducer(): LynxBlockDeltaProducer {
 				count: input.count,
 				values,
 			});
-			if (input.refs !== undefined) {
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS && input.refs !== undefined) {
 				append({
 					op: 'ref-run',
 					firstInstance,

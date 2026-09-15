@@ -12,6 +12,7 @@ import {
 	LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT,
 } from './compiled-program-wire.js';
 import { LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS } from './compiled-program-features.js';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './compiled-program-host-ref-feature.js';
 import type { LynxDataLifecycleMessage } from './lifecycle-types.js';
 import type {
 	LynxBackgroundFunctionWireDescriptor,
@@ -449,28 +450,40 @@ export function createLynxCompiledProgramTransport(
 			return;
 		}
 		if (message.type === 'host-attachment') {
-			const entry = pending.get(message.version);
-			const matchesPending =
-				entry !== undefined &&
-				entry.state === 'acknowledged' &&
-				message.root === entry.identity.root;
-			const matchesAccepted =
-				accepted !== null && message.root === accepted.root && message.version === accepted.version;
-			if (!matchesPending && !matchesAccepted) {
-				report(
-					new Error(
-						TRANSPORT_DEVELOPMENT
-							? 'Octane Lynx compact transport received a host attachment for an unaccepted frame.'
-							: TRANSPORT_ERROR,
-					),
-				);
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+				const entry = pending.get(message.version);
+				const matchesPending =
+					entry !== undefined &&
+					entry.state === 'acknowledged' &&
+					message.root === entry.identity.root;
+				const matchesAccepted =
+					accepted !== null &&
+					message.root === accepted.root &&
+					message.version === accepted.version;
+				if (!matchesPending && !matchesAccepted) {
+					report(
+						new Error(
+							TRANSPORT_DEVELOPMENT
+								? 'Octane Lynx compact transport received a host attachment for an unaccepted frame.'
+								: TRANSPORT_ERROR,
+						),
+					);
+					return;
+				}
+				try {
+					options.onHostAttachments?.(message.changes);
+				} catch (error) {
+					fault(error);
+				}
 				return;
 			}
-			try {
-				options.onHostAttachments?.(message.changes);
-			} catch (error) {
-				fault(error);
-			}
+			fault(
+				new Error(
+					TRANSPORT_DEVELOPMENT
+						? 'Octane Lynx compact transport received a host attachment in a bundle compiled without host-ref support.'
+						: TRANSPORT_ERROR,
+				),
+			);
 			return;
 		}
 		if (message.type === 'dispose-ack' || message.type === 'dispose-retry') {

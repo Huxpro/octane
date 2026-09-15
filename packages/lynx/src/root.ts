@@ -18,6 +18,7 @@ import {
 } from './core/client-driver.js';
 import { LYNX_COMPILED_PROGRAM_APPLICATION } from './core/application-selection.js';
 import { LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS } from './core/compiled-program-features.js';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './core/compiled-program-host-ref-feature.js';
 import { prepareLynxBackgroundLifecycleReceiver } from './core/background-lifecycle.js';
 import { applyLynxBackgroundLifecycleData } from './core/lifecycle-data.js';
 import { LYNX_BLOCK_BACKGROUND_CORE } from './core/background-core-selection.js';
@@ -285,12 +286,18 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 	const context = resolveContext(target, options.context);
 	const scheduleMicrotask = resolveMicrotaskScheduler(target, options.scheduleMicrotask);
 	const general = LYNX_COMPILED_PROGRAM_APPLICATION ? null : createLynxGeneralBackgroundResources();
-	const createSelectorQuery = target.lynx?.createSelectorQuery;
 	const container = createLynxClientContainer({
-		createSelectorQuery:
-			typeof createSelectorQuery === 'function'
-				? () => createSelectorQuery.call(target.lynx)
-				: undefined,
+		...(LYNX_COMPILED_PROGRAM_HOST_REFS
+			? (() => {
+					const createSelectorQuery = target.lynx?.createSelectorQuery;
+					return {
+						createSelectorQuery:
+							typeof createSelectorQuery === 'function'
+								? () => createSelectorQuery.call(target.lynx)
+								: undefined,
+					};
+				})()
+			: null),
 		...(general === null ? null : { worklets: general.worklets }),
 	});
 	const lifecycleInstallation = LYNX_COMPILED_PROGRAM_APPLICATION

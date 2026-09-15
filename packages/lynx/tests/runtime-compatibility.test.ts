@@ -126,6 +126,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/compiled-program-background-worklets.ts',
 				'src/core/compiled-program-block-transport.ts',
 				'src/core/compiled-program-features.ts',
+				'src/core/compiled-program-host-ref-feature.ts',
 				'src/core/compiled-program-transport.ts',
 				'src/core/compiled-program-wire.ts',
 				'src/core/compiler-program.ts',

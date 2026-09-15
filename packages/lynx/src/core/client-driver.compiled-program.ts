@@ -16,6 +16,7 @@ import { isLynxNativeResource } from '../resource.js';
 import { classifyLynxHostPropUpdate, sameLynxUniversalHostPropValue } from './host-props.js';
 import { encodeLynxProgramPropValue } from './host-prop-value.js';
 import { parseLynxNativeEventProp } from './native-events.js';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './compiled-program-host-ref-feature.js';
 import { requireLynxCompactHostRefFeature } from './compact-host-ref-feature.js';
 import type {
 	LynxCreateSelectorQuery,
@@ -75,8 +76,8 @@ export interface LynxCompactPublicHandleInput {
 }
 
 interface CompactClientState {
-	readonly createSelectorQuery: LynxCreateSelectorQuery;
-	handles: Map<number, CompactHandleEntry> | null;
+	createSelectorQuery?: LynxCreateSelectorQuery;
+	handles?: Map<number, CompactHandleEntry> | null;
 	templateMount: boolean;
 	templateProgramMount: boolean;
 	templateProgramRuns: boolean;
@@ -182,22 +183,25 @@ export interface CreateLynxClientContainerOptions {
 export function createLynxClientContainer(
 	options: CreateLynxClientContainerOptions = {},
 ): LynxClientContainer {
-	const createSelectorQuery =
-		options.createSelectorQuery ??
-		(() => {
-			throw new Error(COMPACT_CLIENT_ERROR);
-		});
-	if (typeof createSelectorQuery !== 'function') throw new TypeError(COMPACT_CLIENT_ERROR);
+	let createSelectorQuery: LynxCreateSelectorQuery | undefined;
+	if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+		createSelectorQuery =
+			options.createSelectorQuery ??
+			(() => {
+				throw new Error(COMPACT_CLIENT_ERROR);
+			});
+		if (typeof createSelectorQuery !== 'function') throw new TypeError(COMPACT_CLIENT_ERROR);
+	}
 	const container: LynxClientContainer = Object.freeze({
 		renderer: LYNX_TRANSPORT_RENDERER,
-		getPublicHandle(id: number) {
-			const entry = STATES.get(container)!.handles?.get(id);
-			return entry === undefined ? null : facadeFor(entry);
-		},
+		getPublicHandle: LYNX_COMPILED_PROGRAM_HOST_REFS
+			? (id: number) => {
+					const entry = STATES.get(container)!.handles?.get(id);
+					return entry === undefined ? null : facadeFor(entry);
+				}
+			: () => null,
 	});
-	STATES.set(container, {
-		createSelectorQuery,
-		handles: null,
+	const current: CompactClientState = {
 		templateMount: false,
 		templateProgramMount: false,
 		templateProgramRuns: false,
@@ -206,7 +210,12 @@ export function createLynxClientContainer(
 		programManifests: true,
 		teardownRuns: false,
 		lazyPublicInstances: false,
-	});
+	};
+	if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+		current.createSelectorQuery = createSelectorQuery!;
+		current.handles = null;
+	}
+	STATES.set(container, current);
 	return container;
 }
 
@@ -259,14 +268,16 @@ export function hasLynxCompactHandleSegment(_container: LynxClientContainer): bo
 }
 
 export function invalidateLynxClientContainer(container: LynxClientContainer): void {
-	const current = state(container);
-	if (current.handles === null) return;
-	for (const entry of current.handles.values()) {
-		entry.active = false;
-		entry.attached = false;
-		entry.binding?.invalidate(new Error(COMPACT_CLIENT_ERROR));
+	if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+		const current = state(container);
+		if (current.handles == null) return;
+		for (const entry of current.handles.values()) {
+			entry.active = false;
+			entry.attached = false;
+			entry.binding?.invalidate(new Error(COMPACT_CLIENT_ERROR));
+		}
+		current.handles = null;
 	}
-	current.handles = null;
 }
 
 export function prepareLynxCompactHandleDeltas(): never {
@@ -285,86 +296,94 @@ export function activateLynxCompactPublicHandle(
 	container: LynxClientContainer,
 	input: LynxCompactPublicHandleInput,
 ): LynxPublicHandle {
-	const current = state(container);
-	if (
-		!Number.isSafeInteger(input.root) ||
-		input.root <= 0 ||
-		!Number.isSafeInteger(input.id) ||
-		input.id <= 0 ||
-		typeof input.type !== 'string' ||
-		input.type.length === 0 ||
-		typeof input.attached !== 'boolean'
-	) {
-		throw new TypeError(COMPACT_CLIENT_ERROR);
-	}
-	const handles = (current.handles ??= new Map());
-	const existing = handles.get(input.id);
-	if (existing !== undefined) {
-		if (!existing.active || existing.root !== input.root || existing.type !== input.type) {
-			throw new Error(COMPACT_CLIENT_ERROR);
+	if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+		const current = state(container);
+		if (
+			!Number.isSafeInteger(input.root) ||
+			input.root <= 0 ||
+			!Number.isSafeInteger(input.id) ||
+			input.id <= 0 ||
+			typeof input.type !== 'string' ||
+			input.type.length === 0 ||
+			typeof input.attached !== 'boolean'
+		) {
+			throw new TypeError(COMPACT_CLIENT_ERROR);
 		}
-		return facadeFor(existing);
+		const handles = (current.handles ??= new Map());
+		const existing = handles.get(input.id);
+		if (existing !== undefined) {
+			if (!existing.active || existing.root !== input.root || existing.type !== input.type) {
+				throw new Error(COMPACT_CLIENT_ERROR);
+			}
+			return facadeFor(existing);
+		}
+		const entry: CompactHandleEntry = {
+			root: input.root,
+			id: input.id,
+			type: input.type,
+			generation: 1,
+			createSelectorQuery: current.createSelectorQuery!,
+			active: true,
+			attached: input.attached,
+			attachmentEpoch: input.attached ? 1 : 0,
+			facade: null,
+			binding: null,
+			snapshot: null,
+		};
+		handles.set(input.id, entry);
+		return facadeFor(entry);
 	}
-	const entry: CompactHandleEntry = {
-		root: input.root,
-		id: input.id,
-		type: input.type,
-		generation: 1,
-		createSelectorQuery: current.createSelectorQuery,
-		active: true,
-		attached: input.attached,
-		attachmentEpoch: input.attached ? 1 : 0,
-		facade: null,
-		binding: null,
-		snapshot: null,
-	};
-	handles.set(input.id, entry);
-	return facadeFor(entry);
+	throw new Error(COMPACT_CLIENT_ERROR);
 }
 
 export function releaseLynxCompactPublicHandle(container: LynxClientContainer, id: number): void {
-	const current = state(container);
-	const entry = current.handles?.get(id);
-	if (entry === undefined) return;
-	current.handles!.delete(id);
-	entry.active = false;
-	entry.attachmentEpoch = nextAttachmentEpoch(entry, false);
-	entry.attached = false;
-	entry.binding?.invalidate(new Error(COMPACT_CLIENT_ERROR));
-	if (current.handles!.size === 0) current.handles = null;
+	if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+		const current = state(container);
+		const entry = current.handles?.get(id);
+		if (entry === undefined) return;
+		current.handles!.delete(id);
+		entry.active = false;
+		entry.attachmentEpoch = nextAttachmentEpoch(entry, false);
+		entry.attached = false;
+		entry.binding?.invalidate(new Error(COMPACT_CLIENT_ERROR));
+		if (current.handles!.size === 0) current.handles = null;
+	}
 }
 
 export function applyLynxHostAttachments(
 	container: LynxClientContainer,
 	changes: readonly LynxHostAttachmentChange[],
 ): UniversalHostAttachmentBatch {
-	if (!Array.isArray(changes)) throw new TypeError(COMPACT_CLIENT_ERROR);
-	const current = state(container);
-	const detached: number[] = [];
-	const attached: number[] = [];
-	const seen = new Set<number>();
-	for (const change of changes) {
-		if (change === null || typeof change !== 'object' || Array.isArray(change)) {
-			throw new TypeError(COMPACT_CLIENT_ERROR);
+	if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+		if (!Array.isArray(changes)) throw new TypeError(COMPACT_CLIENT_ERROR);
+		const current = state(container);
+		const detached: number[] = [];
+		const attached: number[] = [];
+		const seen = new Set<number>();
+		for (const change of changes) {
+			if (change === null || typeof change !== 'object' || Array.isArray(change)) {
+				throw new TypeError(COMPACT_CLIENT_ERROR);
+			}
+			const entry = current.handles?.get(change.id);
+			if (
+				seen.has(change.id) ||
+				entry === undefined ||
+				!entry.active ||
+				change.generation !== 1 ||
+				typeof change.attached !== 'boolean'
+			) {
+				throw new Error(COMPACT_CLIENT_ERROR);
+			}
+			seen.add(change.id);
+			if (entry.attached === change.attached) continue;
+			entry.attachmentEpoch = nextAttachmentEpoch(entry, change.attached);
+			entry.attached = change.attached;
+			if (!change.attached) entry.binding?.invalidateAttachment();
+			(change.attached ? attached : detached).push(change.id);
 		}
-		const entry = current.handles?.get(change.id);
-		if (
-			seen.has(change.id) ||
-			entry === undefined ||
-			!entry.active ||
-			change.generation !== 1 ||
-			typeof change.attached !== 'boolean'
-		) {
-			throw new Error(COMPACT_CLIENT_ERROR);
-		}
-		seen.add(change.id);
-		if (entry.attached === change.attached) continue;
-		entry.attachmentEpoch = nextAttachmentEpoch(entry, change.attached);
-		entry.attached = change.attached;
-		if (!change.attached) entry.binding?.invalidateAttachment();
-		(change.attached ? attached : detached).push(change.id);
+		return Object.freeze({ detached: Object.freeze(detached), attached: Object.freeze(attached) });
 	}
-	return Object.freeze({ detached: Object.freeze(detached), attached: Object.freeze(attached) });
+	throw new Error(COMPACT_CLIENT_ERROR);
 }
 
 const DISCRETE_EVENTS = new Set([
