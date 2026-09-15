@@ -741,6 +741,8 @@ interface RangeRender {
 	readonly componentRows: NonNullable<UniversalForValue['componentRows']> | null;
 	/** Non-null when a compiler proof reached only the old/new selected keys. */
 	readonly sparse: readonly SparseRangeRow[] | null;
+	/** The two positions of an exact transposition of retained, unchanged component rows. */
+	readonly swap?: readonly [number, number];
 	/** Present only for a retained Activity member. */
 	readonly activityVisible?: boolean;
 	/** Nested range work for outer members that rendered in this attempt. */
@@ -2287,6 +2289,56 @@ export function lynxBlockProgramForComponent<Props>(
 					nestedStates: null,
 				};
 			}
+			let left = -1;
+			let right = -1;
+			let transposition = changed.length === 0;
+			for (let index = 0; index < sourceItems.length; index++) {
+				if (!Object.is(materializedKeys![index], previousKeys[index])) {
+					if (left === -1) left = index;
+					else if (right === -1) right = index;
+					else {
+						transposition = false;
+						break;
+					}
+				} else if (!Object.is(sourceItems[index], previousSourceItems[index])) {
+					transposition = false;
+					break;
+				}
+			}
+			if (
+				transposition &&
+				left !== -1 &&
+				right !== -1 &&
+				Object.is(materializedKeys![left], previousKeys[right]) &&
+				Object.is(materializedKeys![right], previousKeys[left]) &&
+				Object.is(sourceItems[left], previousSourceItems[right]) &&
+				Object.is(sourceItems[right], previousSourceItems[left])
+			) {
+				return {
+					state,
+					templateState: state.rowTemplate,
+					items: EMPTY_INDEXES,
+					rows: EMPTY_PROGRAM_ROWS,
+					handlers: EMPTY_HANDLER_ROWS,
+					refs: EMPTY_REF_ROWS,
+					visibilities: null,
+					keys: materializedKeys!,
+					retained: previous,
+					removedRetainedKeys: null,
+					hasScopedRows: false,
+					structural: true,
+					rendered: EMPTY_INDEXES,
+					source: list.items,
+					keyedSelection: nextSelection,
+					componentRows: nextComponentRows,
+					sparse: null,
+					swap: [left, right],
+					contextValues,
+					visible: parentVisible,
+					nested: EMPTY_NESTED_RANGE_RENDERS,
+					nestedStates: null,
+				};
+			}
 		}
 
 		const items = materializedItems ?? Array.from(list.items as Iterable<unknown>);
@@ -3371,14 +3423,24 @@ export function lynxBlockProgramForComponent<Props>(
 			// update may have changed that row's committed order. Stage that order
 			// on the completed render and publish it only after the core commit: an
 			// eager write here would corrupt the last accepted selection indices if
-			// a later row refused or the transport rejected the frame. Map insertion
-			// order is this render's item order, so this replaces one object copy per
-			// shifted survivor with one allocation-free post-commit walk.
+			// a later row refused or the transport rejected the frame. A pair swap
+			// retains the committed Map, so publish its two explicit positions. Every
+			// other structural render owns a Map whose insertion order is this render's
+			// item order, replacing one object copy per shifted survivor with one
+			// allocation-free post-commit walk.
 			if (render.structural) {
-				let index = 0;
-				for (const row of render.retained.values()) {
-					if (row !== null) row.index = index;
-					index++;
+				if (render.swap !== undefined) {
+					const [left, right] = render.swap;
+					const leftRow = render.retained.get(render.keys[left]);
+					const rightRow = render.retained.get(render.keys[right]);
+					if (leftRow !== null && leftRow !== undefined) leftRow.index = left;
+					if (rightRow !== null && rightRow !== undefined) rightRow.index = right;
+				} else {
+					let index = 0;
+					for (const row of render.retained.values()) {
+						if (row !== null) row.index = index;
+						index++;
+					}
 				}
 			}
 			state.source = render.source;
@@ -3450,6 +3512,14 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 		if (render.removedRetainedKeys !== null) {
 			context.core.removeKeysForSlot(state.site!, render.removedRetainedKeys, releaseMember);
+			return;
+		}
+		if (render.swap !== undefined) {
+			context.core.swapKeysForSlot(
+				state.site!,
+				render.keys[render.swap[0]],
+				render.keys[render.swap[1]],
+			);
 			return;
 		}
 		context.core.reconcileForSlot(
