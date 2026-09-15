@@ -202,6 +202,7 @@ function importsLynxFirstScreenFacade(compilation, module) {
 	return [...compilation.moduleGraph.getOutgoingConnections(module)].some(
 		(connection) =>
 			activeConnection(connection) &&
+			connection.dependency?.request === '@octanejs/lynx/first-screen' &&
 			connection.module != null &&
 			isLynxFirstScreenFacade(connection.module),
 	);

@@ -1002,7 +1002,19 @@ describe('Lynx application resident-program coverage', () => {
 			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/core/block-component.ts',
 			connections: [] as { module: unknown }[],
 		};
-		graph.modules = new Set([root, blockComponent]);
+		const generalFirstScreen = {
+			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/first-screen.ts',
+		};
+		const staleRenderer = {
+			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/main-renderer.ts',
+			connections: [
+				{
+					dependency: { request: './core/first-screen.js' },
+					module: generalFirstScreen,
+				},
+			],
+		};
+		graph.modules = new Set([root, blockComponent, staleRenderer]);
 		const replacements: Array<{
 			test: RegExp;
 			callback: (resource: { request: string }) => void;
@@ -1011,6 +1023,10 @@ describe('Lynx application resident-program coverage', () => {
 		const rebuiltModules: unknown[] = [];
 		graph.rebuildModule = (module: unknown, callback: (error: Error | null) => void) => {
 			rebuiltModules.push(module);
+			if (module === staleRenderer) {
+				callback(new Error('relative first-screen consumers are not application selectors'));
+				return;
+			}
 			if (module === mainThread) {
 				callback(null);
 				return;
@@ -1097,7 +1113,7 @@ describe('Lynx application resident-program coverage', () => {
 
 		// The proof passes, compiler-program module selection, owner discovery /
 		// verification, and dependency-first rebuild ordering all inspect the graph.
-		expect(graphVisits).toBe(13);
+		expect(graphVisits).toBe(17);
 		expect(rebuiltModules).toEqual([background, mainThread, blockComponent, root]);
 		expect(rebuiltRequests).toEqual([
 			'./core/background-core-selection.block.js',

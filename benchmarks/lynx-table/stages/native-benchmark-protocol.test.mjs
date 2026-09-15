@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
+import { normalizeIssue194NativeReceipt } from './issue194-device-protocol.mjs';
+
 const appRoot = path.resolve(import.meta.dirname, '../app/src');
 const app = fs.readFileSync(path.join(appRoot, 'App.lynx.tsrx'), 'utf8');
 const entry = fs.readFileSync(path.join(appRoot, 'index.ts'), 'utf8');
@@ -95,4 +97,32 @@ test('Native startup receipt is emitted only after render ACK, two frames, and s
 	assert.match(secondFrame, /__LYNX_BENCH_STARTUP__ = receipt/);
 	assert.match(secondFrame, /'__NATIVE_BENCH_STARTUP__'/);
 	assert.equal((entry.match(/__LYNX_BENCH_STARTUP__ = receipt/g) ?? []).length, 1);
+});
+
+test('issue #194 runner normalizes app-owned Native v2 create and clear receipts', () => {
+	const create = normalizeIssue194NativeReceipt(
+		{
+			protocol: 'lynx-native-bench-v2',
+			name: 'create',
+			preState: { rowCount: 0 },
+			postState: { rowCount: 1000 },
+		},
+		2,
+	);
+	assert.equal(create.interactionOrdinal, 2);
+	assert.equal(create.workload, 'create');
+	assert.equal(create.scale, 1000);
+
+	const clear = normalizeIssue194NativeReceipt(
+		{
+			protocol: 'lynx-native-bench-v2',
+			name: 'clear',
+			preState: { rowCount: 1000 },
+			postState: { rowCount: 0 },
+		},
+		3,
+	);
+	assert.equal(clear.interactionOrdinal, 3);
+	assert.equal(clear.workload, 'clear');
+	assert.equal(clear.scale, 1000);
 });

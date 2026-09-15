@@ -10,4 +10,7 @@ a dedicated Element Template backend. Its emitted plan and native Template
 Definition both omit the permanent `hidden` attribute slot, while source-safe
 and visibility-capable graphs retain it and unexpected visibility work fails
 closed. Allow proof-aware Rspack integrations to select a main-thread program
-backend for one module before rebuilding it.
+backend for one module before rebuilding it. Restrict application-selection
+owner discovery to the public `@octanejs/lynx/first-screen` facade so unrelated
+internal first-screen consumers do not fail an otherwise eligible production
+build.

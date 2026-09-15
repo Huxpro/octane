@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { normalizeIssue194NativeReceipt } from './issue194-device-protocol.mjs';
+
 const args = process.argv.slice(2);
 const readArg = (name) => {
 	const index = args.indexOf(name);
@@ -173,6 +175,12 @@ function parseLog(log) {
 		if (line.includes('__ISSUE194_NATIVE_RESULT__')) {
 			const value = jsonAfterMarker(line, '__ISSUE194_NATIVE_RESULT__');
 			if (value !== null) native.push(value);
+		}
+		if (line.includes('__NATIVE_BENCH_RESULT__')) {
+			const value = jsonAfterMarker(line, '__NATIVE_BENCH_RESULT__');
+			if (value !== null) {
+				native.push(normalizeIssue194NativeReceipt(value, native.length + 1));
+			}
 		}
 		if (line.includes('start TemplateAssembler::LoadTemplate')) loadStartMs ??= epoch(line);
 		if (line.includes('LepusClosureEventListener::Invoke name: __RenderPage')) {
