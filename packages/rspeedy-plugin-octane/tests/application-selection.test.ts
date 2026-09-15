@@ -12,6 +12,10 @@ import {
 	installLynxCompiledProgramFeatureReplacement,
 	selectedLynxCompiledProgramFeatures,
 } from '../src/compiled-program-features.js';
+import {
+	installLynxCompiledProgramNativeListFeatureReplacement,
+	selectedLynxCompiledProgramNativeListFeature,
+} from '../src/compiled-program-native-list-feature.js';
 
 describe('Lynx application source specialization', () => {
 	it('publishes the paired feature decision to encoder metadata', () => {
@@ -52,6 +56,32 @@ describe('Lynx application source specialization', () => {
 			if (replacement.test.test(resource.request)) replacement.callback(resource);
 		}
 		expect(resource.request).toBe('./core/compiled-program-features.no-thread-functions.js');
+	});
+
+	it('replaces native-list support only after a proved selection', () => {
+		const replacements: Array<{
+			test: RegExp;
+			callback: (resource: { request: string }) => void;
+		}> = [];
+		const compiler = {
+			webpack: {
+				NormalModuleReplacementPlugin: class {
+					constructor(test: RegExp, callback: (resource: { request: string }) => void) {
+						replacements.push({ test, callback });
+					}
+					apply() {}
+				},
+			},
+		};
+		expect(selectedLynxCompiledProgramNativeListFeature(compiler)).toBe('full');
+		installLynxCompiledProgramNativeListFeatureReplacement(compiler, () => 'no-native-list');
+		expect(selectedLynxCompiledProgramNativeListFeature(compiler)).toBe('no-native-list');
+
+		const resource = { request: './core/compiled-program-native-list-feature.js' };
+		for (const replacement of replacements) {
+			if (replacement.test.test(resource.request)) replacement.callback(resource);
+		}
+		expect(resource.request).toBe('./core/compiled-program-native-list-feature.no-native-list.js');
 	});
 
 	it('uses the Element Template owner while retaining the proved compiled background seams', () => {

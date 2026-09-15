@@ -5,11 +5,13 @@ import {
 	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO,
 	LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO,
+	LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO,
 	collectLynxBlockFeatureRequirements,
 	collectLynxBlockSemanticRequirements,
 	collectLynxProgramCoverage,
 	decideLynxBlockComponentFeatures,
 	decideLynxCompiledProgramFeatures,
+	decideLynxCompiledProgramNativeListFeature,
 	evaluateLynxBlockEligibility,
 	evaluateLynxCompiledProgramEligibility,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
@@ -312,6 +314,26 @@ function compiledProgramFeatureDecision(
 	);
 }
 
+function compiledProgramNativeListFeatureDecision(
+	background: ReturnType<typeof featureRequirements>,
+	mainThread: ReturnType<typeof featureRequirements> = background,
+	mode = 'production',
+) {
+	const report = {
+		compiledProgramSelection: { eligible: true },
+		featureRequirements: {
+			paired: true,
+			modules: [{ background, mainThread }],
+		},
+	};
+	return decideLynxCompiledProgramNativeListFeature(
+		{ options: { mode }, watchMode: false },
+		[{ mainThreadEntry: 'app__octane_main_thread' }],
+		new Map([['app__octane_main_thread', report]]),
+		{ selected: 'compiled-program' },
+	);
+}
+
 describe('Lynx compiled-program feature selection', () => {
 	it('removes thread-function support only from a paired production graph that proves it unused', () => {
 		expect(compiledProgramFeatureDecision(featureRequirements())).toEqual({
@@ -469,6 +491,90 @@ describe('Lynx compiled-program feature selection', () => {
 		).toMatchObject({
 			selected: 'full',
 			reasons: [{ code: 'entry-requires-thread-functions' }],
+		});
+	});
+});
+
+describe('Lynx compiled-program native-list feature selection', () => {
+	it('removes native-list support only from a paired production graph that proves it unused', () => {
+		expect(compiledProgramNativeListFeatureDecision(featureRequirements())).toEqual({
+			version: 1,
+			selected: 'no-native-list',
+			reasons: [],
+		});
+
+		const nativeList = featureRequirements({
+			templateFeatures: [{ kind: 'native-list', name: 'list', line: 2, column: 3 }],
+		});
+		expect(
+			compiledProgramNativeListFeatureDecision(featureRequirements(), nativeList),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-native-list' }],
+		});
+
+		expect(
+			compiledProgramNativeListFeatureDecision(featureRequirements(), undefined, 'development'),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'native-list-specialization-requires-one-shot-production' }],
+		});
+	});
+
+	it('fails closed when application, entry, or paired proof facts are incomplete', () => {
+		const compiler = { options: { mode: 'production' }, watchMode: false };
+		const entries = [{ mainThreadEntry: 'app__octane_main_thread' }];
+		const report = {
+			compiledProgramSelection: { eligible: true },
+			featureRequirements: {
+				paired: true,
+				modules: [
+					{
+						background: featureRequirements(),
+						mainThread: featureRequirements(),
+					},
+				],
+			},
+		};
+		const decide = (
+			reports = new Map([['app__octane_main_thread', report]]),
+			applicationDecision = { selected: 'compiled-program' },
+			selectedEntries = entries,
+		) =>
+			decideLynxCompiledProgramNativeListFeature(
+				compiler,
+				selectedEntries,
+				reports,
+				applicationDecision,
+			);
+
+		expect(decide(new Map())).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'selection-report-missing' }],
+		});
+		expect(decide(undefined, { selected: 'general' })).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'native-list-specialization-requires-compiled-application' }],
+		});
+		expect(decide(undefined, undefined, [])).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'no-authored-entries' }],
+		});
+		expect(
+			decide(
+				new Map([
+					[
+						'app__octane_main_thread',
+						{
+							...report,
+							featureRequirements: { ...report.featureRequirements, paired: false },
+						},
+					],
+				]),
+			),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-native-list' }],
 		});
 	});
 });
@@ -1194,7 +1300,27 @@ describe('Lynx application resident-program coverage', () => {
 			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/core/block-component.ts',
 			connections: [] as { module: unknown }[],
 		};
-		graph.modules = new Set([root, blockComponent]);
+		const compiledProgramStore = {
+			nameForCondition: () =>
+				'/repo/node_modules/@octanejs/lynx/src/core/compiled-program-store.ts',
+			connections: [] as { module: unknown }[],
+		};
+		const compiledProgramFirstScreen = {
+			nameForCondition: () =>
+				'/repo/node_modules/@octanejs/lynx/src/core/compiled-program-first-screen.ts',
+			connections: [] as { module: unknown }[],
+		};
+		const papi = {
+			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/core/papi.ts',
+			connections: [] as { module: unknown }[],
+		};
+		graph.modules = new Set([
+			root,
+			blockComponent,
+			compiledProgramStore,
+			compiledProgramFirstScreen,
+			papi,
+		]);
 		const replacements: Array<{
 			test: RegExp;
 			callback: (resource: { request: string }) => void;
@@ -1218,6 +1344,33 @@ describe('Lynx application resident-program coverage', () => {
 						module: {
 							nameForCondition: () =>
 								'/repo/node_modules/@octanejs/lynx/src/core/block-component-features.structural.ts',
+						},
+					},
+				];
+				callback(null);
+				return;
+			}
+			if (
+				module === compiledProgramStore ||
+				module === compiledProgramFirstScreen ||
+				module === papi
+			) {
+				const owner =
+					module === compiledProgramStore
+						? compiledProgramStore
+						: module === compiledProgramFirstScreen
+							? compiledProgramFirstScreen
+							: papi;
+				const resource = { request: './compiled-program-native-list-feature.js' };
+				for (const replacement of replacements) {
+					if (replacement.test.test(resource.request)) replacement.callback(resource);
+				}
+				rebuiltRequests.push(resource.request);
+				owner.connections = [
+					{
+						module: {
+							nameForCondition: () =>
+								'/repo/node_modules/@octanejs/lynx/src/core/compiled-program-native-list-feature.no-native-list.ts',
 						},
 					},
 				];
@@ -1288,13 +1441,24 @@ describe('Lynx application resident-program coverage', () => {
 
 		// The proof passes, compiler-program module selection, owner discovery /
 		// verification, and dependency-first rebuild ordering all inspect the graph.
-		expect(graphVisits).toBe(14);
-		expect(rebuiltModules).toEqual([background, mainThread, blockComponent, root]);
+		expect(graphVisits).toBe(32);
+		expect(rebuiltModules).toEqual([
+			background,
+			mainThread,
+			blockComponent,
+			compiledProgramFirstScreen,
+			compiledProgramStore,
+			papi,
+			root,
+		]);
 		expect(rebuiltRequests).toEqual([
 			'./core/background-core-selection.block.js',
 			'./core/application-selection.compiled-program.js',
 			'./core/compiled-program-features.no-thread-functions.js',
 			'./block-component-features.structural.js',
+			'./compiled-program-native-list-feature.no-native-list.js',
+			'./compiled-program-native-list-feature.no-native-list.js',
+			'./compiled-program-native-list-feature.no-native-list.js',
 			'./core/background-core-selection.block.js',
 			'./core/application-selection.compiled-program.js',
 			'./core/compiled-program-features.no-thread-functions.js',
@@ -1363,6 +1527,11 @@ describe('Lynx application resident-program coverage', () => {
 			[LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO]: {
 				version: 1,
 				selected: 'no-thread-functions',
+				reasons: [],
+			},
+			[LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO]: {
+				version: 1,
+				selected: 'no-native-list',
 				reasons: [],
 			},
 		});

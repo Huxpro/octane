@@ -172,6 +172,7 @@ describe('Lynx runtime compatibility evidence', () => {
 		});
 		expect(runtimeSourceGraph(resolve(LYNX_ROOT, 'src/main-thread.ts'))).toEqual({
 			files: [
+				'src/core/compiled-program-native-list-feature.ts',
 				'src/core/environment.ts',
 				'src/core/first-screen-host.ts',
 				'src/core/first-screen.ts',

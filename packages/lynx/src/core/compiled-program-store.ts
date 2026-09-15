@@ -7,6 +7,7 @@ import type { LynxHostAttachmentChange } from './protocol.js';
 import { requireLynxMainThreadWorkletFeature } from './main-thread-worklet-feature.js';
 import type { LynxCompiledProgramWorkletStore } from './compiled-program-worklets.js';
 import type { LynxMainThreadWorkletRegistry } from './worklets.js';
+import { LYNX_COMPILED_PROGRAM_NATIVE_LIST } from './compiled-program-native-list-feature.js';
 import { LYNX_PROFILE, lynxWireProfile } from './profiling.js';
 import {
 	createLynxListItemDescriptorFromMetadata,
@@ -1238,7 +1239,17 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	};
 	let listProgramPAPI: LynxElementPAPI<Node> | null = null;
 	const programHost = (plan: UniversalProgramPlan): LynxElementPAPI<Node> => {
-		if (plan.wire?.nodes.some((node) => node.type === 'list') !== true) return papi;
+		const containsList = plan.wire?.nodes.some((node) => node.type === 'list') === true;
+		if (!LYNX_COMPILED_PROGRAM_NATIVE_LIST) {
+			if (containsList) {
+				fail(
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+						'a native-list plan contradicts the compiled no-native-list proof',
+				);
+			}
+			return papi;
+		}
+		if (!containsList) return papi;
 		return (listProgramPAPI ??= {
 			...papi,
 			createElement(type, componentId, text) {
@@ -1359,7 +1370,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const active = journal;
 		journal = null;
 		const errors: unknown[] = [];
-		rollbackPreparedLists(errors);
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) rollbackPreparedLists(errors);
 		while (active.length !== 0) {
 			try {
 				const opcode = active.pop();
@@ -1372,7 +1383,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 						const instance = instances.get(handle)!;
 						deactivateInstanceWorklets(instance);
 						if (opcode === JournalOpcode.Mount && !instance.run.deferred) {
-							for (const list of listsInInstance(instance)) disposeList(list);
+							if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) {
+								for (const list of listsInInstance(instance)) disposeList(list);
+							}
 							cleanupRoot(papi, rootOf(instance));
 						}
 						unlink(instance, range);
@@ -1393,7 +1406,11 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 						}
 					}
 					run.values[valueIndex] = previous;
-					if (run.deferred && isListDescriptorSlot(run.plan, slot)) {
+					if (
+						LYNX_COMPILED_PROGRAM_NATIVE_LIST &&
+						run.deferred &&
+						isListDescriptorSlot(run.plan, slot)
+					) {
 						instance.listItem = undefined;
 					}
 				} else if (opcode === JournalOpcode.Remove) {
@@ -1404,11 +1421,13 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					const handle = active.pop() as number;
 					publishInstance(handle, instance);
 					relink(handle, instance, range);
-					if (instance.run.deferred) {
+					if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && instance.run.deferred) {
 						markListDirty(parent);
 					} else {
 						const rootNode = rootOf(instance);
-						for (const list of listsInInstance(instance)) pendingListDisposals?.delete(list);
+						if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) {
+							for (const list of listsInInstance(instance)) pendingListDisposals?.delete(list);
+						}
 						// Restore ownership before the host call so a mutate-then-throw
 						// insertion remains reachable by terminal disposal after faulting.
 						papi.insertBefore(parent, rootNode, before);
@@ -1495,7 +1514,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		unlink(instance, range);
 		instance.next = before;
 		instance.previous = before === null ? range.tail : instances.get(before)!.previous;
-		if (instance.run.deferred) markListDirty(instance.parent);
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && instance.run.deferred) {
+			markListDirty(instance.parent);
+		}
 		relink(handle, instance, range);
 	};
 	const applyVisibility = (
@@ -1505,11 +1526,14 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	): void => {
 		const run = instance.run;
 		const offset = instance.index * run.stride;
-		if (run.deferred && run.nodes[offset] === undefined) return;
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && run.deferred && run.nodes[offset] === undefined) {
+			return;
+		}
 		const node = rootOf(instance);
-		const listCell = run.deferred
-			? lists?.get(instance.parent)?.attachedByHandle.get(handle)
-			: undefined;
+		const listCell =
+			LYNX_COMPILED_PROGRAM_NATIVE_LIST && run.deferred
+				? lists?.get(instance.parent)?.attachedByHandle.get(handle)
+				: undefined;
 		const firstId = run.values[run.values.length - 2] as number;
 		const stride = run.values[run.values.length - 1] as number;
 		if (visible) papi.setAttribute(node, 'hidden', false);
@@ -1537,7 +1561,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		if (visible) activateInstanceWorklets(instance);
 		else deactivateInstanceWorklets(instance);
-		if (listCell !== undefined) updateCellRefs(instance, visible);
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && listCell !== undefined) {
+			updateCellRefs(instance, visible);
+		}
 		if (!visible) papi.setAttribute(node, 'hidden', true);
 	};
 	const writeVisibility = (
@@ -1575,7 +1601,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				);
 			}
 		}
-		if (run.deferred) {
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && run.deferred) {
 			const range = ranges.get(instance.range);
 			if (range === undefined) fail(StoreFailure.RangeOrder);
 			unlink(instance, range);
@@ -1629,7 +1655,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			throw error;
 		}
 		unlink(instance, range);
-		for (const list of listsInInstance(instance)) (pendingListDisposals ??= new Set()).add(list);
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) {
+			for (const list of listsInInstance(instance)) (pendingListDisposals ??= new Set()).add(list);
+		}
 		releaseInstance(handle, instance);
 		undo.push(handle, instance, range, parent, before, JournalOpcode.Remove);
 	};
@@ -1673,7 +1701,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 		}
 		run.values[valueIndex] = value;
-		if (run.deferred && isListDescriptorSlot(run.plan, slot)) {
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && run.deferred && isListDescriptorSlot(run.plan, slot)) {
 			instance.listItem = undefined;
 			markListDirty(instance.parent);
 		}
@@ -1829,7 +1857,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			next = input.before;
 		}
 		const previous = next === null ? range.tail : instances.get(next)!.previous;
-		const deferred = lists?.has(input.parent) === true;
+		const deferred = LYNX_COMPILED_PROGRAM_NATIVE_LIST && lists?.has(input.parent) === true;
 		if (deferred) {
 			const list = lists!.get(input.parent)!;
 			if (list.range !== null && list.range !== rangeKey) {
@@ -1992,7 +2020,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		lastHandle = finalHandle;
 		nextListener = finalListener;
-		if (deferred) markListDirty(input.parent);
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && deferred) markListDirty(input.parent);
 		if (adoption && adopted.paintedValues !== undefined) {
 			for (let index = 0; index < targetValues.length; index++) {
 				if (Object.is(values[index], targetValues[index])) continue;
@@ -2017,21 +2045,23 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		},
 		prepareCommit() {
 			requireJournal();
-			prepareDirtyLists();
+			if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) prepareDirtyLists();
 		},
 		commit() {
 			requireHealthy();
 			if (journal === null) fail(StoreFailure.Commit);
-			prepareDirtyLists();
-			try {
-				for (const prepared of preparedLists!) finalizePreparedList(prepared);
-				if (pendingListDisposals !== null) {
-					for (const list of pendingListDisposals) disposeList(list);
-					pendingListDisposals = null;
+			if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) {
+				prepareDirtyLists();
+				try {
+					for (const prepared of preparedLists!) finalizePreparedList(prepared);
+					if (pendingListDisposals !== null) {
+						for (const list of pendingListDisposals) disposeList(list);
+						pendingListDisposals = null;
+					}
+				} catch (error) {
+					faulted = true;
+					throw error;
 				}
-			} catch (error) {
-				faulted = true;
-				throw error;
 			}
 			preparedLists = null;
 			listCallbackDuringFrame = false;
@@ -2194,7 +2224,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					(errors ??= []).push(error);
 				}
 			}
-			if (lists !== null) {
+			if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && lists !== null) {
 				for (const list of lists.values()) {
 					try {
 						disposeList(list);
