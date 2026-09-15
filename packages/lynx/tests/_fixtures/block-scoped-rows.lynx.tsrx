@@ -58,6 +58,41 @@ export function BlockScopedRowsFixture(props: BlockScopedRowsProps) @{
 	</view>
 }
 
+export interface BlockWrappedSelectionProps {
+	readonly rows: readonly BlockScopedRowValue[];
+	readonly selected: number;
+	readonly observe: (entry: string) => void;
+}
+
+function BlockWrappedSelectionRow(props: {
+	readonly row: BlockScopedRowValue;
+	readonly tone: 'danger' | 'muted';
+	readonly observe: (entry: string) => void;
+}) @{
+	props.observe('selection-row:' + props.row.id);
+	<view class={['row', props.tone]}>
+		<text>{props.row.label}</text>
+	</view>
+}
+
+export function BlockWrappedSelectionFixture({
+	rows,
+	selected,
+	observe,
+}: BlockWrappedSelectionProps) @{
+	<view class="page">
+		<view class="rows">
+			@for (const row of rows; key row.id) {
+				<BlockWrappedSelectionRow
+					row={row}
+					tone={selected !== row.id ? 'muted' : 'danger'}
+					observe={observe}
+				/>
+			}
+		</view>
+	</view>
+}
+
 const BlockTheme = createContext('default');
 
 export interface BlockContextProps {

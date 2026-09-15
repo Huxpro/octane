@@ -3357,17 +3357,18 @@ function templateProgramForComponent(node, state) {
 }
 
 /**
- * Prove that one parent value reaches a component row only as the boolean
- * result of comparing it with that row's key.
+ * Prove that one parent value reaches a component row only through one strict
+ * equality or inequality predicate comparing it with that row's key.
  *
  * This is the universal/Lynx counterpart of compile.js's
  * `keyedSelectionDepIndex`. It is intentionally narrower: the row must already
  * satisfy `templateProgramForComponent`, the key is one direct item property,
- * and every other outer capture must be passed as a bare prop value. Property
- * reads on an outer object could hide a getter or a mutation behind stable
- * identity, so they fail closed. The proof also records whether the component
- * props omit the loop index, allowing shifted survivors to keep their row
- * descriptors. The full range path remains the fallback.
+ * Pure template, conditional, logical, binary, and unary operators may wrap the
+ * predicate, while every other outer capture must be passed as a bare prop
+ * value. Property reads on an outer object could hide a getter or a mutation
+ * behind stable identity, so they fail closed. The proof also records whether
+ * the component props omit the loop index, allowing shifted survivors to keep
+ * their row descriptors. The full range path remains the fallback.
  */
 function keyedSelectionForComponent(node, component, state, itemBinding, indexBinding) {
 	if (!state.sparseKeyedSelection || itemBinding.type !== 'Identifier') return null;
@@ -3405,16 +3406,49 @@ function keyedSelectionForComponent(node, component, state, itemBinding, indexBi
 			expression.property.name === keyProperty
 		);
 	};
+	const selectionCandidates = (value) => {
+		const candidates = [];
+		const visit = (candidate) => {
+			const expression = unwrapFirstScreenExpression(candidate);
+			if (!expression || typeof expression !== 'object') return;
+			if (
+				expression.type === 'BinaryExpression' &&
+				(expression.operator === '===' || expression.operator === '!==')
+			) {
+				const left = unwrapFirstScreenExpression(expression.left);
+				const right = unwrapFirstScreenExpression(expression.right);
+				const selected = isItemKey(left) ? right : isItemKey(right) ? left : null;
+				if (selected?.type === 'Identifier') candidates.push(selected);
+				return;
+			}
+			if (expression.type === 'TemplateLiteral') {
+				for (const child of expression.expressions ?? []) visit(child);
+				return;
+			}
+			if (expression.type === 'ConditionalExpression') {
+				visit(expression.test);
+				visit(expression.consequent);
+				visit(expression.alternate);
+				return;
+			}
+			if (expression.type === 'BinaryExpression' || expression.type === 'LogicalExpression') {
+				visit(expression.left);
+				visit(expression.right);
+				return;
+			}
+			if (expression.type === 'UnaryExpression') visit(expression.argument);
+		};
+		visit(value);
+		return candidates;
+	};
 
 	let selected = null;
 	for (const attribute of component.openingElement?.attributes ?? component.attributes ?? []) {
 		const value = attribute.value;
 		if (value?.type !== 'JSXExpressionContainer') continue;
 		const expression = unwrapFirstScreenExpression(value.expression);
-		if (expression?.type !== 'BinaryExpression' || expression.operator !== '===') continue;
-		const left = unwrapFirstScreenExpression(expression.left);
-		const right = unwrapFirstScreenExpression(expression.right);
-		const candidate = isItemKey(left) ? right : isItemKey(right) ? left : null;
+		const candidates = selectionCandidates(expression);
+		const candidate = candidates.length === 1 ? candidates[0] : null;
 		if (
 			candidate?.type !== 'Identifier' ||
 			candidate.name === itemBinding.name ||

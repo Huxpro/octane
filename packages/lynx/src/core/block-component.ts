@@ -2266,7 +2266,7 @@ export function lynxBlockProgramForComponent<Props>(
 				(priorNested === undefined || !nestedStateNeedsRetry(priorNested)) &&
 				(nextSelection![3] === true || prior.index === index) &&
 				Object.is((prior.props as Record<string, unknown>)[nextSelection![2]], item) &&
-				Object.is(itemKey, previousSelection![0]) === Object.is(itemKey, nextSelection![0])
+				(itemKey === previousSelection![0]) === (itemKey === nextSelection![0])
 			) {
 				// The compiler proved every capture except the selected key is a
 				// stable direct prop. Same item and either the same index or the

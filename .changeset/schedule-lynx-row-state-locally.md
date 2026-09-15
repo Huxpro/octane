@@ -27,3 +27,9 @@ iterable expression is compiler-proven pure now replay only their descriptor and
 enter the existing range reconciler without executing the owning component;
 opaque iterable evaluation and all unproved structural work retain the complete
 component transaction.
+
+Compiler-certified keyed selection now follows one strict equality or
+inequality predicate through pure logical, conditional, unary, and template
+expressions. It preserves JavaScript strict-equality edge cases such as signed
+zero, while opaque calls and ambiguous or repeated selection captures continue
+through the conservative full-range path.

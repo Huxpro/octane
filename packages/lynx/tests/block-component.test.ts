@@ -108,6 +108,8 @@ import {
 	type BlockSwitchProps,
 	BlockScopedRowsFixture,
 	type BlockScopedRowsProps,
+	BlockWrappedSelectionFixture,
+	type BlockWrappedSelectionProps,
 } from './_fixtures/block-scoped-rows.lynx.tsrx';
 import { FakeContextProxy, flushMicrotasks, installMainSide } from './_fixtures/fake-lynx-wire.js';
 import { paint } from './_fixtures/painted-commits.js';
@@ -5967,6 +5969,23 @@ function stableColumnComponent(): LynxComponent<TableProps> {
 }
 
 describe('Lynx compiled component whose rows outlive the render', () => {
+	it('runs only old and new rows for an authored wrapped selection predicate', async () => {
+		const observed: string[] = [];
+		const observe = (entry: string) => observed.push(entry);
+		const component =
+			BlockWrappedSelectionFixture as never as LynxComponent<BlockWrappedSelectionProps>;
+		const block = blockColumn<BlockWrappedSelectionProps>();
+
+		await block.render(component, { rows: STABLE_ROWS, selected: 2, observe });
+		observed.length = 0;
+		await block.render(component, { rows: STABLE_ROWS, selected: 4, observe });
+
+		expect(observed).toEqual(['selection-row:2', 'selection-row:4']);
+		const rows = JSON.parse(paint(block.main.commits).tree).children[0].children[0].children;
+		expect(rows[1].classes).toBe('row muted');
+		expect(rows[3].classes).toBe('row danger');
+	});
+
 	it('visits only old and new keys for a compiler-certified selection', async () => {
 		let keyCalls = 0;
 		let rangeCalls = 0;
@@ -6187,6 +6206,81 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 		// it publishes a fresh descriptor Map after acknowledgement without asking
 		// either producer to describe rows that no longer exist.
 		expect(keyCalls - beforeClearKeys).toBe(0);
+	});
+
+	it('preserves strict-equality selection semantics across a fresh collection', async () => {
+		let rangeCalls = 0;
+		let rowCalls = 0;
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Row(props: { readonly row: TableRow; readonly isSelected: boolean }) {
+				rowCalls++;
+				return universalValue(ROW_PLAN, [
+					props.isSelected ? 'row danger' : 'row',
+					String(props.row.id),
+					noop,
+					props.row.label,
+				]);
+			},
+			{ hookScope: false },
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: TableProps) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) => {
+							rangeCalls++;
+							return universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([
+									['set', 'row', row],
+									['set', 'isSelected', props.selected === row.id],
+								]),
+							);
+						},
+						null,
+						false,
+						false,
+						undefined,
+						undefined,
+						undefined,
+						true,
+						[props.selected, [], 'row', true],
+					),
+				]);
+			},
+		);
+		const rows: readonly TableRow[] = [
+			{ id: 0, label: 'zero' },
+			{ id: 1, label: 'one' },
+		];
+		const block = blockColumn<TableProps>();
+
+		await block.render(Listed as LynxComponent<TableProps>, {
+			rows,
+			selected: -0,
+			onSelect: noop,
+		});
+		let paintedRows = JSON.parse(paint(block.main.commits).tree).children[0].children[1].children;
+		expect(paintedRows[0].classes).toBe('row danger');
+		rangeCalls = 0;
+		rowCalls = 0;
+
+		await block.render(Listed as LynxComponent<TableProps>, {
+			rows: rows.slice(),
+			selected: 1,
+			onSelect: noop,
+		});
+
+		paintedRows = JSON.parse(paint(block.main.commits).tree).children[0].children[1].children;
+		expect(rangeCalls).toBe(2);
+		expect(rowCalls).toBe(2);
+		expect(paintedRows[0].classes).toBe('row');
+		expect(paintedRows[1].classes).toBe('row danger');
 	});
 
 	it('owns one external-store selector and publishes it only after host acknowledgement', async () => {
