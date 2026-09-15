@@ -27,13 +27,13 @@ background program by 6,794 raw / 2,080 gzip bytes through compiler-proved
 feature pruning; its decoded main-thread program stayed byte-identical. See the
 [R10 current-head addendum](../lynx-issue382-release-candidate/README.md#post-candidate-current-head-graph-requalification).
 
-No qualified Android or iOS client is connected in the current environment;
-the only available runtime is the built-in headless Linux client, which cannot
-stand in for native latency, memory/GC, no-JIT, device bytecode, or AB/BA
-evidence. The latest #383 follow-up also leaves Element Template fail-closed
-pending same-runtime fresh-process memory and the powered full matrix. The
-release decision therefore remains **NO-GO**, and neither the default switch nor
-old-path retirement is authorized.
+A qualified leased Android client subsequently became available for one narrow
+exact-head window. It completed 10 AB/BA pairs for the 1,000-row create cell,
+but no iOS client or registered fresh-process memory lane became available.
+That result closes one configuration-level Android latency cell only; it cannot
+stand in for memory/GC, no-JIT, native list, device bytecode, cross-framework,
+or the powered full matrix. The release decision therefore remains **NO-GO**,
+and neither the default switch nor old-path retirement is authorized.
 
 The latest authoritative #383 correction invalidates the earlier `6.5655x`
 Element Template/latest-upstream Native-heap ratio because timeout recovery had
@@ -56,6 +56,26 @@ the reduced slot arity and metadata shape, and a real production Element
 Template build retains the structural feature module. This proves one fewer
 native attribute slot per live template instance; it does not establish the
 Native heap delta without a new qualified-device cohort.
+
+The exact-head Android follow-up at `54f2ac806` compared the automatic ordinary
+compiled-program owner with the compiler-proved structural Element Template
+owner in one cold-launch AB/BA window. All 20 samples were accepted on their
+first attempt, retained the exact 0-to-1,000-row state oracle, kept DevTool
+disabled, and reported no errors. The Native input-to-second-frame median moved
+from 585.5 ms to 524.5 ms; Element Template won all 10 pairs, with a paired
+median delta of -64 ms. Compact main-thread frame application through ACK and
+complete moved from 485.5 ms to 424.5 ms and also won all 10 pairs, with a
+paired median delta of -70 ms. The compact frame payload median was effectively
+unchanged, so transport bytes do not explain the result.
+
+This is a complete-configuration comparison, not a single-primitive causal
+claim: both cells ran on Lynx SDK 4.1, but the ordinary bundle declares engine
+3.9 while the current Element Template encoder declares 3.2. The uninstrumented
+production Element Template bundle is also 16,678 raw bytes (+6.34%), 6,672
+gzip bytes (+7.24%), and 5,676 Brotli bytes (+7.13%) larger. The result is
+positive evidence for this admitted app shape, while the engine-version
+difference, bundle cost, missing native memory cohort, and broader matrix remain
+explicit acceptance inputs.
 
 ## Frozen cohort
 
@@ -184,10 +204,10 @@ fixture/observer and stable DevTool lifecycle are prerequisites for a rerun.
 
 | Gate inherited from #290/#291/#383 | Result | Evidence or gap |
 | --- | --- | --- |
-| Android output, identity, events/effects, real input | **Partial / fail** | Smaller table cells passed semantic state checks and native taps; large creation, high-scale startup, and all list cells failed. |
+| Android output, identity, events/effects, real input | **Partial / fail** | The exact-head structural 1k cell passed 10/10 paired semantic samples and native taps; large creation, high-scale startup, and all list cells from the broader campaign remain failed or unqualified. |
 | Latest upstream strict win, weighted geometric mean, CI upper bound `< 1.0` | **Inconclusive / fail** | Upstream lacks the Native producer; no valid full scorecard exists. |
 | Peer strict win and per-cell non-inferiority CI upper bound `<= 1.05` | **Fail** | Candidate creation is materially slower and becomes DNF at 10k while every peer completes. |
-| At least 10 independent AB/BA pairs | **Missing** | The diagnostic Native matrix used 5 table and 3 startup repetitions; it is not relabeled as formal AB/BA. |
+| At least 10 independent AB/BA pairs | **Partial** | The exact-head ordinary/structural Element Template 1k create cell completed 10 pairs; the registered multi-operation, scale, memory, list, upstream, and peer matrix has not. |
 | Ready/first-tap/steady p95 from at least 100 valid interactions | **Missing** | No cell has the required 100 valid samples; list has none. |
 | Peak/settled/after-clear heap and 20 create-clear-recreate GC cycles | **Missing** | No current-candidate Native memory campaign was completed. |
 | Native list reuse, recycle, fling, and stable identity | **Fail** | 640/640 Native attempts DNF across the lane. |
@@ -209,6 +229,10 @@ them as final qualification. They are not counted as R11 passes.
 - [`android-native-list.json`](evidence/android-native-list.json) is the failed
   80-record list result; SHA-256
   `c4e2065aa51ff629d4c0860b3100ad5dbadbf24e1fe3be1d947f7b4d106d6a89`.
+- [`android-structural-element-template-create1000-abba.json`](evidence/android-structural-element-template-create1000-abba.json)
+  is the sanitized exact-head 10-pair ordinary/structural configuration record;
+  SHA-256
+  `459f88ef8244499e38733b53e3f89b733c8bbd2853caafb27c366df1bc539df4`.
 - [`../lynx-issue382-release-candidate/README.md`](../lynx-issue382-release-candidate/README.md)
   records the source/build, external-consumer, semantic, graph-retention, and
   bundle inventory qualification inherited from R10.
@@ -383,6 +407,11 @@ rejected. The immutable hashes and exact scope are recorded in
 [`packages/lynx/audit/android-element-template-evidence.json`](../../../packages/lynx/audit/android-element-template-evidence.json).
 These single-sample checks qualify a correctness and fail-closed boundary, not a
 cross-framework A/B, general Android support, memory result, or iOS release gate.
+
+The later exact-head 1,000-row create follow-up adds the 10-pair
+ordinary/structural configuration comparison summarized above. It does not
+broaden the earlier 10,000/30,000 safety qualification, and it does not replace
+the missing fresh-process native-memory or full release matrix evidence.
 
 ## Upstream alignment and remaining owner work
 
