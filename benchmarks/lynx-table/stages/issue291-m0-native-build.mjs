@@ -141,6 +141,12 @@ const patchedReceipt = issue291M0ProbeReceipt(
 	patched.get(sourceFiles[0]),
 	patched.get(sourceFiles[1]),
 );
+const builtBundleFile = path.join(
+	checkout,
+	'benchmarks/lynx-table/app',
+	isCandidate ? 'dist-automatic-element-template' : 'dist',
+	'main.lynx.bundle',
+);
 
 let bundle;
 try {
@@ -165,7 +171,7 @@ try {
 		[path.join(checkout, 'benchmarks/lynx-table/scripts/build-app.mjs')],
 		{ cwd: checkout, env: environment, stdio: 'inherit' },
 	);
-	bundle = fs.readFileSync(path.join(checkout, 'benchmarks/lynx-table/app/dist/main.lynx.bundle'));
+	bundle = fs.readFileSync(builtBundleFile);
 } finally {
 	for (const [relative, source] of originals) {
 		fs.writeFileSync(path.join(checkout, relative), source);
@@ -239,5 +245,5 @@ fs.mkdirSync(output, { recursive: false });
 fs.writeFileSync(path.join(output, 'main.lynx.bundle'), bundle);
 fs.writeFileSync(path.join(output, 'receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`);
 console.log(
-	`[issue291-m0] ${label} ${commit.slice(0, 12)} -> ${receipt.bundle.sha256} (${receipt.bundle.bytes} bytes)`,
+	`[issue291-native] ${label} ${commit.slice(0, 12)} -> ${receipt.bundle.sha256} (${receipt.bundle.bytes} bytes)`,
 );
