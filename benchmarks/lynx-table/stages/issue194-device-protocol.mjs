@@ -56,25 +56,71 @@ export function issue194LifecycleSequence(cycles, create, clear) {
 	return sequence;
 }
 
-/** Prove every clear returns compact ownership and listener state to baseline. */
+/**
+ * Prove every clear returns logical ownership to baseline. Lynx 4.1 Template
+ * removals retain their Android weak globals, so a safe owner recycles those
+ * detached handles: the first clear may establish a bounded pool, every later
+ * clear must reproduce it exactly, and active + recycled host refs must remain
+ * on the first populated plateau.
+ */
 export function summarizeIssue194LifecycleCensus(sequenceEvidence, initial) {
 	const populated =
 		sequenceEvidence.find((entry) => entry.phase === 'create')?.attribution?.census ?? null;
-	const same = (left, right) =>
+	const cleared =
+		sequenceEvidence.find((entry) => entry.workload === 'clear')?.attribution?.census ?? null;
+	const logicalKeys = ['handles', 'ranges', 'listenerSlots', 'retainedHostRefs'];
+	const same = (left, right, keys = logicalKeys) =>
 		left !== null &&
 		right !== null &&
-		['handles', 'ranges', 'listenerSlots', 'retainedHostRefs'].every(
-			(key) => Number.isSafeInteger(left[key]) && left[key] === right[key],
-		);
-	return {
-		valid:
-			initial !== null &&
-			populated !== null &&
-			sequenceEvidence.every((entry) =>
-				same(entry.attribution?.census ?? null, entry.workload === 'clear' ? initial : populated),
-			),
+		keys.every((key) => Number.isSafeInteger(left[key]) && left[key] === right[key]);
+	const poolKeys = ['recycledHandles', 'recycledHostRefs'];
+	const censuses = [
 		initial,
 		populated,
+		cleared,
+		...sequenceEvidence.map((entry) => entry.attribution?.census),
+	].filter((census) => census !== null && census !== undefined);
+	const poolObserved = censuses.some((census) =>
+		poolKeys.some((key) => Object.hasOwn(census, key)),
+	);
+	const hasPoolCensus = censuses.every((census) =>
+		poolKeys.every((key) => Number.isSafeInteger(census[key])),
+	);
+	const recycling =
+		hasPoolCensus &&
+		cleared !== null &&
+		(cleared.recycledHandles > 0 || cleared.recycledHostRefs > 0);
+	const stableLogicalLifecycle =
+		initial !== null &&
+		populated !== null &&
+		cleared !== null &&
+		same(cleared, initial) &&
+		sequenceEvidence.every((entry) =>
+			same(entry.attribution?.census ?? null, entry.workload === 'clear' ? cleared : populated),
+		);
+	const stablePool = recycling
+		? hasPoolCensus &&
+			initial.recycledHandles === 0 &&
+			initial.recycledHostRefs === 0 &&
+			populated.recycledHandles === 0 &&
+			populated.recycledHostRefs === 0 &&
+			sequenceEvidence.every((entry) =>
+				same(
+					entry.attribution?.census ?? null,
+					entry.workload === 'clear' ? cleared : populated,
+					poolKeys,
+				),
+			) &&
+			cleared.retainedHostRefs + cleared.recycledHostRefs === populated.retainedHostRefs
+		: !poolObserved ||
+			(hasPoolCensus &&
+				censuses.every((census) => census.recycledHandles === 0 && census.recycledHostRefs === 0));
+	return {
+		valid: stableLogicalLifecycle && stablePool,
+		initial,
+		populated,
+		cleared,
+		recycling,
 	};
 }
 

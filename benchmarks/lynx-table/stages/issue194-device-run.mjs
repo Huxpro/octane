@@ -488,6 +488,13 @@ async function measure(cell, ordinal) {
 			completed = true;
 			break;
 		}
+		if (!nativeCrashOutcome && !capacityOutcome && observedErrors.length !== 0) {
+			// A correctness/memory cell can never accept a window containing one of
+			// the fatal markers collected above. Stop at that exact evidence boundary
+			// instead of waiting out the full sample deadline after the app died.
+			completed = true;
+			break;
+		}
 		if (interactionSequence !== null) {
 			if (
 				activeSequenceStep === null &&

@@ -477,7 +477,14 @@ function requireFunction<
 \t\t\t\tlistenerSlots += value.run.plan.events.length;
 \t\t\t\tretainedHostRefs += value.run.plan.resident?.length ?? value.run.plan.nodes;
 \t\t\t}
-\t\t\treturn { handles: instances.size, ranges: ranges.size, listenerSlots, retainedHostRefs };
+\t\t\treturn {
+\t\t\t\thandles: instances.size,
+\t\t\t\tranges: ranges.size,
+\t\t\t\tlistenerSlots,
+\t\t\t\tretainedHostRefs,
+\t\t\t\trecycledHandles: 0,
+\t\t\t\trecycledHostRefs: 0,
+\t\t\t};
 \t\t},
 \t\tisFaulted() {
 `,
@@ -504,7 +511,20 @@ function requireFunction<
 \t\t\t\tlistenerSlots += value.plan.events.length;
 \t\t\t\tretainedHostRefs += value.plan.nodes;
 \t\t\t}
-\t\t\treturn { handles: instances.size, ranges: ranges.size, listenerSlots, retainedHostRefs };
+\t\t\tlet recycledHandles = 0;
+\t\t\tlet recycledHostRefs = 0;
+\t\t\tfor (const [plan, handles] of recycled) {
+\t\t\t\trecycledHandles += handles.length;
+\t\t\t\trecycledHostRefs += handles.length * plan.nodes;
+\t\t\t}
+\t\t\treturn {
+\t\t\t\thandles: instances.size,
+\t\t\t\tranges: ranges.size,
+\t\t\t\tlistenerSlots,
+\t\t\t\tretainedHostRefs,
+\t\t\t\trecycledHandles,
+\t\t\t\trecycledHostRefs,
+\t\t\t};
 \t\t},
 \t\tisFaulted() {
 `,

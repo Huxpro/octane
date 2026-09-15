@@ -242,12 +242,21 @@ test('Native v2 receipts carry stable ordinals and lifecycle cycles reset popula
 		/positive integer/,
 	);
 
-	const baseline = { handles: 7, ranges: 1, listenerSlots: 12, retainedHostRefs: 28 };
+	const baseline = {
+		handles: 7,
+		ranges: 1,
+		listenerSlots: 12,
+		retainedHostRefs: 28,
+		recycledHandles: 0,
+		recycledHostRefs: 0,
+	};
 	const populated = {
 		handles: 1007,
 		ranges: 2,
 		listenerSlots: 2012,
 		retainedHostRefs: 4028,
+		recycledHandles: 0,
+		recycledHostRefs: 0,
 	};
 	const evidence = [
 		{ phase: 'create', workload: 'create', attribution: { census: populated } },
@@ -258,7 +267,31 @@ test('Native v2 receipts carry stable ordinals and lifecycle cycles reset popula
 		valid: true,
 		initial: baseline,
 		populated,
+		cleared: baseline,
+		recycling: false,
 	});
 	evidence[1].attribution.census = { ...baseline, listenerSlots: 13 };
 	assert.equal(summarizeIssue194LifecycleCensus(evidence, baseline).valid, false);
+
+	const recycled = {
+		...baseline,
+		recycledHandles: 1000,
+		recycledHostRefs: 4000,
+	};
+	const recycledEvidence = [
+		{ phase: 'create', workload: 'create', attribution: { census: populated } },
+		{ phase: 'clear', workload: 'clear', attribution: { census: recycled } },
+		{ phase: 'recreate', workload: 'create', attribution: { census: populated } },
+		{ phase: 'reset', workload: 'clear', attribution: { census: recycled } },
+		{ phase: 'create', workload: 'create', attribution: { census: populated } },
+	];
+	assert.deepEqual(summarizeIssue194LifecycleCensus(recycledEvidence, baseline), {
+		valid: true,
+		initial: baseline,
+		populated,
+		cleared: recycled,
+		recycling: true,
+	});
+	recycledEvidence[3].attribution.census = { ...recycled, recycledHandles: 999 };
+	assert.equal(summarizeIssue194LifecycleCensus(recycledEvidence, baseline).valid, false);
 });

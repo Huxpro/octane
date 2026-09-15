@@ -3823,8 +3823,14 @@ There are two deliberately separate lanes:
    mode. Every action must have both the Native ACK/second-frame receipt and the
    matching main-thread receipt. The build-only probe records live program
    instance handles, structural ranges, listener slots, and retained native
-   host references; every clear must equal the first-screen baseline, and every
-   populated phase must equal the first create.
+   host references. An ordinary owner must return every clear to the
+   first-screen baseline. The Lynx 4.1 Element Template owner additionally
+   reports detached recycled handles and their native-node cost: logical state
+   must return to baseline, the first clear establishes one fixed pool, every
+   later clear must reproduce it, every create must consume it, and active plus
+   recycled host references must stay on the first populated plateau. This
+   distinguishes bounded reuse from the `TextShadowNode` weak-global growth
+   that otherwise aborts Android at 51,200 entries.
 2. Build the ordinary shipping bundles without `BENCH_ISSUE194_NATIVE`, then add
    `--native-only --process-memory --settle-ms 4000`. This lane requires Native
    state/frame receipts but no instrumentation receipt. It samples
