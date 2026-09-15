@@ -1,0 +1,98 @@
+{
+  "schema": "octane-issue291-native-lifecycle-v1",
+  "source": {
+    "fixCommit": "0b5d86842d6df1c2a214f19460b52e9f28016dfb",
+    "runnerCheckoutCommit": "88a93e48af0366b42366330bba6cb0a78b9f7081",
+    "acceptedBundle": {
+      "sha256": "3b055bcfbcfd33b6daa105a6158c6d22c0fe42a044405596798161a71d8945bb",
+      "bytes": 310541
+    },
+    "commitRebuild": {
+      "sha256": "3b055bcfbcfd33b6daa105a6158c6d22c0fe42a044405596798161a71d8945bb",
+      "bytes": 310541,
+      "byteIdentical": true
+    },
+    "rawReport": {
+      "sha256": "b42068b3463943aaf0fef44e5363304bd0050b9220e4f61181dc65e2789ac61e",
+      "bytes": 284491,
+      "checkedIn": false
+    }
+  },
+  "environment": {
+    "deviceIdentitySha256": "f6a5c6cd11f7270b2a6cfb2c48f0c019f92eb1f7a1ae1ea508ae957b01dca69a",
+    "android": "10",
+    "appBundleEngine": "3.2",
+    "lynxSdk": "4.1",
+    "devtoolStayedDisabled": true,
+    "batteryTemperatureTenthsC": {
+      "before": 350,
+      "after": 350
+    },
+    "thermalStatus": {
+      "before": 0,
+      "after": 0
+    }
+  },
+  "failureObservation": {
+    "bundle": {
+      "sha256": "74f7cc3b225bc52aab7a679f7faca51adc151495cc92eb9860cb79e9ae0a1223",
+      "bytes": 310085
+    },
+    "coldAttempts": 2,
+    "terminalAction": 35,
+    "terminalCreateOrdinal": 18,
+    "completedCreates": 17,
+    "androidJniWeakGlobalLimit": 51200,
+    "textShadowNodeWeakGlobals": 51149,
+    "textShadowNodeClass": "com.lynx.tasm.behavior.shadow.text.TextShadowNode",
+    "terminalSignal": "SIGABRT",
+    "accepted": false
+  },
+  "acceptance": {
+    "protocol": "octane-issue194-device-v1",
+    "samples": 1,
+    "cycles": 20,
+    "actions": 79,
+    "createActions": 40,
+    "clearActions": 39,
+    "acceptedActions": 79,
+    "outcome": "completed",
+    "errors": [],
+    "lifecycleCensus": {
+      "valid": true,
+      "recycling": true,
+      "initial": {
+        "handles": 1,
+        "ranges": 1,
+        "listenerSlots": 12,
+        "retainedHostRefs": 28,
+        "recycledHandles": 0,
+        "recycledHostRefs": 0
+      },
+      "populated": {
+        "handles": 1001,
+        "ranges": 2,
+        "listenerSlots": 2012,
+        "retainedHostRefs": 4028,
+        "recycledHandles": 0,
+        "recycledHostRefs": 0
+      },
+      "cleared": {
+        "handles": 1,
+        "ranges": 1,
+        "listenerSlots": 12,
+        "retainedHostRefs": 28,
+        "recycledHandles": 1000,
+        "recycledHostRefs": 4000
+      },
+      "postFirstUseHostRefPlateau": 4028
+    }
+  },
+  "claims": {
+    "nativeLifecycleCorrectness": "pass",
+    "boundedElementTemplateAllocation": "pass",
+    "processMemoryNonInferiority": "not-measured",
+    "instantaneousPeakMemory": "inconclusive",
+    "latency": "not-claimed"
+  }
+}
