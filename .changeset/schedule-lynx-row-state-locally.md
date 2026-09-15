@@ -21,3 +21,9 @@ automatically for state, reducer, derived, conditional, nested scalar, event,
 and structural outputs. Dirty scalar updates encode and write only affected
 bindings and listener sites; unrelated program slots and rows no longer add
 wire-value cloning, validation, or lookup work.
+Dependency discovery is indexed by stable hook getter at component commit, so a
+state-only update no longer scans unrelated compiler groups. Keyed ranges whose
+iterable expression is compiler-proven pure now replay only their descriptor and
+enter the existing range reconciler without executing the owning component;
+opaque iterable evaluation and all unproved structural work retain the complete
+component transaction.

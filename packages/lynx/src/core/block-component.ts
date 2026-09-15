@@ -125,7 +125,6 @@ import {
 	isLynxCompilerProgramValue,
 	type LynxCompilerProgram,
 	type LynxCompilerProgramComputation,
-	type LynxCompilerProgramScalarComputation,
 } from './compiler-program.js';
 import type { LynxBlockProgram, LynxBlockProgramContext } from './block-program.js';
 import {
@@ -673,8 +672,15 @@ interface RetainedRow {
 }
 
 const EMPTY_RANGES: readonly RangeState[] = Object.freeze([]);
+const EMPTY_RANGES_BY_SLOT: ReadonlyMap<number, RangeState> = new Map();
 const EMPTY_RESTORES: readonly (() => void)[] = Object.freeze([]);
 const EMPTY_COMPUTATIONS: readonly LynxCompilerProgramComputation[] = Object.freeze([]);
+interface IndexedComputation {
+	readonly index: number;
+	readonly computation: LynxCompilerProgramComputation;
+}
+const EMPTY_COMPUTATIONS_BY_SOURCE: ReadonlyMap<() => unknown, readonly IndexedComputation[]> =
+	new Map();
 type ProgramSiteIndexes = readonly (readonly number[] | undefined)[];
 const EMPTY_SITE_INDEXES: ProgramSiteIndexes = Object.freeze([]);
 const EMPTY_INDEXES: readonly number[] = Object.freeze([]);
@@ -694,6 +700,25 @@ function indexProgramSites(sites: readonly { readonly slot: number }[]): Program
 	for (let index = 0; index < sites.length; index++) {
 		const slot = sites[index]!.slot;
 		(indexed[slot] ??= []).push(index);
+	}
+	return indexed;
+}
+
+function indexProgramComputations(
+	computations: readonly LynxCompilerProgramComputation[],
+): ReadonlyMap<() => unknown, readonly IndexedComputation[]> {
+	if (computations.length === 0) return EMPTY_COMPUTATIONS_BY_SOURCE;
+	const indexed = new Map<() => unknown, IndexedComputation[]>();
+	for (let index = 0; index < computations.length; index++) {
+		const computation = computations[index]!;
+		const entry = { index, computation };
+		for (let sourceIndex = 0; sourceIndex < computation.sources.length; sourceIndex++) {
+			const source = computation.sources[sourceIndex]!;
+			if (computation.sources.indexOf(source) !== sourceIndex) continue;
+			const entries = indexed.get(source);
+			if (entries === undefined) indexed.set(source, [entry]);
+			else entries.push(entry);
+		}
 	}
 	return indexed;
 }
@@ -868,6 +893,8 @@ export function lynxBlockProgramForComponent<Props>(
 	 */
 	let dirtySlots: Set<unknown> | null = null;
 	let liveComputations: readonly LynxCompilerProgramComputation[] = EMPTY_COMPUTATIONS;
+	let liveComputationsBySource: ReadonlyMap<() => unknown, readonly IndexedComputation[]> =
+		EMPTY_COMPUTATIONS_BY_SOURCE;
 	let liveComputationGeneration = 0;
 	let renderQueued = false;
 	let dirtyGeneration = 0;
@@ -910,6 +937,7 @@ export function lynxBlockProgramForComponent<Props>(
 	// path so bindRefs sees every accepted descriptor together.
 	let refSlots: ReadonlySet<number> | null = null;
 	let ranges: readonly RangeState[] = EMPTY_RANGES;
+	let rangesBySlot: ReadonlyMap<number, RangeState> = EMPTY_RANGES_BY_SLOT;
 
 	/** Read a compiled component's return value, or say what it returned instead. */
 	const readPlanValue = (
@@ -1117,7 +1145,9 @@ export function lynxBlockProgramForComponent<Props>(
 		return rendered;
 	};
 
-	const snapshotRangeTemplates = (): readonly (() => void)[] => {
+	const snapshotRangeTemplates = (
+		states: readonly RangeState[] = ranges,
+	): readonly (() => void)[] => {
 		let restores: (() => void)[] | null = null;
 		const visited = new Set<RangeState>();
 		const snapshotTemplate = (templateState: RangeTemplateState): void => {
@@ -1151,7 +1181,7 @@ export function lynxBlockProgramForComponent<Props>(
 				for (const nested of state.nested?.values() ?? []) snapshotStates(nested.ranges);
 			}
 		};
-		snapshotStates(ranges);
+		snapshotStates(states);
 		return restores ?? EMPTY_RESTORES;
 	};
 
@@ -3387,29 +3417,51 @@ export function lynxBlockProgramForComponent<Props>(
 	): readonly RangeRender[] =>
 		renderRangeStates(context, ranges, slotValues, contextValues, visible);
 
-	/** Select compiler-proved scalar outputs for the dirty getter set. */
+	/** Select compiler-proved replay outputs for the dirty getter set. */
 	const selectDirtyOutputs = (
 		sources: readonly (() => unknown)[],
 	): Map<number, unknown> | undefined => {
-		const dirtySources = new Set(sources);
-		const covered = new Set<() => unknown>();
-		const selected: LynxCompilerProgramScalarComputation[] = [];
-		for (const computation of liveComputations) {
-			if (!computation.sources.some((source) => dirtySources.has(source))) continue;
-			if (computation.kind === 'structural') return undefined;
+		const selected: IndexedComputation[] = [];
+		if (sources.length === 1) {
+			const candidates = liveComputationsBySource.get(sources[0]!);
+			if (candidates === undefined) return undefined;
+			selected.push(...candidates);
+		} else {
+			const seen = new Set<LynxCompilerProgramComputation>();
+			for (const source of sources) {
+				const candidates = liveComputationsBySource.get(source);
+				if (candidates === undefined) return undefined;
+				for (const entry of candidates) {
+					if (seen.has(entry.computation)) continue;
+					seen.add(entry.computation);
+					selected.push(entry);
+				}
+			}
+			selected.sort((left, right) => left.index - right.index);
+		}
+		const replayable: Array<
+			LynxCompilerProgramComputation & { readonly run: () => readonly unknown[] }
+		> = [];
+		for (const { computation } of selected) {
+			if (
+				computation.kind === 'structural' &&
+				(computation.purity !== 'descriptor-pure' || typeof computation.run !== 'function')
+			) {
+				return undefined;
+			}
 			const refs = refSlots;
 			if (refs !== null && computation.slots.some((slot) => refs.has(slot))) {
 				return undefined;
 			}
-			selected.push(computation);
-			for (const source of computation.sources) {
-				if (dirtySources.has(source)) covered.add(source);
-			}
+			replayable.push(
+				computation as LynxCompilerProgramComputation & {
+					readonly run: () => readonly unknown[];
+				},
+			);
 		}
-		if (sources.some((source) => !covered.has(source))) return undefined;
 
 		const outputs = new Map<number, unknown>();
-		for (const computation of selected) {
+		for (const computation of replayable) {
 			const values = computation.run();
 			if (!Array.isArray(values) || values.length !== computation.slots.length) {
 				refuse(
@@ -3433,12 +3485,54 @@ export function lynxBlockProgramForComponent<Props>(
 		return outputs;
 	};
 
-	/** Apply already-computed scalar outputs inside the next host attempt. */
+	/** Apply already-computed scalar and keyed-range outputs in one host attempt. */
 	const applyDirtyOutputs = (
 		context: LynxBlockProgramContext,
 		outputs: ReadonlyMap<number, unknown>,
 	): void => {
+		let rangeRenders: RangeRender[] | null = null;
+		let dirtyRanges: RangeState[] | null = null;
+		let dirtyRangeValues: UniversalForValue[] | null = null;
 		for (const [slot, output] of outputs) {
+			const range = rangesBySlot.get(slot);
+			if (range === undefined) continue;
+			if (!isRangeValue(output)) {
+				refuse(
+					subject,
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'a replayable structural computation did not return a keyed range.',
+				);
+			}
+			(dirtyRanges ??= []).push(range);
+			(dirtyRangeValues ??= []).push(output);
+		}
+		if (dirtyRanges !== null) {
+			const restores = snapshotRangeTemplates(dirtyRanges);
+			context.afterAbort(() => {
+				for (const restore of restores) restore();
+			});
+			try {
+				for (let index = 0; index < dirtyRanges.length; index++) {
+					const range = dirtyRanges[index]!;
+					(rangeRenders ??= []).push(
+						renderRange(
+							context,
+							range,
+							dirtyRangeValues![index],
+							range.contextValues,
+							range.visible,
+						),
+					);
+				}
+			} catch (error) {
+				for (let index = (rangeRenders?.length ?? 0) - 1; index >= 0; index--) {
+					rangeRenders![index]!.discard?.();
+				}
+				throw error;
+			}
+		}
+		for (const [slot, output] of outputs) {
+			if (rangesBySlot.has(slot)) continue;
 			for (const valueIndex of valueIndexesBySlot[slot] ?? EMPTY_INDEXES) {
 				const binding = prepared!.values[valueIndex]!;
 				const value = prepareUniversalTemplateProgramValueFromWire(
@@ -3471,6 +3565,7 @@ export function lynxBlockProgramForComponent<Props>(
 				);
 			}
 		}
+		for (const render of rangeRenders ?? EMPTY_RANGE_RENDERS) applyRange(context, render);
 	};
 
 	/** Consume and apply one ordinary dirty transaction. */
@@ -3603,6 +3698,7 @@ export function lynxBlockProgramForComponent<Props>(
 			context.afterCommit(() => {
 				scope?.commit(rendered.visible, transitionAttempt?.suspended === true);
 				liveComputations = rendered.computations;
+				liveComputationsBySource = indexProgramComputations(rendered.computations);
 				liveComputationGeneration++;
 			});
 			if (transitionAttempt !== null) {
@@ -3634,6 +3730,7 @@ export function lynxBlockProgramForComponent<Props>(
 				refSlots,
 				block,
 				ranges,
+				rangesBySlot,
 			};
 			context.afterAbort(() => {
 				plan = previous.plan;
@@ -3641,6 +3738,7 @@ export function lynxBlockProgramForComponent<Props>(
 				prepared = previous.prepared;
 				block = previous.block;
 				ranges = previous.ranges;
+				rangesBySlot = previous.rangesBySlot;
 				valueIndexesBySlot = previous.valueIndexesBySlot;
 				eventIndexesBySlot = previous.eventIndexesBySlot;
 				refSlots = previous.refSlots;
@@ -3705,6 +3803,10 @@ export function lynxBlockProgramForComponent<Props>(
 					declaredRanges.length === 0
 						? EMPTY_RANGES
 						: declaredRanges.map((range) => createRangeState(range, rendered.values[range.slot]));
+				rangesBySlot =
+					ranges.length === 0
+						? EMPTY_RANGES_BY_SLOT
+						: new Map(ranges.map((range) => [range.slot, range]));
 				valueIndexesBySlot = indexProgramSites(wire.values);
 				eventIndexesBySlot = indexProgramSites(wire.events);
 				refSlots =
@@ -3755,6 +3857,7 @@ export function lynxBlockProgramForComponent<Props>(
 				context.afterCommit(() => {
 					scope?.commit(rendered.visible);
 					liveComputations = rendered.computations;
+					liveComputationsBySource = indexProgramComputations(rendered.computations);
 					liveComputationGeneration++;
 				});
 			} catch (error) {
@@ -3811,11 +3914,13 @@ export function lynxBlockProgramForComponent<Props>(
 				}
 				block = null;
 				ranges = EMPTY_RANGES;
+				rangesBySlot = EMPTY_RANGES_BY_SLOT;
 				dirtySlots = null;
 				valueIndexesBySlot = EMPTY_SITE_INDEXES;
 				eventIndexesBySlot = EMPTY_SITE_INDEXES;
 				refSlots = null;
 				liveComputations = EMPTY_COMPUTATIONS;
+				liveComputationsBySource = EMPTY_COMPUTATIONS_BY_SOURCE;
 				portalTargetClaims?.clear();
 				portalDraftClaims = null;
 				portalHandles?.clear();

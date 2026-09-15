@@ -707,7 +707,7 @@ describe('Lynx compiled component on the Block core', () => {
 					slots: [0],
 				} as never,
 			]),
-		).toThrow(/scalar run function/);
+		).toThrow(/replay function/);
 
 		expect(() =>
 			lynxProgramValue(CARD_COMPILER_PROGRAM, CARD_PROGRAM_IR.values, [
@@ -736,6 +736,31 @@ describe('Lynx compiled component on the Block core', () => {
 				],
 			),
 		).not.toThrow();
+
+		expect(() =>
+			lynxProgramValue(TABLE_COMPILER_PROGRAM, [undefined], [
+				{
+					kind: 'structural',
+					purity: 'unknown',
+					escape: 'component-render',
+					sources: [noop],
+					slots: [0],
+					run: () => [undefined],
+				},
+			] as never),
+		).toThrow(/replay function/);
+
+		expect(() =>
+			lynxProgramValue(TABLE_COMPILER_PROGRAM, [undefined], [
+				{
+					kind: 'structural',
+					purity: 'descriptor-pure',
+					escape: 'component-render',
+					sources: [noop],
+					slots: [0],
+				},
+			] as never),
+		).toThrow(/replay function/);
 	});
 	it('preserves a build-proven address on the Block run command', async () => {
 		const block = blockColumn(
@@ -1050,6 +1075,130 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		expect(componentRuns).toBe(2);
 		expect(computationRuns).toBe(2);
 		expect(paint(block.main.commits).tree).toContain('b-many');
+	});
+
+	it('indexes a repeated source getter only once for hand-authored metadata', async () => {
+		let computationRuns = 0;
+		let setCount: ((value: number) => void) | undefined;
+		const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+			const [count, updateCount, getCount] = useState(0, 'count');
+			setCount = updateCount;
+			return lynxProgramValue(
+				CARD_COMPILER_PROGRAM,
+				['card', TALLY[count] ?? 'many', 'card-meta', noop, 'detail'],
+				[
+					{
+						kind: 'scalar',
+						purity: 'pure',
+						escape: 'component-render',
+						sources: [getCount, getCount],
+						slots: [1],
+						run() {
+							computationRuns++;
+							return [TALLY[getCount()] ?? 'many'];
+						},
+					},
+				],
+			) as never;
+		});
+		const block = blockColumn<Record<string, never>>();
+
+		await block.render(Scene as LynxComponent<Record<string, never>>, {});
+		setCount!(1);
+		await block.settle(Promise.resolve());
+
+		expect(computationRuns).toBe(1);
+		expect(paint(block.main.commits).tree).toContain('once');
+	});
+
+	it('indexes dirty dependency discovery independently of unrelated groups', async () => {
+		const groupCount = 128;
+		let componentRuns = 0;
+		let sourceReads = 0;
+		let setFirst: ((value: number) => void) | undefined;
+		const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+			componentRuns++;
+			const computations = [];
+			for (let index = 0; index < groupCount; index++) {
+				const [value, update, getValue] = useState(index, `group-${index}`);
+				if (index === 0) setFirst = update;
+				const sources: Array<() => unknown> = [];
+				Object.defineProperty(sources, 0, {
+					configurable: true,
+					get() {
+						sourceReads++;
+						return getValue;
+					},
+				});
+				sources.length = 1;
+				computations.push({
+					kind: 'scalar' as const,
+					purity: 'pure' as const,
+					escape: 'component-render' as const,
+					sources,
+					slots: [0],
+					run: () => [index === 0 && getValue() !== value ? 'card active' : 'card'],
+				});
+			}
+			return lynxProgramValue(
+				CARD_COMPILER_PROGRAM,
+				['card', 'ready', 'card-meta', noop, 'detail'],
+				computations,
+			) as never;
+		});
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
+
+		await block.render(Scene as LynxComponent<Record<string, never>>, {});
+		sourceReads = 0;
+		setFirst!(groupCount);
+		await block.settle(Promise.resolve());
+
+		expect(componentRuns).toBe(1);
+		expect(sourceReads).toBe(0);
+		expect(paint(block.main.commits).tree).toContain('card active');
+	});
+
+	it('runs a shared dependency group once when both sources update together', async () => {
+		let componentRuns = 0;
+		let computationRuns = 0;
+		let updateBoth: (() => void) | undefined;
+		const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+			componentRuns++;
+			const [left, setLeft, getLeft] = useState('left', 'left');
+			const [right, setRight, getRight] = useState('right', 'right');
+			updateBoth = () => {
+				setLeft('LEFT');
+				setRight('RIGHT');
+			};
+			return lynxProgramValue(
+				CARD_COMPILER_PROGRAM,
+				['card', `${left}:${right}`, 'card-meta', noop, 'detail'],
+				[
+					{
+						kind: 'scalar',
+						purity: 'pure',
+						escape: 'component-render',
+						sources: [getLeft, getRight],
+						slots: [1],
+						run() {
+							computationRuns++;
+							return [`${getLeft()}:${getRight()}`];
+						},
+					},
+				],
+			) as never;
+		});
+		const block = blockColumn<Record<string, never>>();
+
+		await block.render(Scene as LynxComponent<Record<string, never>>, {});
+		updateBoth!();
+		await block.settle(Promise.resolve());
+
+		expect(componentRuns).toBe(1);
+		expect(computationRuns).toBe(1);
+		expect(paint(block.main.commits).tree).toContain('LEFT:RIGHT');
 	});
 
 	it('prepares and refreshes continuous-input work while the previous frame awaits acknowledgement', async () => {
@@ -1504,7 +1653,9 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 				],
 			) as never;
 		});
-		const block = blockColumn(createLynxBlockCore({ templateRuns: () => false }));
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
 
 		await block.render(Scene as LynxComponent<Record<string, never>>, {});
 		expect(componentRuns).toBe(1);
@@ -1515,6 +1666,55 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		await block.settle(Promise.resolve());
 
 		expect(componentRuns).toBe(2);
+		expect(
+			JSON.parse(paint(block.main.commits).tree).children[0].children[1].children,
+		).toHaveLength(2);
+	});
+
+	it('replays a compiler-proved keyed range without rerunning its owning component', async () => {
+		let componentRuns = 0;
+		let computationRuns = 0;
+		let setRows: ((value: readonly TableRow[]) => void) | undefined;
+		const one = { id: 1, label: 'row 1' };
+		const two = { id: 2, label: 'row 2' };
+		const range = (rows: readonly TableRow[]) =>
+			universalFor(
+				rows,
+				(row: TableRow) => row.id,
+				(row: TableRow) => universalValue(ROW_PLAN, ['row', String(row.id), noop, row.label]),
+			);
+		const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+			componentRuns++;
+			const [rows, updateRows, getRows] = useState<readonly TableRow[]>([one], 'rows');
+			setRows = updateRows;
+			return lynxProgramValue(
+				TABLE_COMPILER_PROGRAM,
+				[range(rows)],
+				[
+					{
+						kind: 'structural',
+						purity: 'descriptor-pure',
+						escape: 'component-render',
+						sources: [getRows],
+						slots: [0],
+						run() {
+							computationRuns++;
+							return [range(getRows())];
+						},
+					},
+				],
+			) as never;
+		});
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
+
+		await block.render(Scene as LynxComponent<Record<string, never>>, {});
+		setRows!([one, two]);
+		await block.settle(Promise.resolve());
+
+		expect(componentRuns).toBe(1);
+		expect(computationRuns).toBe(1);
 		expect(
 			JSON.parse(paint(block.main.commits).tree).children[0].children[1].children,
 		).toHaveLength(2);

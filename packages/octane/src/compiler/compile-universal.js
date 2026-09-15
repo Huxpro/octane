@@ -3921,18 +3921,20 @@ function dirtyComputationArrayAst(candidate, values, root, state, origin) {
 		}
 		if (deps.size === 0) continue;
 		const kind = structuralSlots.has(slot) ? 'structural' : 'scalar';
+		const replayable = kind === 'scalar' || state.dirtyStructuralReplayExpressions.has(expression);
 		if (kind === 'scalar' && !dirtyPureExpression(expression)) return null;
 		const ordered = [...deps].sort((left, right) => left - right);
-		const key = `${kind}:${ordered.join(',')}`;
+		const key = `${kind}:${replayable ? 'replay' : 'owner'}:${ordered.join(',')}`;
 		const group = groups.get(key) ?? {
 			kind,
+			replayable,
 			deps: ordered,
 			slots: [],
-			values: kind === 'scalar' ? [] : null,
-			refs: kind === 'scalar' ? [] : null,
+			values: replayable ? [] : null,
+			refs: replayable ? [] : null,
 		};
 		group.slots.push(slot);
-		if (kind === 'scalar') {
+		if (replayable) {
 			group.values.push(expression);
 			group.refs.push(...refs);
 		}
@@ -3943,7 +3945,7 @@ function dirtyComputationArrayAst(candidate, values, root, state, origin) {
 	const descriptors = [];
 	for (const group of groups.values()) {
 		let run = null;
-		if (group.kind === 'scalar') {
+		if (group.replayable) {
 			const required = new Set();
 			const visit = (name) => {
 				const entry = derivedByName.get(name);
@@ -3986,7 +3988,10 @@ function dirtyComputationArrayAst(candidate, values, root, state, origin) {
 					b.prop(
 						'init',
 						b.literal('purity', '"purity"'),
-						jsonValueToAst(group.kind === 'scalar' ? 'pure' : 'unknown', origin),
+						jsonValueToAst(
+							group.kind === 'scalar' ? 'pure' : group.replayable ? 'descriptor-pure' : 'unknown',
+							origin,
+						),
 					),
 					b.prop(
 						'init',
@@ -4944,7 +4949,13 @@ function compileForAst(node, context, state) {
 	} else if (node.empty) {
 		args.push(compileBlockValueAst(node.empty?.body ?? [], state, [], node.empty));
 	}
-	return addDynamicAst(context, generatedCall(state.helpers.for, args, node));
+	const range = generatedCall(state.helpers.for, args, node);
+	// Recreating this descriptor does not enumerate the iterable or execute a
+	// row body. The Block runtime may therefore project a state-only update into
+	// this range without re-entering the owning component; all structural work
+	// still goes through the ordinary keyed range implementation.
+	if (dirtyPureExpression(node.right)) state.dirtyStructuralReplayExpressions.add(range);
+	return addDynamicAst(context, range);
 }
 
 function compileIfAst(node, context, state) {
@@ -6497,6 +6508,7 @@ export function lowerUniversalRendererRegionAst(
 			options.profile !== true,
 		profileFilename: options.profileFilename,
 		helpers: {},
+		dirtyStructuralReplayExpressions: new WeakSet(),
 		componentNames: collectComponentNames(analysisAst),
 		runtimeImports: new Map(),
 		planPrefix: prefix,
@@ -6824,6 +6836,7 @@ export function compileUniversal(
 			options.profile !== true,
 		profileFilename: options.profileFilename,
 		helpers: {},
+		dirtyStructuralReplayExpressions: new WeakSet(),
 		componentNames: collectComponentNames(ast),
 		runtimeImports: new Map(),
 		// The `lynx` target keeps the universal front-end and descriptor ABI but

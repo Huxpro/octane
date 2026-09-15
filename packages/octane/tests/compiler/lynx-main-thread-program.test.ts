@@ -333,6 +333,12 @@ function evaluate(code: string): EvaluatedModule {
 			return root;
 		},
 		universalValue: (plan: unknown, values: readonly unknown[]) => ({ plan, values }),
+		universalFor: (
+			items: readonly unknown[],
+			key: (item: unknown, index: number) => unknown,
+			render: (item: unknown, index: number) => unknown,
+			...rest: readonly unknown[]
+		) => ({ items, key, render, rest }),
 		enableLynxCompilerProgramRefs: () => {},
 		lynxProgram: (_renderer: string, program: any) => {
 			roots.push(program);
@@ -732,15 +738,64 @@ export function Card() @{
 		);
 		const descriptors = [
 			...code.matchAll(
-				/["']?kind["']?\s*:\s*["'](scalar|structural)["'][\s\S]*?["']?purity["']?\s*:\s*["'](pure|unknown)["']/g,
+				/["']?kind["']?\s*:\s*["'](scalar|structural)["'][\s\S]*?["']?purity["']?\s*:\s*["'](pure|unknown|descriptor-pure)["']/g,
 			),
 		].map((match) => match.slice(1));
 		expect(descriptors).toEqual(
 			expect.arrayContaining([
 				['scalar', 'pure'],
-				['structural', 'unknown'],
+				['structural', 'descriptor-pure'],
 			]),
 		);
+		const value = evaluate(code).card({});
+		const structural = value.computations!.find((entry) => entry.kind === 'structural');
+		expect(structural).toMatchObject({
+			kind: 'structural',
+			purity: 'descriptor-pure',
+			escape: 'component-render',
+			run: expect.any(Function),
+		});
+		expect(structural.run()).toEqual([
+			expect.objectContaining({ items: [{ id: 1, label: 'one' }] }),
+		]);
+	});
+
+	it('keeps an opaque keyed iterable on the owning-component path', () => {
+		const value = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+function visible<T>(items: readonly T[]): readonly T[] {
+	return items.slice();
+}
+
+export function Card() @{
+	const [rows] = useState([{ id: 1, label: 'one' }]);
+	<view>
+		@for (const row of visible(rows); key row.id) {
+			<text>{row.label as string}</text>
+		}
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/OpaqueStructuralStateCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			),
+		).card({});
+
+		expect(value.computations).toEqual([
+			expect.objectContaining({
+				kind: 'structural',
+				purity: 'unknown',
+			}),
+		]);
+		expect(value.computations![0]).not.toHaveProperty('run');
 	});
 
 	it('declines unproved output evaluation without enabling getter-aware hooks', () => {

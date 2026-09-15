@@ -58,11 +58,26 @@ export interface LynxCompilerProgramScalarComputation extends LynxCompilerProgra
 	readonly run: () => readonly unknown[];
 }
 
-/** A collection dependency that requires the owning component's structural path. */
-export interface LynxCompilerProgramStructuralComputation extends LynxCompilerProgramComputationBase {
+/** A collection dependency whose descriptor cannot be reconstructed independently. */
+interface LynxCompilerProgramUnknownStructuralComputation extends LynxCompilerProgramComputationBase {
 	readonly kind: 'structural';
 	readonly purity: 'unknown';
+	readonly run?: never;
 }
+
+/**
+ * A computation whose `run` only reconstructs keyed-range descriptors. Row
+ * bodies and reconciliation still execute through the ordinary range path.
+ */
+interface LynxCompilerProgramReplayableStructuralComputation extends LynxCompilerProgramComputationBase {
+	readonly kind: 'structural';
+	readonly purity: 'descriptor-pure';
+	readonly run: () => readonly unknown[];
+}
+
+export type LynxCompilerProgramStructuralComputation =
+	| LynxCompilerProgramUnknownStructuralComputation
+	| LynxCompilerProgramReplayableStructuralComputation;
 
 export type LynxCompilerProgramComputation =
 	LynxCompilerProgramScalarComputation | LynxCompilerProgramStructuralComputation;
@@ -180,13 +195,18 @@ export function lynxProgramValue(
 	if (DEVELOPMENT) {
 		const rangeSlots = new Set(program.ranges.map((range) => range.slot));
 		for (const computation of computations) {
+			const replayableStructural =
+				computation !== null &&
+				typeof computation === 'object' &&
+				computation.kind === 'structural' &&
+				computation.purity === 'descriptor-pure';
 			if (
 				computation === null ||
 				typeof computation !== 'object' ||
 				!Array.isArray(computation.sources) ||
 				(computation.kind !== 'scalar' && computation.kind !== 'structural') ||
 				(computation.kind === 'structural'
-					? computation.purity !== 'unknown'
+					? computation.purity !== 'unknown' && computation.purity !== 'descriptor-pure'
 					: computation.purity !== 'pure') ||
 				computation.escape !== 'component-render' ||
 				computation.sources.length === 0 ||
@@ -203,10 +223,14 @@ export function lynxProgramValue(
 				computation.slots.some(
 					(slot: number) => rangeSlots.has(slot) !== (computation.kind === 'structural'),
 				) ||
-				(computation.kind === 'scalar' && typeof computation.run !== 'function')
+				((computation.kind === 'scalar' || replayableStructural) &&
+					typeof computation.run !== 'function') ||
+				(computation.kind === 'structural' &&
+					computation.purity === 'unknown' &&
+					computation.run !== undefined)
 			) {
 				fail(
-					'each computation requires valid kind/purity/escape metadata, source getters, value slots, and a scalar run function',
+					'each computation requires valid kind/purity/escape metadata, source getters, value slots, and an exact replay function shape',
 				);
 			}
 		}
