@@ -396,12 +396,13 @@ whole-root selection described in that issue are the seams used here. The
 Element Template backend adds a distinct native-owner specialization without
 reconstructing universal plans or host records at runtime.
 
-This increment does **not** close #1055. It does not add the proposed public
-`target: 'lynx'` compiler dispatch, Lynx signal-read ownership, Strong-mode
-projection caching, the remaining semantic surface, or default migration and
-retirement. It retains the resident compact program where code size warrants,
-the existing PAPI/transport/list/resource boundaries, and the fail-closed
-Universal compatibility path. No upstream acceptance or merge is claimed.
+This increment does **not** close #1055. The compiler and Vite public types now
+expose the implemented `target: 'lynx'` registry dispatch, but it does not add
+Lynx signal-read ownership, Strong-mode projection caching, the remaining
+semantic surface, or default migration and retirement. It retains the resident
+compact program where code size warrants, the existing
+PAPI/transport/list/resource boundaries, and the fail-closed Universal
+compatibility path. No upstream acceptance or merge is claimed.
 
 The remaining framework-owned investigation is no longer an undifferentiated
 PAPI sequence. Tail append, handle lookup, detached host creation, and runtime
