@@ -52,6 +52,7 @@ import {
 	universalValue,
 	universalSwitch,
 	use,
+	useActionState,
 	useCallback,
 	useContext,
 	useDeferredValue,
@@ -4604,6 +4605,62 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		await flushMicrotasks();
 		expect(current).toBeNull();
 		expect(history).toEqual(['alpha', null, 'gamma', null]);
+	});
+
+	it('runs action-state dispatches sequentially and threads each accepted result', async () => {
+		const gates = { beta: deferred<void>(), gamma: deferred<void>() };
+		const actionsDone = deferred<void>();
+		const started: string[] = [];
+		let dispatch!: (payload: 'beta' | 'gamma') => void;
+		const ActionCard = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function ActionCard() {
+			const [state, run, pending] = useActionState(
+				async (previous: string, payload: 'beta' | 'gamma') => {
+					started.push(payload);
+					await gates[payload].promise;
+					if (payload === 'gamma') actionsDone.resolve();
+					return `${previous}/${payload}`;
+				},
+				'alpha',
+				undefined,
+				'action-state',
+			);
+			dispatch = run;
+			return universalValue(CARD_PLAN, [
+				pending ? 'card pending' : 'card',
+				state,
+				'card-meta',
+				noop,
+				pending ? 'pending' : 'ready',
+			]);
+		});
+		const block = blockColumn<Record<string, never>>();
+		const drain = async (): Promise<void> => {
+			for (let index = 0; index < 8; index++) {
+				await flushMicrotasks();
+				block.acknowledgePending();
+			}
+		};
+
+		await block.render(ActionCard as never, {});
+		dispatch('beta');
+		dispatch('gamma');
+		await drain();
+		expect(started).toEqual(['beta']);
+		expect(paint(block.main.commits).tree).toContain('alpha');
+		expect(paint(block.main.commits).tree).toContain('pending');
+
+		gates.gamma.resolve();
+		await drain();
+		expect(started).toEqual(['beta']);
+
+		gates.beta.resolve();
+		await actionsDone.promise;
+		await drain();
+		expect(started).toEqual(['beta', 'gamma']);
+		expect(paint(block.main.commits).tree).toContain('alpha/beta/gamma');
+		expect(paint(block.main.commits).tree).toContain('ready');
+
+		await block.settle(block.background.unmountAsync());
 	});
 
 	it('keeps an ACKed update published when main reports a later host fault', async () => {

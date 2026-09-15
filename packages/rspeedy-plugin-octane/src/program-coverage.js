@@ -24,7 +24,7 @@ export const LYNX_APPLICATION_SELECTION_VERSION = 2;
 export const LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO =
 	'octane:lynx-block-component-feature-selection';
 export const LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_VERSION = 1;
-export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 25;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 26;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
 	// Each name has an independent assertion through the Block component path.
@@ -36,6 +36,7 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 		'memo',
 		'startTransition',
 		'use',
+		'useActionState',
 		'useBatch',
 		'useCallback',
 		'useContext',

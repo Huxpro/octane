@@ -31,6 +31,7 @@ import {
 	universalTry,
 	universalValue,
 	use,
+	useActionState,
 	useBatch,
 	useContext,
 	useDeferredValue,
@@ -169,6 +170,26 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual(['null', '0', '0']);
 		expect(ref.current).toBeNull();
 		expect(creates).toBe(0);
+	});
+
+	it('previews action state without running or scheduling its action', () => {
+		const plan = universalPlan('lynx', PLAN);
+		let calls = 0;
+		const App = defineUniversalComponent('lynx', () => {
+			const [state, dispatch, pending] = useActionState((previous: string, payload: string) => {
+				calls++;
+				return `${previous}/${payload}`;
+			}, 'initial');
+			dispatch('main');
+			return universalValue(plan, [state, pending ? 'pending' : 'idle', String(calls)]);
+		});
+
+		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual([
+			'initial',
+			'idle',
+			'0',
+		]);
+		expect(calls).toBe(0);
 	});
 
 	it('normalizes every resident value exactly once before the scalar transport', () => {

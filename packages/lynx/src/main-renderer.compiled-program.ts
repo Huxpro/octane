@@ -953,6 +953,16 @@ export function useTransition(_slot?: unknown): [boolean, typeof startTransition
 	return [false, startTransition];
 }
 
+export function useActionState<State, Payload>(
+	_action: (previousState: State, payload: Payload) => State | Promise<State>,
+	initialState: State,
+	_permalinkOrSlot?: string | unknown,
+	_maybeSlot?: unknown,
+): [State, (payload: Payload) => void, boolean] {
+	requireRender();
+	return [initialState, NOOP_UPDATE, false];
+}
+
 export function useImperativeHandle<T>(
 	_ref: { current: T | null } | ((value: T | null) => void) | null,
 	_create: () => T,

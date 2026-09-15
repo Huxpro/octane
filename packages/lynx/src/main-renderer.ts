@@ -2735,6 +2735,8 @@ export function useTransition(_slot?: unknown): [boolean, typeof startTransition
 export function useActionState<State, Payload>(
 	_action: (previousState: State, payload: Payload) => State | Promise<State>,
 	initialState: State,
+	_permalinkOrSlot?: string | unknown,
+	_maybeSlot?: unknown,
 ): [State, (payload: Payload) => void, boolean] {
 	currentOwner();
 	return [initialState, NOOP_UPDATE, false];

@@ -24,6 +24,7 @@ import {
 	createContext,
 	createUniversalHookScope,
 	startTransition,
+	useActionState,
 	useCallback,
 	useContext,
 	useEffect,
@@ -66,6 +67,51 @@ function scopeWithLog() {
 }
 
 describe('universal hook scope', () => {
+	it('keeps an action-state queue running after reporting an action error', async () => {
+		const reported: Array<() => void> = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleMicrotask(task) {
+				reported.push(task);
+			},
+			scheduleTransitionRender() {},
+		});
+		const calls: Array<[number, number]> = [];
+		let dispatch!: (payload: number) => void;
+		const render = (): readonly [number, boolean] =>
+			scope.render(() => {
+				const [state, run, pending] = useActionState(
+					(previous: number, payload: number) => {
+						calls.push([previous, payload]);
+						if (payload < 0) throw new Error('action failed');
+						return previous + payload;
+					},
+					10,
+					undefined,
+					'action',
+				);
+				dispatch = run;
+				return [state, pending] as const;
+			});
+
+		expect(render()).toEqual([10, false]);
+		scope.commit();
+		dispatch(-1);
+		dispatch(5);
+		for (let index = 0; index < 8; index++) await Promise.resolve();
+
+		expect(calls).toEqual([
+			[10, -1],
+			[10, 5],
+		]);
+		expect(reported).toHaveLength(1);
+		expect(reported.shift()!).toThrow('action failed');
+		expect(render()).toEqual([15, false]);
+		scope.commit();
+		scope.dispose();
+	});
+
 	it('publishes imperative handles only from accepted visible hook-scope drafts', () => {
 		const scope = createUniversalHookScope({
 			renderer: 'test',

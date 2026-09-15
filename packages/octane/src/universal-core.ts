@@ -7555,6 +7555,13 @@ export function useTransition(slot?: unknown): [boolean, typeof startTransition]
 	});
 }
 
+interface UniversalActionStateController<State> {
+	/** The resolved tail keeps every dispatch on the last completed result. */
+	chain: Promise<State>;
+	/** Number of queued or running actions; the visible hook state stores only its zero/non-zero edge. */
+	pending: number;
+}
+
 export function useActionState<State, Payload>(
 	action: (previousState: State, payload: Payload) => State | Promise<State>,
 	initialState: State,
@@ -7565,38 +7572,48 @@ export function useActionState<State, Payload>(
 	const base = resolveHookSlot(slot);
 	const root = currentDraftOwner().record.root;
 	return withSlot(base, () => {
-		const [state, setState, getState] = useState(initialState, 'state');
+		const [state, setState] = useState(initialState, 'state');
 		const [pending, setPending] = useState(false, 'pending');
+		// Action users pay for one controller cell. The queue object is not
+		// recreated on ordinary renders and no queue bookkeeping reaches
+		// components that do not call this hook.
+		const controller = useMemo<UniversalActionStateController<State>>(
+			() => ({ chain: Promise.resolve(initialState), pending: 0 }),
+			[],
+			'queue',
+		);
 		const dispatch = useCallback(
 			(payload: Payload) => {
-				let result: State | Promise<State>;
-				try {
-					result = action(getState(), payload);
-				} catch (error) {
-					root.__scheduleMicrotask(() => {
-						throw error;
-					});
-					return;
-				}
-				if (result != null && typeof (result as any).then === 'function') {
-					setPending(true);
-					Promise.resolve(result).then(
-						(value) => {
-							setState(value);
-							setPending(false);
-						},
-						(error) => {
-							setPending(false);
-							root.__scheduleMicrotask(() => {
-								throw error;
-							});
-						},
-					);
-				} else {
-					setState(result as State);
-				}
+				controller.pending++;
+				if (controller.pending === 1) setPending(true);
+				// Handle both fulfillment and rejection inside the tail so one failed
+				// action cannot reject the queue and prevent later dispatches.
+				controller.chain = controller.chain.then((previousState) => {
+					const finish = (): void => {
+						controller.pending--;
+						if (controller.pending === 0) setPending(false);
+					};
+					const fail = (error: unknown): State => {
+						finish();
+						root.__scheduleMicrotask(() => {
+							throw error;
+						});
+						return previousState;
+					};
+					let produced: State | Promise<State>;
+					try {
+						produced = action(previousState, payload);
+					} catch (error) {
+						return fail(error);
+					}
+					return Promise.resolve(produced).then((value) => {
+						setState(value);
+						finish();
+						return value;
+					}, fail);
+				});
 			},
-			[action],
+			[action, controller],
 			'dispatch',
 		);
 		return [state, dispatch, pending];

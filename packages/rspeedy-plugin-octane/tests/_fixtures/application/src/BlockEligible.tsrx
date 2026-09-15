@@ -3,6 +3,7 @@ import {
 	Activity,
 	createContext,
 	memo,
+	useActionState,
 	useContext,
 	useEffectEvent,
 	useId,
@@ -33,6 +34,10 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 	readonly onSelect: (label: string) => void;
 }) @{
 	const [taps, incrementTaps] = useReducer((value: number, amount: number) => value + amount, 0);
+	const [actionLabel, commitLabel, actionPending] = useActionState(
+		(_previous: string, next: string) => next,
+		props.item.label,
+	);
 	const hookId = useId();
 	const [linkedLabel, , getLinkedLabel] = useLinkedState(
 		props.item.label,
@@ -50,12 +55,16 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 	]);
 	const select = useEffectEvent(() => handle.current?.select());
 	const onTap = () => {
+		commitLabel(item.label);
 		select();
 		incrementTaps(1);
 	};
 	<view id={'row-' + item.id + '-' + hookId} class={rowClass}>
 		<image id={'image-' + item.id} src={item.image} mode="aspectFill" />
-		<text bindtap={onTap}>{linkedLabel + ':' + getLinkedLabel() + ':' + taps as string}</text>
+		<text bindtap={onTap}>{linkedLabel + ':' + getLinkedLabel() + ':' + actionLabel + ':' +
+			(actionPending ? 'pending' : 'idle') +
+			':' +
+			taps as string}</text>
 	</view>
 });
 
