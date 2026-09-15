@@ -110,6 +110,16 @@ the stale proportional-owner-budget caveat are recorded in
 This requalifies the current production graph boundary; it does not promote the
 new head to an R11 release candidate without a fresh native campaign.
 
+The post-candidate public compiler contract was also rechecked against the
+implementation. Runtime registry normalization and both Lynx presets already
+selected `target: 'lynx'`, but the published `octane/compiler` and
+`octane/compiler/vite` declarations omitted that member from their closed target
+unions. The declarations now share an exported `CompileRendererTarget` type that
+includes `lynx`, and a package typetest consumes the target through both public
+entry points. The Octane package build reproduced the same union in
+`dist/compiler`; this exposes the existing backend to typed integrations and
+does not introduce another lowering or change product selection.
+
 ## Relationship to upstream #1055
 
 The release candidate follows upstream's natural seams: a shared compiler-owned

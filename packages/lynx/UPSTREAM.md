@@ -153,10 +153,12 @@ at `7a523bf20d04578c39fe0b5fe532cdef6dab3e9e`, `octanejs/octane:main` remained a
 [octanejs/octane#1055](https://github.com/octanejs/octane/issues/1055) remained
 open. This implementation agrees with #1055's shared-IR, independent dual-thread
 lowering, versioned paired ABI, hybrid generated/resident representation, reuse
-of native integration, and atomic experimental-root selection. It is narrower:
-it does not add the proposed public `target: 'lynx'` dispatch, signal-read
-ownership, Strong-mode projection caches, full semantic coverage, default
-migration, or old-path retirement. No upstream acceptance or merge is claimed.
+of native integration, and atomic experimental-root selection. The compiler and
+Vite public types now expose the already implemented `target: 'lynx'` registry
+dispatch rather than leaving external integrations behind the runtime contract.
+The implementation remains narrower: it does not add signal-read ownership,
+Strong-mode projection caches, full semantic coverage, default migration, or
+old-path retirement. No upstream acceptance or merge is claimed.
 
 The pinned Android evidence qualifies only the experimental 10,000-row table
 create/startup boundary and a safe 30,000-row rejection. It also records why

@@ -6772,7 +6772,7 @@ export function lowerUniversalRendererRegionAst(
 /**
  * @param {string} source
  * @param {string} filename
- * @param {{ id: string, module: string, target: 'universal', text?: 'host'|'ignore'|'reject', capabilities?: readonly string[], firstScreenEvents?: readonly string[] }} renderer
+ * @param {{ id: string, module: string, target: 'universal'|'lynx', text?: 'host'|'ignore'|'reject', capabilities?: readonly string[], firstScreenEvents?: readonly string[] }} renderer
  * @param {(ast: import('@tsrx/core/types').AST.Program, metadata: any) => { code: string, map: any }} compileClient
  * @param {Record<string, any>} [options]
  * @param {import('@tsrx/core/types').AST.Program | null} [parsedAst]
