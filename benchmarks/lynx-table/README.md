@@ -3809,6 +3809,52 @@ source/build family had already passed the surviving ~7,000-row Part-A probe
 above. Record:
 `stages/results/issue42-a-create-clear-recreate-1000.json`.
 
+#### Reusable lifecycle and process-memory lanes (#291)
+
+`stages/issue194-device-run.mjs` also supports the longer lifecycle gate used by
+#291. `--sequence-cycles 20` performs 79 state-changing taps: the first cycle is
+create → clear → recreate, and each later cycle starts with a reset clear before
+repeating those three phases. The reset makes every measured create begin from
+the same empty state without restarting the LynxView.
+
+There are two deliberately separate lanes:
+
+1. Build with `BENCH_ISSUE194_NATIVE=1` and run the normal `commit` completion
+   mode. Every action must have both the Native ACK/second-frame receipt and the
+   matching main-thread receipt. The build-only probe records live program
+   instance handles, structural ranges, listener slots, and retained native
+   host references; every clear must equal the first-screen baseline, and every
+   populated phase must equal the first create.
+2. Build the ordinary shipping bundles without `BENCH_ISSUE194_NATIVE`, then add
+   `--native-only --process-memory --settle-ms 4000`. This lane requires Native
+   state/frame receipts but no instrumentation receipt. It samples
+   `smaps_rollup`, `/proc/<pid>/status`, and `dumpsys meminfo` after the settled
+   first screen, after every action receipt, and again after the settle delay.
+   The first post-receipt sample is an operational high-water checkpoint after
+   the transport ACK and second native frame; it is not labelled an
+   instantaneous peak.
+
+Both lanes use the existing device runner arguments (`--serial`, DevTool-off
+bundle URL/file, target `--cell` URL/file, tap coordinates, scale, sample count,
+timeout, question, and output), plus:
+
+```bash
+--workload create --create-clear-recreate --sequence-cycles 20 \
+--tap-x <create-x> --tap-y <create-y> \
+--clear-tap-x <clear-x> --clear-tap-y <clear-y>
+```
+
+The shipping memory lane additionally appends:
+
+```bash
+--native-only --process-memory --settle-ms 4000
+```
+
+The timeout covers first-screen settling and every per-action settle delay, so
+a 20-cycle memory window needs more than 316 seconds before launch and device
+overhead are included. A process-accounting parse failure aborts the run rather
+than emitting a partial memory result.
+
 The clear@1k cross-framework window found a measurement-fidelity boundary, not
 a Native rank:
 

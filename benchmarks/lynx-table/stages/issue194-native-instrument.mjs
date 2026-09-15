@@ -443,6 +443,75 @@ function requireFunction<
 			return next.replaceAll('performance.now()', 'Date.now()');
 		});
 
+		updateRepo('packages/lynx/src/core/compiled-program-store.ts', (source, file) => {
+			let next = replaceOnce(
+				source,
+				`\tsize(): number;
+\tisFaulted(): boolean;
+`,
+				`\tsize(): number;
+\t__issue194Census?(): {
+\t\treadonly handles: number;
+\t\treadonly ranges: number;
+\t\treadonly listenerSlots: number;
+\t\treadonly retainedHostRefs: number;
+\t};
+\tisFaulted(): boolean;
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\tsize() {
+\t\t\treturn instances.size;
+\t\t},
+\t\tisFaulted() {
+`,
+				`\t\tsize() {
+\t\t\treturn instances.size;
+\t\t},
+\t\t__issue194Census() {
+\t\t\tlet listenerSlots = 0;
+\t\t\tlet retainedHostRefs = 0;
+\t\t\tfor (const value of instances.values()) {
+\t\t\t\tlistenerSlots += value.run.plan.events.length;
+\t\t\t\tretainedHostRefs += value.run.plan.resident?.length ?? value.run.plan.nodes;
+\t\t\t}
+\t\t\treturn { handles: instances.size, ranges: ranges.size, listenerSlots, retainedHostRefs };
+\t\t},
+\t\tisFaulted() {
+`,
+				file,
+			);
+			return next;
+		});
+
+		updateRepo('packages/lynx/src/core/element-template-program-store.ts', (source, file) => {
+			return replaceOnce(
+				source,
+				`\t\tsize() {
+\t\t\treturn instances.size;
+\t\t},
+\t\tisFaulted() {
+`,
+				`\t\tsize() {
+\t\t\treturn instances.size;
+\t\t},
+\t\t__issue194Census() {
+\t\t\tlet listenerSlots = 0;
+\t\t\tlet retainedHostRefs = 0;
+\t\t\tfor (const value of instances.values()) {
+\t\t\t\tlistenerSlots += value.plan.events.length;
+\t\t\t\tretainedHostRefs += value.plan.nodes;
+\t\t\t}
+\t\t\treturn { handles: instances.size, ranges: ranges.size, listenerSlots, retainedHostRefs };
+\t\t},
+\t\tisFaulted() {
+`,
+				file,
+			);
+		});
+
 		updateRepo('packages/lynx/src/main-thread-implementation.ts', (source, file) => {
 			let next = replaceOnce(
 				source,
@@ -783,7 +852,8 @@ function requireFunction<
 				next,
 				`\t\tif (send({ ...message, type: 'ack' })) send({ ...message, type: 'complete' });
 `,
-				`\t\tif (send({ ...message, type: 'ack' })) send({ ...message, type: 'complete' });
+				`\t\tconst issue194Census = (store as any).__issue194Census?.() ?? null;
+\t\tif (send({ ...message, type: 'ack' })) send({ ...message, type: 'complete' });
 \t\tconst issue194Wire = issue194ActiveCommitWire;
 \t\tissue194ActiveCommitWire = null;
 \t\tif (issue194Wire === null) {
@@ -795,6 +865,7 @@ function requireFunction<
 \t\t\tversion: message.version,
 \t\t\tframeBytes: JSON.stringify(message.frame).length,
 \t\t\twallMs: Date.now() - issue194CommitStarted,
+\t\t\tcensus: issue194Census,
 \t\t\twireToBts: {
 \t\t\t\tboundary: 'native-context-proxy-main-to-background-encoded-payloads',
 \t\t\t\twireToBtsBytes: issue194Wire.messages.reduce(

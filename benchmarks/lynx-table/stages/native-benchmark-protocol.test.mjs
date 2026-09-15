@@ -3,7 +3,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-import { normalizeIssue194NativeReceipt } from './issue194-device-protocol.mjs';
+import {
+	issue194DeviceCompletionMode,
+	issue194LifecycleSequence,
+	normalizeIssue194NativeReceipt,
+	parseIssue194AndroidProcessMemory,
+	summarizeIssue194LifecycleCensus,
+	validateIssue194ProcessMemoryControls,
+} from './issue194-device-protocol.mjs';
 
 const appRoot = path.resolve(import.meta.dirname, '../app/src');
 const app = fs.readFileSync(path.join(appRoot, 'App.lynx.tsrx'), 'utf8');
@@ -29,6 +36,81 @@ test('Native benchmark source does not construct unavailable Web scheduling glob
 	const nativeSchedule = nestedBlock(app, 'if (_stormChannel === null)');
 	assert.match(nativeSchedule, /lynx\.setTimeout\(cb, 0\)/);
 	assert.doesNotMatch(nativeSchedule, /(?<!\.)\bsetTimeout\(/);
+});
+
+test('issue #194 Android memory parser keeps process sources and units explicit', () => {
+	const memory = parseIssue194AndroidProcessMemory(
+		'Rss: 200 kB\nPss: 150 kB\nPrivate_Clean: 20 kB\nPrivate_Dirty: 100 kB\n',
+		'VmRSS: 190 kB\n',
+		'Native Heap 90 80 5 0 120 70 50\nDalvik Heap 40 30 2 0 60 25 35\nTOTAL 160 120 22 3\n',
+	);
+	assert.equal(memory.smapsRollupKb.Pss, 150);
+	assert.equal(memory.statusKb.VmRSS, 190);
+	assert.deepEqual(memory.dumpsysKb, {
+		totalPss: 160,
+		totalPrivateDirty: 120,
+		totalPrivateClean: 22,
+		totalSwapDirty: 3,
+		nativePss: 90,
+		nativePrivateDirty: 80,
+		nativePrivateClean: 5,
+		nativeHeapSize: 120,
+		nativeHeapAlloc: 70,
+		nativeHeapFree: 50,
+		dalvikPss: 40,
+		dalvikPrivateDirty: 30,
+		dalvikPrivateClean: 2,
+		dalvikHeapSize: 60,
+		dalvikHeapAlloc: 25,
+		dalvikHeapFree: 35,
+	});
+	assert.throws(
+		() => parseIssue194AndroidProcessMemory('Pss: 1 kB', 'VmRSS: 1 kB', 'TOTAL 1 1 1 1'),
+		/could not parse/,
+	);
+});
+
+test('issue #194 process-memory controls require the Native-only lifecycle lane', () => {
+	assert.equal(issue194DeviceCompletionMode([]), 'commit');
+	assert.equal(issue194DeviceCompletionMode(['--direct-result', '--native-only']), 'native-only');
+	assert.doesNotThrow(() =>
+		validateIssue194ProcessMemoryControls({
+			processMemory: true,
+			mode: 'native-only',
+			createClearRecreate: true,
+			settleMs: 4000,
+		}),
+	);
+	assert.throws(
+		() =>
+			validateIssue194ProcessMemoryControls({
+				processMemory: true,
+				mode: 'commit',
+				createClearRecreate: true,
+				settleMs: 4000,
+			}),
+		/requires --native-only/,
+	);
+	assert.throws(
+		() =>
+			validateIssue194ProcessMemoryControls({
+				processMemory: true,
+				mode: 'native-only',
+				createClearRecreate: false,
+				settleMs: 4000,
+			}),
+		/requires --create-clear-recreate/,
+	);
+	assert.throws(
+		() =>
+			validateIssue194ProcessMemoryControls({
+				processMemory: false,
+				mode: 'commit',
+				createClearRecreate: false,
+				settleMs: 0,
+			}),
+		/positive integer/,
+	);
 });
 
 test('Native tap receipt encloses action, transport ACK, two frames, and semantic state', () => {
@@ -125,4 +207,58 @@ test('issue #194 runner normalizes app-owned Native v2 create and clear receipts
 	assert.equal(clear.interactionOrdinal, 3);
 	assert.equal(clear.workload, 'clear');
 	assert.equal(clear.scale, 1000);
+});
+
+test('Native v2 receipts carry stable ordinals and lifecycle cycles reset populated pages', () => {
+	const measurement = nestedBlock(app, 'function measureNative(');
+	assert.ok(
+		measurement.indexOf('interactionOrdinal = ++nativeInteractionOrdinal') <
+			measurement.indexOf('action()'),
+	);
+	assert.match(measurement, /protocol: 'lynx-native-bench-v2',\s*interactionOrdinal,/);
+
+	const normalized = normalizeIssue194NativeReceipt(
+		{ name: 'create', interactionOrdinal: 41, postState: { rowCount: 1000 } },
+		2,
+	);
+	assert.equal(normalized.interactionOrdinal, 41);
+
+	assert.deepEqual(
+		issue194LifecycleSequence(2, { x: 1, y: 2 }, { x: 3, y: 4 }).map(
+			({ cycle, phase, workload }) => `${cycle}:${phase}:${workload}`,
+		),
+		[
+			'0:create:create',
+			'0:clear:clear',
+			'0:recreate:create',
+			'1:reset:clear',
+			'1:create:create',
+			'1:clear:clear',
+			'1:recreate:create',
+		],
+	);
+	assert.throws(
+		() => issue194LifecycleSequence(0, { x: 1, y: 2 }, { x: 3, y: 4 }),
+		/positive integer/,
+	);
+
+	const baseline = { handles: 7, ranges: 1, listenerSlots: 12, retainedHostRefs: 28 };
+	const populated = {
+		handles: 1007,
+		ranges: 2,
+		listenerSlots: 2012,
+		retainedHostRefs: 4028,
+	};
+	const evidence = [
+		{ phase: 'create', workload: 'create', attribution: { census: populated } },
+		{ phase: 'clear', workload: 'clear', attribution: { census: baseline } },
+		{ phase: 'recreate', workload: 'create', attribution: { census: populated } },
+	];
+	assert.deepEqual(summarizeIssue194LifecycleCensus(evidence, baseline), {
+		valid: true,
+		initial: baseline,
+		populated,
+	});
+	evidence[1].attribution.census = { ...baseline, listenerSlots: 13 };
+	assert.equal(summarizeIssue194LifecycleCensus(evidence, baseline).valid, false);
 });

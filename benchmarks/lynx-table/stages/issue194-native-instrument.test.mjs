@@ -9,6 +9,8 @@ import { instrumentIssue194NativeSources } from './issue194-native-instrument.mj
 const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
 const repositoryFiles = [
 	'packages/lynx/src/core/papi.ts',
+	'packages/lynx/src/core/compiled-program-store.ts',
+	'packages/lynx/src/core/element-template-program-store.ts',
 	'packages/lynx/src/main-thread-implementation.ts',
 	'packages/lynx/src/core/compiled-program-product-receiver.ts',
 	'packages/lynx/src/core/profiling.ts',
@@ -54,6 +56,21 @@ test('issue #194 instruments the selected compact owner and restores every sourc
 			),
 			/octane-issue194-compact-main-v1/,
 		);
+		assert.match(
+			fs.readFileSync(
+				path.join(root, 'packages/lynx/src/core/compiled-program-product-receiver.ts'),
+				'utf8',
+			),
+			/census: issue194Census/,
+		);
+		for (const relative of [
+			'packages/lynx/src/core/compiled-program-store.ts',
+			'packages/lynx/src/core/element-template-program-store.ts',
+		]) {
+			const source = fs.readFileSync(path.join(root, relative), 'utf8');
+			assert.match(source, /__issue194Census/);
+			assert.match(source, /retainedHostRefs/);
+		}
 		assert.match(
 			fs.readFileSync(path.join(root, 'packages/lynx/src/main-thread-implementation.ts'), 'utf8'),
 			/__ISSUE194_MAIN_COMMIT__/,
