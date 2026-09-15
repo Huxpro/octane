@@ -269,3 +269,30 @@ export function BlockSwitchFixture(props: BlockSwitchProps) @{
 		</view>
 	</view>
 }
+
+export function BlockStateBranchesFixture() @{
+	const [mode, setMode] = useState<'then' | 'case' | 'default'>('then');
+	<view class="state-branches">
+		<text
+			class="state-branches-mode"
+			bindtap={() => setMode(mode === 'then' ? 'case' : mode === 'case' ? 'default' : 'then')}
+		>{mode as string}</text>
+		<view class="state-if">
+			@if (mode === 'then') {
+				<text>if:then</text>
+			} @else {
+				<text>if:else</text>
+			}
+		</view>
+		<view class="state-switch">
+			@switch (mode) {
+				@case 'case': {
+					<text>switch:case</text>
+				}
+				@default: {
+					<text>switch:default</text>
+				}
+			}
+		</view>
+	</view>
+}

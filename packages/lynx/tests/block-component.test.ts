@@ -106,6 +106,7 @@ import {
 	type BlockConditionalProps,
 	BlockSwitchFixture,
 	type BlockSwitchProps,
+	BlockStateBranchesFixture,
 	BlockScopedRowsFixture,
 	type BlockScopedRowsProps,
 	BlockWrappedSelectionFixture,
@@ -417,6 +418,35 @@ const RANGE_DEPENDENCY_PAGE_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
 		module: 'tests/RangeDependencyPage.lynx.tsrx',
 		index: 0,
 		digest: 'range-dependency-page',
+	},
+});
+
+const BRANCH_DEPENDENCY_PAGE_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
+	kind: 'host',
+	type: 'view',
+	props: { class: 'branches' },
+	children: [
+		{
+			kind: 'host',
+			type: 'view',
+			props: { class: 'if-region' },
+			children: [{ kind: 'slot', slot: 0 }],
+		},
+		{
+			kind: 'host',
+			type: 'view',
+			props: { class: 'switch-region' },
+			children: [{ kind: 'slot', slot: 1 }],
+		},
+	],
+});
+
+const BRANCH_DEPENDENCY_PAGE_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+	...deriveLynxProgramIR(BRANCH_DEPENDENCY_PAGE_PLAN.root as never)!,
+	address: {
+		module: 'tests/BranchDependencyPage.lynx.tsrx',
+		index: 0,
+		digest: 'branch-dependency-page',
 	},
 });
 
@@ -1777,6 +1807,66 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 				JSON.parse(paint([block.main.commits[0]!, block.main.commits[2]!]).tree).children[0]
 					.children[1].children,
 			).toHaveLength(3);
+		} finally {
+			vi.clearAllTimers();
+			vi.useRealTimers();
+		}
+	});
+
+	it('rebases rejected @if and @switch descriptor replays onto the next state', async () => {
+		vi.useFakeTimers();
+		try {
+			let setMode: ((value: 'then' | 'case' | 'default') => void) | undefined;
+			const descriptors = (mode: 'then' | 'case' | 'default') => [
+				universalIf(
+					mode === 'then',
+					() => universalValue(ROW_PLAN, ['row', 'if', noop, 'if:then']),
+					() => universalValue(ROW_PLAN, ['row', 'if', noop, 'if:else']),
+				),
+				universalSwitch(
+					mode,
+					[['case', () => universalValue(ROW_PLAN, ['row', 'switch', noop, 'switch:case'])]],
+					() => universalValue(ROW_PLAN, ['row', 'switch', noop, 'switch:default']),
+				),
+			];
+			const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+				const [mode, updateMode, getMode] = useState<'then' | 'case' | 'default'>('then', 'mode');
+				setMode = updateMode;
+				return lynxProgramValue(BRANCH_DEPENDENCY_PAGE_PROGRAM, descriptors(mode), [
+					{
+						kind: 'structural',
+						purity: 'descriptor-pure',
+						escape: 'component-render',
+						sources: [getMode],
+						slots: [0, 1],
+						run() {
+							return descriptors(getMode());
+						},
+					},
+				]) as never;
+			});
+			const block = blockColumn<Record<string, never>>(
+				createLynxBlockCore({ templateRuns: () => false }),
+			);
+
+			await block.render(Scene as LynxComponent<Record<string, never>>, {});
+			expect(paint(block.main.commits).tree).toContain('if:then');
+			expect(paint(block.main.commits).tree).toContain('switch:default');
+
+			setMode!('case');
+			await flushMicrotasks();
+			expect(block.main.commits).toHaveLength(2);
+			block.main.reject(block.main.commits[1]!, 'injected branch replay rejection');
+			block.markPendingHandled();
+			await flushMicrotasks();
+
+			setMode!('default');
+			await block.settle(Promise.resolve());
+
+			const accepted = [block.main.commits[0]!, block.main.commits[2]!];
+			expect(paint(accepted).tree).toContain('if:else');
+			expect(paint(accepted).tree).toContain('switch:default');
+			expect(paint(accepted).tree).not.toContain('switch:case');
 		} finally {
 			vi.clearAllTimers();
 			vi.useRealTimers();
@@ -3424,6 +3514,25 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		expect(lifecycle).toEqual(['mount:alpha', 'cleanup:alpha', 'mount:gamma', 'cleanup:gamma']);
 
 		await block.settle(block.background.unmountAsync());
+	});
+	it('adopts state-driven @if and @switch replay from an authored .tsrx module', async () => {
+		const block = blockColumn<Record<string, never>>();
+		const component = BlockStateBranchesFixture as never as LynxComponent<Record<string, never>>;
+
+		await block.render(component, {});
+		expect(paint(block.main.commits).tree).toContain('if:then');
+		expect(paint(block.main.commits).tree).toContain('switch:default');
+
+		deliverTo(block, boundListener(block.main.commits));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('if:else');
+		expect(paint(block.main.commits).tree).toContain('switch:case');
+
+		deliverTo(block, boundListener(block.main.commits));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('if:else');
+		expect(paint(block.main.commits).tree).toContain('switch:default');
+		expect(paint(block.main.commits).tree).not.toContain('switch:case');
 	});
 	it('adopts an authored .tsrx @if branch without resetting its surviving component', async () => {
 		const lifecycle: string[] = [];

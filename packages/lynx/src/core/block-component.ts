@@ -3337,6 +3337,65 @@ export function lynxBlockProgramForComponent<Props>(
 		applyNested();
 	};
 
+	/** Render one structural descriptor through the range's established kind. */
+	const renderRangeValue = (
+		context: LynxBlockProgramContext,
+		range: RangeState,
+		value: unknown,
+		contextValues: SemanticContexts,
+		visible: boolean,
+	): RangeRender => {
+		if (LYNX_BLOCK_PORTALS && range.portalState !== null) {
+			if (isPortalValue(value)) {
+				return renderPortalRange(context, range, value, contextValues, visible);
+			}
+			if (value === null || value === undefined || typeof value === 'boolean') {
+				return renderPortalRange(context, range, null, contextValues, visible);
+			}
+			return refuse(
+				subject,
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'a portal region later held a non-portal structural value.',
+			);
+		}
+		if (isPortalValue(value)) {
+			return renderPortalRange(context, range, value, contextValues, visible);
+		}
+		if (isRangeValue(value)) {
+			if (range.branchTemplates !== null) {
+				refuse(
+					subject,
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'a conditional region later held a keyed list, and a block holds one structural region kind for its lifetime.',
+				);
+			}
+			return renderRange(context, range, value, contextValues, visible);
+		}
+		if (isBranchValue(value)) {
+			return renderBranchRange(context, range, value, contextValues, visible);
+		}
+		if (isComponentRegionValue(value)) {
+			return renderBranchRange(context, range, value, contextValues, visible);
+		}
+		if (isActivityValue(value)) {
+			return renderBranchRange(context, range, value, contextValues, visible);
+		}
+		if (isTryValue(value)) {
+			return renderTryRange(context, range, value, contextValues, visible);
+		}
+		if (
+			(value === null || value === undefined || typeof value === 'boolean') &&
+			range.branchTemplates !== null
+		) {
+			return renderBranchRange(context, range, null, contextValues, visible);
+		}
+		return refuse(
+			subject,
+			LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+				'a structural hole later held a non-structural value, and a block holds one region kind for its lifetime.',
+		);
+	};
+
 	/** Every range's render for one set of slot values, or the first refusal. */
 	const renderRangeStates = (
 		context: LynxBlockProgramContext,
@@ -3346,62 +3405,12 @@ export function lynxBlockProgramForComponent<Props>(
 		visible: boolean,
 	): readonly RangeRender[] => {
 		if (states.length === 0) return EMPTY_RANGE_RENDERS;
-		const renderOne = (range: RangeState): RangeRender => {
-			const value = slotValues[range.slot];
-			if (LYNX_BLOCK_PORTALS && range.portalState !== null) {
-				if (isPortalValue(value)) {
-					return renderPortalRange(context, range, value, contextValues, visible);
-				}
-				if (value === null || value === undefined || typeof value === 'boolean') {
-					return renderPortalRange(context, range, null, contextValues, visible);
-				}
-				return refuse(
-					subject,
-					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-						'a portal region later held a non-portal structural value.',
-				);
-			}
-			if (isPortalValue(value)) {
-				return renderPortalRange(context, range, value, contextValues, visible);
-			}
-			if (isRangeValue(value)) {
-				if (range.branchTemplates !== null) {
-					refuse(
-						subject,
-						LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-							'a conditional region later held a keyed list, and a block holds one structural region kind for its lifetime.',
-					);
-				}
-				return renderRange(context, range, value, contextValues, visible);
-			}
-			if (isBranchValue(value)) {
-				return renderBranchRange(context, range, value, contextValues, visible);
-			}
-			if (isComponentRegionValue(value)) {
-				return renderBranchRange(context, range, value, contextValues, visible);
-			}
-			if (isActivityValue(value)) {
-				return renderBranchRange(context, range, value, contextValues, visible);
-			}
-			if (isTryValue(value)) {
-				return renderTryRange(context, range, value, contextValues, visible);
-			}
-			if (
-				(value === null || value === undefined || typeof value === 'boolean') &&
-				range.branchTemplates !== null
-			) {
-				return renderBranchRange(context, range, null, contextValues, visible);
-			}
-			return refuse(
-				subject,
-				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-					'a structural hole later held a non-structural value, and a block holds one region kind for its lifetime.',
-			);
-		};
 		const rendered: RangeRender[] = [];
 		try {
 			for (const range of states) {
-				rendered.push(renderOne(range));
+				rendered.push(
+					renderRangeValue(context, range, slotValues[range.slot], contextValues, visible),
+				);
 			}
 		} catch (error) {
 			for (let index = rendered.length - 1; index >= 0; index--) rendered[index]!.discard?.();
@@ -3485,24 +3494,17 @@ export function lynxBlockProgramForComponent<Props>(
 		return outputs;
 	};
 
-	/** Apply already-computed scalar and keyed-range outputs in one host attempt. */
+	/** Apply already-computed scalar and structural outputs in one host attempt. */
 	const applyDirtyOutputs = (
 		context: LynxBlockProgramContext,
 		outputs: ReadonlyMap<number, unknown>,
 	): void => {
 		let rangeRenders: RangeRender[] | null = null;
 		let dirtyRanges: RangeState[] | null = null;
-		let dirtyRangeValues: UniversalForValue[] | null = null;
+		let dirtyRangeValues: unknown[] | null = null;
 		for (const [slot, output] of outputs) {
 			const range = rangesBySlot.get(slot);
 			if (range === undefined) continue;
-			if (!isRangeValue(output)) {
-				refuse(
-					subject,
-					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-						'a replayable structural computation did not return a keyed range.',
-				);
-			}
 			(dirtyRanges ??= []).push(range);
 			(dirtyRangeValues ??= []).push(output);
 		}
@@ -3515,7 +3517,7 @@ export function lynxBlockProgramForComponent<Props>(
 				for (let index = 0; index < dirtyRanges.length; index++) {
 					const range = dirtyRanges[index]!;
 					(rangeRenders ??= []).push(
-						renderRange(
+						renderRangeValue(
 							context,
 							range,
 							dirtyRangeValues![index],

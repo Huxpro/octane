@@ -33,3 +33,8 @@ inequality predicate through pure logical, conditional, unary, and template
 expressions. It preserves JavaScript strict-equality edge cases such as signed
 zero, while opaque calls and ambiguous or repeated selection captures continue
 through the conservative full-range path.
+
+Pure state-driven `@if` conditions and `@switch` discriminants/case values now
+replay their structural descriptors through the same transactional range path,
+so branch changes no longer re-enter the owning component. Calls, member reads,
+and other opaque branch expressions keep the conservative owner-render path.

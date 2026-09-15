@@ -14,6 +14,7 @@
  */
 import { createLynxRoot, type LynxRoot } from '../../packages/lynx/src/index.js';
 import { installLynxMainThread } from '../../packages/lynx/src/main-thread.js';
+import { LYNX_TRANSPORT_RENDERER } from '../../packages/lynx/src/core/protocol.js';
 import type {
 	LynxContextProxy,
 	LynxContextProxyEvent,
@@ -21,12 +22,14 @@ import type {
 import type { LynxElementEventListener } from '../../packages/lynx/src/core/papi.js';
 import { LYNX_NODES_REF_ATTRIBUTE } from '../../packages/lynx/src/core/nodes-ref.js';
 import type { LynxWireProfile } from '../../packages/lynx/src/core/profiling.js';
+import { defineUniversalComponent } from '../../packages/octane/src/universal-native.js';
 import {
 	acceptLynxTransportFrame,
 	createLynxTransportFrameState,
 	decodeLynxTransportValue,
 } from '../../packages/lynx/src/core/transport-codec.js';
 import { App } from './app/src/App.lynx.tsrx';
+import { BranchReplay } from './app/src/BranchReplay.lynx.tsrx';
 
 export interface FakeNode {
 	readonly sign: number;
@@ -664,6 +667,67 @@ async function tapButton(harness: Harness, label: string): Promise<void> {
 	if (token === null) throw new Error(`no tap token found for button "${label}"`);
 	tap(harness, token);
 	await settle(harness);
+}
+
+export interface BranchReplayResult {
+	readonly ownerRenders: number;
+	readonly states: readonly [initial: string, caseState: string, defaultState: string];
+	readonly diagnostics: readonly string[];
+}
+
+/**
+ * Deterministic control for compiler-proved structural replay.
+ *
+ * The counting wrapper lives outside the compiled component so observing the
+ * owner cannot itself disqualify dirty replay. The three painted strings are
+ * the semantic control: a renderer that merely skips the owner without
+ * applying both structural regions fails before its count is considered.
+ */
+export async function runBranchReplay(): Promise<BranchReplayResult> {
+	const harness = createHarness();
+	let ownerRenders = 0;
+	const CountedBranchReplay = defineUniversalComponent(
+		LYNX_TRANSPORT_RENDERER,
+		function CountedBranchReplay() {
+			ownerRenders++;
+			return BranchReplay();
+		},
+	);
+	const branchState = (): string =>
+		findAll(harness.papi, (node) => node.type === 'text')
+			.map(textContentOf)
+			.filter(
+				(value) =>
+					value.startsWith('mode:') || value.startsWith('if:') || value.startsWith('switch:'),
+			)
+			.join('|');
+	try {
+		await harness.root.render(CountedBranchReplay, {});
+		await until(
+			harness,
+			() => branchState() === 'mode:then|if:then|switch:default',
+			'initial branch',
+		);
+		const initial = branchState();
+
+		await tapButton(harness, 'mode:then');
+		await until(harness, () => branchState() === 'mode:case|if:else|switch:case', 'case branch');
+		const caseState = branchState();
+
+		await tapButton(harness, 'mode:case');
+		await until(
+			harness,
+			() => branchState() === 'mode:default|if:else|switch:default',
+			'default branch',
+		);
+		return {
+			ownerRenders,
+			states: [initial, caseState, branchState()],
+			diagnostics: harness.diagnostics.map((error) => error.message),
+		};
+	} finally {
+		await harness.dispose();
+	}
 }
 
 export interface OpCounters {

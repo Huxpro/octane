@@ -5009,7 +5009,12 @@ function compileIfAst(node, context, state) {
 	}
 	const args = [rewriteSourceAst(node.test, state), consequent];
 	if (alternate !== null) args.push(alternate);
-	return addDynamicAst(context, generatedCall(state.helpers.if, args, node));
+	const branch = generatedCall(state.helpers.if, args, node);
+	// Descriptor construction evaluates only the condition. Branch bodies stay
+	// behind thunks and continue through the ordinary structural range renderer,
+	// so a state-only pure condition can be replayed without entering its owner.
+	if (dirtyPureExpression(node.test)) state.dirtyStructuralReplayExpressions.add(branch);
+	return addDynamicAst(context, branch);
 }
 
 function compileIfValueAst(node, state) {
@@ -5037,7 +5042,16 @@ function compileSwitchAst(node, context, state) {
 		inheritGeneratedOrigin(b.array(cases), node),
 	];
 	if (fallback !== null) args.push(fallback);
-	return addDynamicAst(context, generatedCall(state.helpers.switch, args, node));
+	const branch = generatedCall(state.helpers.switch, args, node);
+	// The discriminant and case values are the only eager user expressions in a
+	// switch descriptor. Keep opaque calls/getters on the owner-render path.
+	if (
+		dirtyPureExpression(node.discriminant) &&
+		(node.cases ?? []).every((item) => item.test == null || dirtyPureExpression(item.test))
+	) {
+		state.dirtyStructuralReplayExpressions.add(branch);
+	}
+	return addDynamicAst(context, branch);
 }
 
 function compileTryAst(node, context, state) {

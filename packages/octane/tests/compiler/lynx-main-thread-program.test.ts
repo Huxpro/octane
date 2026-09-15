@@ -339,6 +339,16 @@ function evaluate(code: string): EvaluatedModule {
 			render: (item: unknown, index: number) => unknown,
 			...rest: readonly unknown[]
 		) => ({ items, key, render, rest }),
+		universalIf: (
+			condition: unknown,
+			then: () => unknown,
+			otherwise: (() => unknown) | null = null,
+		) => ({ kind: 'if', condition: !!condition, then, else: otherwise }),
+		universalSwitch: (
+			value: unknown,
+			cases: readonly (readonly [unknown, () => unknown])[],
+			fallback: (() => unknown) | null = null,
+		) => ({ kind: 'switch', value, cases, default: fallback }),
 		enableLynxCompilerProgramRefs: () => {},
 		lynxProgram: (_renderer: string, program: any) => {
 			roots.push(program);
@@ -795,6 +805,99 @@ export function Card() @{
 				purity: 'unknown',
 			}),
 		]);
+		expect(value.computations![0]).not.toHaveProperty('run');
+	});
+
+	it('replays pure state-driven @if and @switch descriptors together', () => {
+		const value = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+export function Card() @{
+	const [mode] = useState<'then' | 'case' | 'default'>('then');
+	<view>
+		<view>
+			@if (mode === 'then') {
+				<text>then</text>
+			} @else {
+				<text>else</text>
+			}
+		</view>
+		<view>
+			@switch (mode) {
+				@case 'case': { <text>case</text> }
+				@default: { <text>default</text> }
+			}
+		</view>
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/PureBranches.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			),
+		).card({});
+
+		expect(value.computations).toHaveLength(1);
+		const structural = value.computations![0];
+		expect(structural).toMatchObject({
+			kind: 'structural',
+			purity: 'descriptor-pure',
+			escape: 'component-render',
+			slots: expect.arrayContaining([0, 1]),
+			run: expect.any(Function),
+		});
+		expect(structural.run()).toEqual([
+			expect.objectContaining({ kind: 'if', condition: true }),
+			expect.objectContaining({ kind: 'switch', value: 'then' }),
+		]);
+	});
+
+	it('keeps opaque @if conditions and @switch case expressions on the owner path', () => {
+		const value = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+function opaque(value: string): string {
+	return value;
+}
+
+export function Card() @{
+	const [mode] = useState('then');
+	<view>
+		<view>
+			@if (opaque(mode) === 'then') { <text>then</text> }
+		</view>
+		<view>
+			@switch (mode) {
+				@case opaque('case'): { <text>case</text> }
+			}
+		</view>
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/OpaqueBranches.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			),
+		).card({});
+
+		expect(value.computations).toHaveLength(1);
+		expect(value.computations![0]).toMatchObject({
+			kind: 'structural',
+			purity: 'unknown',
+			escape: 'component-render',
+		});
 		expect(value.computations![0]).not.toHaveProperty('run');
 	});
 
