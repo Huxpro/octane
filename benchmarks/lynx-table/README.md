@@ -3904,6 +3904,73 @@ Even when settled and after-clear pass, the overall #291 memory verdict remains
 `inconclusive` until a separate instrument captures true peak heap; the
 operational post-receipt high-water statistic is reported but never relabelled.
 
+##### Native heap peak lane (Android 11+ only)
+
+`stages/issue291-native-heap-peak-run.mjs` wraps the same fresh-process
+lifecycle runner with Perfetto `android.heapprofd`. It starts the profile before
+Explorer, uses the platform's `dump_at_max` mode, and pulls one trace after each
+bounded lease segment. This is a separate profiling lane: its value is the
+maximum sampled live `malloc`/`new` bytes requested during the process window;
+its timings are perturbed and are never eligible for the latency headline.
+
+The wrapper fails before the Native runner unless the device is Android 11 or
+newer and advertises `android.heapprofd`. Android 10 introduced heapprofd but
+does not contain `HeapprofdConfig.dump_at_max`; periodic dumps on such a device
+are not substituted for peak. Consequently, an Android 10 process-memory record
+cannot be combined with a later Android 11 peak trace to close the gate: the
+complete process-memory and peak cohorts must be rerun on the same device and
+runtime.
+
+For each bounded runner invocation, omit the runner's `--serial` after `--` and
+wrap all its other arguments:
+
+```bash
+node stages/issue291-native-heap-peak-run.mjs \
+  --serial <connected-android-11+-serial> \
+  --trace-out <segment.pftrace> \
+  --receipt-out <segment-receipt.json> \
+  -- \
+  <issue194-device-run arguments including --process-memory, \
+    --create-clear-recreate, --checkpoint, and --max-new-samples>
+```
+
+The wrapper uses a 4 KiB Poisson sampling interval, a non-blocking 256 MiB
+client/daemon buffer, and a periodically flushed ring-buffer trace. Any
+heapprofd overrun remains a failed trace rather than blocking allocations and
+changing the workload further. SIGINT/SIGTERM is forwarded to the runner before
+the detached trace is stopped and pulled; the per-segment receipt records its
+accepted ordinal range, trace hash, exact configuration hash, and current
+checkpoint hash. The temporary device trace is removed only after a successful
+pull.
+
+After all segments and the final Native window exist, use a pinned
+`trace_processor_shell` to bind each segment to its explicit accepted ordinal
+range:
+
+```bash
+node stages/issue291-native-heap-peak-collect.mjs \
+  --input <raw-device-window.json> \
+  --trace-processor <trace_processor_shell> \
+  --trace 1-4=<segment-1.pftrace> \
+  --trace 5-8=<segment-2.pftrace> \
+  --out <heap-peak-evidence.json>
+
+node stages/issue291-native-memory-analyze.mjs \
+  --input <raw-device-window.json> \
+  --peak <heap-peak-evidence.json> \
+  --reference baseline --candidate candidate \
+  --out <complete-memory-comparison.json>
+```
+
+The collector checks the raw trace protobuf for `self_max` fields and rejects
+ordinary `self_allocated`/`self_freed` profiles. It also rejects non-startup
+profiles, negative allocation rows, missing or duplicate fresh PIDs, buffer
+overrun/corruption, client errors, guardrails, concurrent-profile rejection,
+missing/malformed packets, non-finalized profiles, and adaptive sampling. Its
+output binds the raw Native window, source commits, bundle hashes, trace hashes,
+and trace-processor binary/version. Only that complete evidence can change
+`peakHeap` and the overall #291 memory gate from `inconclusive` to pass/fail.
+
 ##### M0-current versus shipping M4 formal process-memory window
 
 The receipt-bound shipping candidate at `204f4cf4c535` completed the registered

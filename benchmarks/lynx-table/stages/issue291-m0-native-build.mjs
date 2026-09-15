@@ -25,6 +25,8 @@ const producerFiles = [
 	'benchmarks/lynx-table/stages/issue194-device-run.mjs',
 	'benchmarks/lynx-table/stages/issue291-m0-native-build.mjs',
 	'benchmarks/lynx-table/stages/issue291-m0-native-probe.mjs',
+	'benchmarks/lynx-table/stages/issue291-native-heap-peak-collect.mjs',
+	'benchmarks/lynx-table/stages/issue291-native-heap-peak-run.mjs',
 	'benchmarks/lynx-table/stages/issue291-native-memory-analyze.mjs',
 ];
 const bundleProbeMarkers = [

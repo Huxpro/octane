@@ -8,7 +8,8 @@ import { writeEvidenceJson } from '../scripts/evidence.mjs';
 import { issue194LifecycleSequence } from './issue194-device-protocol.mjs';
 
 const INPUT_PROTOCOL = 'octane-issue194-device-v1';
-const OUTPUT_PROTOCOL = 'octane-issue291-native-memory-comparison-v1';
+const PEAK_INPUT_PROTOCOL = 'octane-issue291-native-heap-peak-v1';
+const OUTPUT_PROTOCOL = 'octane-issue291-native-memory-comparison-v2';
 const REQUIRED_PAIRS = 10;
 const REQUIRED_CYCLES = 20;
 const NON_INFERIORITY_LIMIT = 1.05;
@@ -233,8 +234,139 @@ function engineReceipts(samples, label) {
 	return JSON.parse(unique[0]);
 }
 
+function sameReceipt(left, right) {
+	return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function androidMajor(release) {
+	const match = String(release).match(/^\d+/);
+	return match === null ? null : Number(match[0]);
+}
+
+function validatePeakEvidence(peak, input, samples, cells, reference, candidate) {
+	object(peak, 'peak evidence');
+	if (peak.protocol !== PEAK_INPUT_PROTOCOL) {
+		throw new Error('unexpected native heap-peak protocol.');
+	}
+	const measurement = object(peak.measurement, 'peak measurement');
+	if (
+		measurement.source !== 'android.heapprofd' ||
+		measurement.mode !== 'dump_at_max' ||
+		measurement.dumpAtMax !== true ||
+		measurement.fromStartup !== true ||
+		measurement.profiledHeap !== 'libc.malloc' ||
+		measurement.targetProcess !== 'com.lynx.explorer' ||
+		measurement.profilePerturbsTiming !== true ||
+		measurement.eligibleForLatencyHeadline !== false ||
+		!Number.isSafeInteger(measurement.samplingIntervalBytes) ||
+		measurement.samplingIntervalBytes < 1
+	) {
+		throw new Error('issue #291 peak evidence requires startup heapprofd dump_at_max controls.');
+	}
+	if (androidMajor(input.device?.android) < 11 || androidMajor(peak.device?.android) < 11) {
+		throw new Error('heapprofd dump_at_max requires Android 11 or newer.');
+	}
+	if (!sameReceipt(peak.device, input.device)) {
+		throw new Error('heap-peak evidence was not collected on the process-memory device.');
+	}
+	const sourceWindow = object(peak.sourceWindow, 'peak source window');
+	if (
+		sourceWindow.protocol !== input.protocol ||
+		sourceWindow.question !== input.question ||
+		sourceWindow.sampleCount !== samples.length ||
+		!Number.isSafeInteger(sourceWindow.bytes) ||
+		sourceWindow.bytes < 1 ||
+		!/^[0-9a-f]{64}$/.test(sourceWindow.sha256)
+	) {
+		throw new Error('heap-peak evidence is not bound to this Native device window.');
+	}
+	const peakCells = object(sourceWindow.cells, 'peak source cells');
+	if (
+		!sameReceipt(peakCells[reference], cells.reference) ||
+		!sameReceipt(peakCells[candidate], cells.candidate)
+	) {
+		throw new Error('heap-peak evidence disagrees with the measured cell receipts.');
+	}
+	if (!Array.isArray(peak.samples) || peak.samples.length !== samples.length) {
+		throw new Error('heap-peak evidence needs one profile for every accepted sample.');
+	}
+	const traceProcessor = object(peak.traceProcessor, 'peak trace processor');
+	if (
+		!Number.isSafeInteger(traceProcessor.bytes) ||
+		traceProcessor.bytes < 1 ||
+		!/^[0-9a-f]{64}$/.test(traceProcessor.sha256) ||
+		typeof traceProcessor.version !== 'string' ||
+		traceProcessor.version === ''
+	) {
+		throw new Error('heap-peak evidence needs an immutable trace-processor receipt.');
+	}
+	if (!Array.isArray(peak.traces) || peak.traces.length === 0) {
+		throw new Error('heap-peak evidence needs its raw trace receipts.');
+	}
+	const traceHashes = new Set();
+	for (const trace of peak.traces) {
+		if (
+			!Number.isSafeInteger(trace.bytes) ||
+			trace.bytes < 1 ||
+			!/^[0-9a-f]{64}$/.test(trace.sha256)
+		) {
+			throw new Error('heap-peak evidence contains an incomplete trace receipt.');
+		}
+		traceHashes.add(trace.sha256);
+	}
+	const byOrdinal = new Map();
+	for (const profile of peak.samples) {
+		if (
+			!Number.isSafeInteger(profile.ordinal) ||
+			profile.ordinal < 1 ||
+			byOrdinal.has(profile.ordinal)
+		) {
+			throw new Error('heap-peak sample ordinals must be unique positive integers.');
+		}
+		if (!traceHashes.has(profile.traceSha256)) {
+			throw new Error(`heap-peak sample ${profile.ordinal} has no matching raw trace receipt.`);
+		}
+		const health = object(profile.producerHealth, `heap-peak sample ${profile.ordinal} health`);
+		if (
+			health.bufferOverran !== false ||
+			health.bufferCorrupted !== false ||
+			health.rejectedConcurrent !== false ||
+			health.hitGuardrail !== false ||
+			health.clientErrors !== 0 ||
+			health.malformedPackets !== 0 ||
+			health.missingPackets !== 0 ||
+			health.nonFinalizedProfiles !== 0 ||
+			health.samplingIntervalAdjustedBytes !== 0
+		) {
+			throw new Error(`heap-peak sample ${profile.ordinal} has incomplete producer evidence.`);
+		}
+		positive(profile.peakNativeHeapRequestedBytes, `heap-peak sample ${profile.ordinal}`);
+		if (!Number.isSafeInteger(profile.peakNativeHeapRequestedBytes)) {
+			throw new Error(`heap-peak sample ${profile.ordinal} byte count must be an integer.`);
+		}
+		if (
+			!Number.isSafeInteger(profile.peakNativeHeapSampleCount) ||
+			profile.peakNativeHeapSampleCount < 0
+		) {
+			throw new Error(`heap-peak sample ${profile.ordinal} needs a non-negative sample count.`);
+		}
+		byOrdinal.set(profile.ordinal, profile);
+	}
+	return samples.map((sample) => {
+		const profile = byOrdinal.get(sample.ordinal);
+		if (
+			profile === undefined ||
+			profile.cell !== sample.cell ||
+			profile.pid !== sample.processMemory.pid
+		) {
+			throw new Error(`heap-peak sample ${sample.ordinal} is not bound to its fresh process.`);
+		}
+		return profile.peakNativeHeapRequestedBytes;
+	});
+}
+
 /** Re-judge one cold-launch AB/BA process-memory session without a device. */
-export function analyzeIssue291NativeMemory(input, { reference, candidate }) {
+export function analyzeIssue291NativeMemory(input, { reference, candidate, peak = null }) {
 	object(input, 'input');
 	if (input.protocol !== INPUT_PROTOCOL) throw new Error('unexpected native device protocol.');
 	if (typeof reference !== 'string' || typeof candidate !== 'string' || reference === candidate) {
@@ -361,9 +493,32 @@ export function analyzeIssue291NativeMemory(input, { reference, candidate }) {
 		);
 	}
 	const registered = metrics.nativeHeapAllocKb;
-	const availableChecksPassed =
+	const processMemoryChecksPassed =
 		registered.settledPopulated.nonInferiority.passed &&
 		registered.afterClear.nonInferiority.passed;
+	let peakComparison = null;
+	if (peak !== null) {
+		const peakValues = validatePeakEvidence(peak, input, samples, cells, reference, candidate);
+		for (let index = 0; index < pairs.length; index++) {
+			pairs[index].reference.metrics.nativeHeapRequestedPeakBytes = {
+				peak: peakValues[pairs[index].reference.ordinal - 1],
+			};
+			pairs[index].candidate.metrics.nativeHeapRequestedPeakBytes = {
+				peak: peakValues[pairs[index].candidate.ordinal - 1],
+			};
+		}
+		peakComparison = compareMetric(pairs, 'peak', 'nativeHeapRequestedPeakBytes', 100);
+		peakComparison.unit = 'bytes';
+		metrics.nativeHeapRequestedPeakBytes = { peak: peakComparison };
+	}
+	const peakPassed = peakComparison?.nonInferiority.passed ?? null;
+	const availableChecksPassed = processMemoryChecksPassed && peakPassed !== false;
+	const issue291MemoryGate =
+		peakPassed === null
+			? 'inconclusive'
+			: processMemoryChecksPassed && peakPassed
+				? 'pass'
+				: 'fail';
 	return {
 		protocol: OUTPUT_PROTOCOL,
 		question: input.question,
@@ -397,10 +552,14 @@ export function analyzeIssue291NativeMemory(input, { reference, candidate }) {
 			availableChecksPassed,
 			settledHeap: registered.settledPopulated.nonInferiority.passed ? 'pass' : 'fail',
 			afterClearHeap: registered.afterClear.nonInferiority.passed ? 'pass' : 'fail',
-			peakHeap: 'inconclusive',
-			issue291MemoryGate: 'inconclusive',
+			peakHeap: peakPassed === null ? 'inconclusive' : peakPassed ? 'pass' : 'fail',
+			issue291MemoryGate,
 			reason:
-				'postReceipt is an operational high-water checkpoint after the Native ACK and second frame, not an instantaneous heap peak; this record cannot close the registered peak-heap requirement',
+				peakPassed === null
+					? 'postReceipt is an operational high-water checkpoint after the Native ACK and second frame, not an instantaneous heap peak; this record cannot close the registered peak-heap requirement'
+					: issue291MemoryGate === 'pass'
+						? 'settled, after-clear, and heapprofd dump-at-max native heap checks satisfy the registered non-inferiority limit'
+						: 'at least one registered native heap non-inferiority check exceeds the frozen limit',
 		},
 		pairs,
 	};
@@ -410,6 +569,7 @@ async function main() {
 	const { values } = parseArgs({
 		options: {
 			input: { type: 'string' },
+			peak: { type: 'string' },
 			reference: { type: 'string' },
 			candidate: { type: 'string' },
 			out: { type: 'string' },
@@ -421,15 +581,33 @@ async function main() {
 	}
 	const inputFile = path.resolve(values.input);
 	const bytes = fs.readFileSync(inputFile);
+	const peakFile = values.peak === undefined ? null : path.resolve(values.peak);
+	const peakBytes = peakFile === null ? null : fs.readFileSync(peakFile);
+	const peak = peakBytes === null ? null : JSON.parse(peakBytes);
+	if (
+		peak !== null &&
+		(object(peak.sourceWindow, 'peak source window').bytes !== bytes.length ||
+			peak.sourceWindow.sha256 !== crypto.createHash('sha256').update(bytes).digest('hex'))
+	) {
+		throw new Error('heap-peak evidence does not match the raw Native device-window bytes.');
+	}
 	const report = analyzeIssue291NativeMemory(JSON.parse(bytes), {
 		reference: values.reference,
 		candidate: values.candidate,
+		peak,
 	});
 	report.input = {
 		path: path.relative(process.cwd(), inputFile),
 		bytes: bytes.length,
 		sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
 	};
+	if (peakBytes !== null) {
+		report.peakInput = {
+			path: path.relative(process.cwd(), peakFile),
+			bytes: peakBytes.length,
+			sha256: crypto.createHash('sha256').update(peakBytes).digest('hex'),
+		};
+	}
 	await writeEvidenceJson(path.resolve(values.out), report);
 	if (!report.verdict.availableChecksPassed) process.exitCode = 1;
 }

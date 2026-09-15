@@ -61,7 +61,7 @@ function sample(ordinal, cell, multiplier, sessionFactor) {
 		processMemory: {
 			measurement: 'synthetic fixture',
 			settleMs: 4000,
-			pid: 123,
+			pid: 1000 + ordinal,
 			baseline: checkpoint(factor, 'empty'),
 			steps: sequence.map((step, index) => ({
 				step: index + 1,
@@ -118,11 +118,70 @@ function input(candidateMultiplier = 1.04, pairs = 10) {
 	};
 }
 
+function peakEvidence(window, candidateMultiplier = 1.04) {
+	return {
+		protocol: 'octane-issue291-native-heap-peak-v1',
+		device: window.device,
+		traceProcessor: {
+			path: '/tmp/trace_processor_shell',
+			bytes: 1000,
+			sha256: 'e'.repeat(64),
+			version: 'Perfetto fixture',
+		},
+		traces: [{ path: '/tmp/peak.pftrace', bytes: 2000, sha256: 'd'.repeat(64) }],
+		measurement: {
+			source: 'android.heapprofd',
+			mode: 'dump_at_max',
+			dumpAtMax: true,
+			fromStartup: true,
+			profiledHeap: 'libc.malloc',
+			targetProcess: 'com.lynx.explorer',
+			samplingIntervalBytes: 4096,
+			profilePerturbsTiming: true,
+			eligibleForLatencyHeadline: false,
+		},
+		sourceWindow: {
+			protocol: window.protocol,
+			question: window.question,
+			sampleCount: window.samples.length,
+			cells: Object.fromEntries(
+				Object.entries(window.cells).map(([label, cell]) => [
+					label,
+					{ sourceCommit: cell.sourceCommit, bundle: cell.bundle },
+				]),
+			),
+			bytes: 3000,
+			sha256: 'f'.repeat(64),
+		},
+		samples: window.samples.map((entry) => ({
+			ordinal: entry.ordinal,
+			cell: entry.cell,
+			pid: entry.processMemory.pid,
+			peakNativeHeapRequestedBytes:
+				1_000_000 * (entry.cell === 'candidate' ? candidateMultiplier : 1),
+			peakNativeHeapSampleCount: 100,
+			traceSha256: 'd'.repeat(64),
+			producerHealth: {
+				bufferOverran: false,
+				bufferCorrupted: false,
+				rejectedConcurrent: false,
+				hitGuardrail: false,
+				clientErrors: 0,
+				malformedPackets: 0,
+				missingPackets: 0,
+				nonFinalizedProfiles: 0,
+				samplingIntervalAdjustedBytes: 0,
+			},
+		})),
+	};
+}
+
 test('issue #291 pairs AB/BA sessions and keeps peak heap explicitly inconclusive', () => {
 	const report = analyzeIssue291NativeMemory(input(), {
 		reference: 'reference',
 		candidate: 'candidate',
 	});
+	assert.equal(report.protocol, 'octane-issue291-native-memory-comparison-v2');
 	assert.equal(report.collection.pairs, 10);
 	assert.deepEqual(report.collection.orders, {
 		'reference-candidate': 5,
@@ -150,6 +209,57 @@ test('issue #291 fails the available non-inferiority checks above the frozen 1.0
 	assert.equal(report.verdict.availableChecksPassed, false);
 	assert.equal(report.verdict.settledHeap, 'fail');
 	assert.equal(report.verdict.afterClearHeap, 'fail');
+});
+
+test('issue #291 closes the memory gate only with bound Android 11 dump-at-max evidence', () => {
+	const window = input();
+	window.device.android = '11';
+	const report = analyzeIssue291NativeMemory(window, {
+		reference: 'reference',
+		candidate: 'candidate',
+		peak: peakEvidence(window),
+	});
+	assert.equal(report.metrics.nativeHeapRequestedPeakBytes.peak.unit, 'bytes');
+	assert.ok(
+		Math.abs(report.metrics.nativeHeapRequestedPeakBytes.peak.bootstrap.ci95.upper - 1.04) < 1e-12,
+	);
+	assert.equal(report.verdict.peakHeap, 'pass');
+	assert.equal(report.verdict.issue291MemoryGate, 'pass');
+});
+
+test('issue #291 fails a measured peak and rejects unsupported or unhealthy peak evidence', () => {
+	const window = input();
+	window.device.android = '11';
+	const failed = analyzeIssue291NativeMemory(window, {
+		reference: 'reference',
+		candidate: 'candidate',
+		peak: peakEvidence(window, 1.06),
+	});
+	assert.equal(failed.verdict.availableChecksPassed, false);
+	assert.equal(failed.verdict.peakHeap, 'fail');
+	assert.equal(failed.verdict.issue291MemoryGate, 'fail');
+
+	const androidTen = input();
+	assert.throws(
+		() =>
+			analyzeIssue291NativeMemory(androidTen, {
+				reference: 'reference',
+				candidate: 'candidate',
+				peak: peakEvidence(androidTen),
+			}),
+		/Android 11 or newer/,
+	);
+	const unhealthy = peakEvidence(window);
+	unhealthy.samples[0].producerHealth.bufferOverran = true;
+	assert.throws(
+		() =>
+			analyzeIssue291NativeMemory(window, {
+				reference: 'reference',
+				candidate: 'candidate',
+				peak: unhealthy,
+			}),
+		/incomplete producer evidence/,
+	);
 });
 
 test('issue #291 refuses too few pairs and an incomplete claimed lifecycle', () => {
