@@ -338,6 +338,57 @@ describe('Lynx block core — equivalence with a fresh mount', () => {
 		);
 	});
 
+	it('defers a proven swap relink until acceptance and needs no rollback mutation', () => {
+		const list = rows(6);
+		const reordered = [list[0]!, list[4]!, list[2]!, list[3]!, list[1]!, list[5]!];
+		const built = scene(list, null);
+		const logicalKeys = (): unknown[] => {
+			const keys: unknown[] = [];
+			for (let block = built.slot.head; block !== null; block = block.next) keys.push(block.key);
+			return keys;
+		};
+
+		built.core.beginAttempt();
+		built.core.swapKeysForSlot(built.slot, 2, 5);
+		const rejected = built.core.flush()!;
+		expect(rejected.commands.filter((command) => command.op === 'move')).not.toHaveLength(0);
+		// Commands describe the next physical order, but the committed logical range
+		// stays untouched until the renderer acknowledges that frame.
+		expect(logicalKeys()).toEqual(list.map((row) => row.id));
+		expect(built.core.abortAttempt()).toBe(true);
+		expect(logicalKeys()).toEqual(list.map((row) => row.id));
+
+		built.core.beginAttempt();
+		built.core.swapKeysForSlot(built.slot, 2, 5);
+		const accepted = built.core.flush()!;
+		prepareLynxHostBatch(built.container, accepted).apply();
+		expect(logicalKeys()).toEqual(list.map((row) => row.id));
+		built.core.acceptAttempt();
+		expect(logicalKeys()).toEqual(reordered.map((row) => row.id));
+
+		const direct = scene(reordered, null);
+		expect(withoutAllocatorIdentity(built.tree())).toEqual(withoutAllocatorIdentity(direct.tree()));
+	});
+
+	it('matches a fresh mount for adjacent and endpoint proven swaps', () => {
+		for (const [left, right] of [
+			[0, 1],
+			[0, 5],
+			[2, 3],
+		] as const) {
+			const list = rows(6);
+			const reordered = list.slice();
+			[reordered[left], reordered[right]] = [reordered[right]!, reordered[left]!];
+			const built = scene(list, null);
+			built.core.swapKeysForSlot(built.slot, reordered[left]!.id, reordered[right]!.id);
+			built.apply();
+			const direct = scene(reordered, null);
+			expect(withoutAllocatorIdentity(built.tree())).toEqual(
+				withoutAllocatorIdentity(direct.tree()),
+			);
+		}
+	});
+
 	it('preserves survivor order across insertions and removals without moving a survivor', () => {
 		const list = rows(5);
 		const next = [list[0]!, { id: 99, label: 'inserted' }, list[2]!, list[4]!];
@@ -769,6 +820,14 @@ describe('Lynx block core — refusing corrupt input, reporting departures', () 
 			),
 		).toThrowError(/duplicate key/);
 		expect(slot.size).toBe(0);
+	});
+
+	it('refuses a proven swap without two distinct committed keys before emitting', () => {
+		const built = scene(rows(3), null);
+		expect(() => built.core.swapKeysForSlot(built.slot, 1, 1)).toThrowError(/distinct/);
+		expect(() => built.core.swapKeysForSlot(built.slot, 1, 99)).toThrowError(/distinct/);
+		expect(built.core.flush()).toBeNull();
+		expect(built.slot.size).toBe(3);
 	});
 
 	it('reports every departing block before its run is destroyed', () => {

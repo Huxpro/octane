@@ -6440,6 +6440,8 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 			selected: undefined,
 			onSelect,
 		});
+		const reconcile = vi.spyOn(core, 'reconcileForSlot');
+		const swapOnly = vi.spyOn(core, 'swapKeysForSlot');
 
 		const step = async (selected: number | undefined, nextRows = rows) => {
 			visited = [];
@@ -6526,16 +6528,38 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 		const beforeSwappedKeys = keyCalls;
 		const beforeSwappedGetter = keyGetterCalls;
 		const swappedStep = await step(25, swapped);
-		expect(swappedStep.rangeCalls).toBe(0);
 		// The compiler proved this Row does not receive the index, so even the
-		// shifted descriptors survive without rebuilding their identical props.
-		expect(swappedStep.rowCalls).toBe(0);
-		expect(swappedStep.visited).toEqual([]);
+		// shifted descriptors survive without rebuilding their identical props. A
+		// certified pair swap reaches two blocks and emits its two physical moves;
+		// neither count grows with the list.
+		expect(swappedStep).toEqual({
+			rangeCalls: 0,
+			rowCalls: 0,
+			lookups: 2,
+			commands: 2,
+			visited: [],
+		});
+		expect(swapOnly).toHaveBeenCalledTimes(1);
+		expect(reconcile).not.toHaveBeenCalled();
 		// A key move fails the alignment preflight before any row is called. The
 		// compiler-certified direct-property reads are retained for the ordinary
 		// reconciler, so neither the authored keys nor any accessor are read twice.
 		expect(keyCalls - beforeSwappedKeys).toBe(0);
 		expect(keyGetterCalls - beforeSwappedGetter).toBe(1);
+
+		// Three displaced keys are not the narrow proof. They retain row bodies but
+		// fall through to the general keyed reconciler, then return to the accepted
+		// swap order so the rejection ladder below starts from the same state.
+		const cycled = swapped.slice();
+		[cycled[1], cycled[2], cycled[3]] = [cycled[2]!, cycled[3]!, cycled[1]!];
+		const cycledStep = await step(25, cycled);
+		expect(cycledStep.rangeCalls).toBe(0);
+		expect(cycledStep.rowCalls).toBe(0);
+		expect(swapOnly).toHaveBeenCalledTimes(1);
+		expect(reconcile).toHaveBeenCalledTimes(1);
+		await step(25, swapped);
+		expect(swapOnly).toHaveBeenCalledTimes(1);
+		expect(reconcile).toHaveBeenCalledTimes(2);
 
 		// Deletion-only retention reuses the committed descriptor Map. Rejecting the
 		// structural frame must leave that Map intact: key 50 still has to be
