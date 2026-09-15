@@ -4,10 +4,12 @@ import {
 	LYNX_APPLICATION_SELECTION_ASSET_INFO,
 	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO,
+	LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO,
 	collectLynxBlockFeatureRequirements,
 	collectLynxBlockSemanticRequirements,
 	collectLynxProgramCoverage,
 	decideLynxBlockComponentFeatures,
+	decideLynxCompiledProgramFeatures,
 	evaluateLynxBlockEligibility,
 	evaluateLynxCompiledProgramEligibility,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
@@ -278,6 +280,196 @@ describe('Lynx Block component feature selection', () => {
 				reasons: [{ code: 'entry-requires-optional-block-semantics' }],
 			});
 		}
+	});
+});
+
+function compiledProgramFeatureDecision(
+	background: ReturnType<typeof featureRequirements>,
+	mainThread: ReturnType<typeof featureRequirements> = background,
+	mode = 'production',
+) {
+	const report = {
+		compiledProgramSelection: { eligible: true },
+		semanticRequirements: {
+			paired: true,
+			modules: [
+				{
+					background: semanticRequirements(),
+					mainThread: semanticRequirements(),
+				},
+			],
+		},
+		featureRequirements: {
+			paired: true,
+			modules: [{ background, mainThread }],
+		},
+	};
+	return decideLynxCompiledProgramFeatures(
+		{ options: { mode }, watchMode: false },
+		[{ mainThreadEntry: 'app__octane_main_thread' }],
+		new Map([['app__octane_main_thread', report]]),
+		{ selected: 'compiled-program' },
+	);
+}
+
+describe('Lynx compiled-program feature selection', () => {
+	it('removes thread-function support only from a paired production graph that proves it unused', () => {
+		expect(compiledProgramFeatureDecision(featureRequirements())).toEqual({
+			version: 1,
+			selected: 'no-thread-functions',
+			reasons: [],
+		});
+
+		const threadFunction = featureRequirements({
+			threadFunctions: [
+				{
+					kind: 'main-thread',
+					id: 'tf_tap',
+					line: 2,
+					column: 3,
+					captures: [],
+				},
+			],
+		});
+		expect(compiledProgramFeatureDecision(featureRequirements(), threadFunction)).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-thread-functions' }],
+		});
+
+		const mainThreadProp = featureRequirements({
+			mainThreadProps: [site('main-thread:ref', 4, 5)],
+		});
+		expect(compiledProgramFeatureDecision(mainThreadProp)).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-thread-functions' }],
+		});
+
+		const hookReport = {
+			compiledProgramSelection: { eligible: true },
+			semanticRequirements: {
+				paired: true,
+				modules: [
+					{
+						background: semanticRequirements({
+							components: [
+								{
+									name: 'App',
+									exportKind: 'named',
+									line: 1,
+									column: 0,
+									hooks: [site('useMainThreadRef')],
+								},
+							],
+						}),
+						mainThread: semanticRequirements(),
+					},
+				],
+			},
+			featureRequirements: {
+				paired: true,
+				modules: [
+					{
+						background: featureRequirements(),
+						mainThread: featureRequirements(),
+					},
+				],
+			},
+		};
+		expect(
+			decideLynxCompiledProgramFeatures(
+				{ options: { mode: 'production' }, watchMode: false },
+				[{ mainThreadEntry: 'app__octane_main_thread' }],
+				new Map([['app__octane_main_thread', hookReport]]),
+				{ selected: 'compiled-program' },
+			),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-thread-functions' }],
+		});
+
+		expect(
+			compiledProgramFeatureDecision(featureRequirements(), undefined, 'development'),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'compiled-feature-specialization-requires-one-shot-production' }],
+		});
+	});
+
+	it('fails closed when application, entry, or paired proof facts are incomplete', () => {
+		const compiler = { options: { mode: 'production' }, watchMode: false };
+		const entries = [{ mainThreadEntry: 'app__octane_main_thread' }];
+		const report = {
+			compiledProgramSelection: { eligible: true },
+			semanticRequirements: {
+				paired: true,
+				modules: [
+					{
+						background: semanticRequirements(),
+						mainThread: semanticRequirements(),
+					},
+				],
+			},
+			featureRequirements: {
+				version: 2,
+				paired: true,
+				modules: [
+					{
+						background: featureRequirements(),
+						mainThread: featureRequirements(),
+					},
+				],
+			},
+		};
+		const decide = (
+			reports = new Map([['app__octane_main_thread', report]]),
+			applicationDecision = { selected: 'compiled-program' },
+			selectedEntries = entries,
+		) => decideLynxCompiledProgramFeatures(compiler, selectedEntries, reports, applicationDecision);
+
+		expect(decide(new Map())).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'selection-report-missing' }],
+		});
+		expect(decide(undefined, { selected: 'general' })).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'compiled-feature-specialization-requires-compiled-application' }],
+		});
+		expect(decide(undefined, undefined, [])).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'no-authored-entries' }],
+		});
+		expect(
+			decide(
+				new Map([
+					[
+						'app__octane_main_thread',
+						{
+							...report,
+							featureRequirements: { ...report.featureRequirements, paired: false },
+						},
+					],
+				]),
+			),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-thread-functions' }],
+		});
+		expect(
+			decide(
+				new Map([
+					[
+						'app__octane_main_thread',
+						{
+							...report,
+							semanticRequirements: { ...report.semanticRequirements, paired: false },
+						},
+					],
+				]),
+			),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-thread-functions' }],
+		});
 	});
 });
 
@@ -1036,20 +1228,19 @@ describe('Lynx application resident-program coverage', () => {
 			for (const request of [
 				'./core/background-core-selection.js',
 				'./core/application-selection.js',
+				'./core/compiled-program-features.js',
 			]) {
 				const resource = { request };
 				for (const replacement of replacements) {
 					if (replacement.test.test(resource.request)) replacement.callback(resource);
 				}
 				rebuiltRequests.push(resource.request);
-				connections.push({
-					module: {
-						nameForCondition: () =>
-							resource.request.endsWith('background-core-selection.block.js')
-								? '/repo/node_modules/@octanejs/lynx/src/core/background-core-selection.block.ts'
-								: '/repo/node_modules/@octanejs/lynx/src/core/application-selection.compiled-program.ts',
-					},
-				});
+				const selectedResource = resource.request.endsWith('background-core-selection.block.js')
+					? '/repo/node_modules/@octanejs/lynx/src/core/background-core-selection.block.ts'
+					: resource.request.endsWith('compiled-program-features.no-thread-functions.js')
+						? '/repo/node_modules/@octanejs/lynx/src/core/compiled-program-features.no-thread-functions.ts'
+						: '/repo/node_modules/@octanejs/lynx/src/core/application-selection.compiled-program.ts';
+				connections.push({ module: { nameForCondition: () => selectedResource } });
 			}
 			root.connections = connections;
 			callback(null);
@@ -1097,14 +1288,16 @@ describe('Lynx application resident-program coverage', () => {
 
 		// The proof passes, compiler-program module selection, owner discovery /
 		// verification, and dependency-first rebuild ordering all inspect the graph.
-		expect(graphVisits).toBe(13);
+		expect(graphVisits).toBe(14);
 		expect(rebuiltModules).toEqual([background, mainThread, blockComponent, root]);
 		expect(rebuiltRequests).toEqual([
 			'./core/background-core-selection.block.js',
 			'./core/application-selection.compiled-program.js',
+			'./core/compiled-program-features.no-thread-functions.js',
 			'./block-component-features.structural.js',
 			'./core/background-core-selection.block.js',
 			'./core/application-selection.compiled-program.js',
+			'./core/compiled-program-features.no-thread-functions.js',
 		]);
 		expect(assets.get('.rspeedy/app/main-thread.js')?.info).toMatchObject({
 			existing: true,
@@ -1165,6 +1358,11 @@ describe('Lynx application resident-program coverage', () => {
 			[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO]: {
 				version: 1,
 				selected: 'structural',
+				reasons: [],
+			},
+			[LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO]: {
+				version: 1,
+				selected: 'no-thread-functions',
 				reasons: [],
 			},
 		});

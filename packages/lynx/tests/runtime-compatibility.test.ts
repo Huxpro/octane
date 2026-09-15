@@ -105,6 +105,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/application-selection.ts',
 				'src/core/background-core-selection.ts',
 				'src/core/background-lifecycle.ts',
+				'src/core/background-thread-function-feature.ts',
 				// Issue #103 B0 / #291 M4: both background cores and transports are
 				// in the *source* graph behind static selection seams in `root.ts`.
 				// Exactly one pair survives an eligible production build; the
@@ -124,13 +125,16 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/client-driver.ts',
 				'src/core/compiled-program-background-worklets.ts',
 				'src/core/compiled-program-block-transport.ts',
+				'src/core/compiled-program-features.ts',
 				'src/core/compiled-program-transport.ts',
 				'src/core/compiled-program-wire.ts',
 				'src/core/compiler-program.ts',
 				'src/core/delta-protocol.ts',
 				'src/core/delta-shadow.ts',
 				'src/core/environment.ts',
+				'src/core/host-prop-error.ts',
 				'src/core/host-prop-value.ts',
+				'src/core/host-props-main-thread-feature.ts',
 				'src/core/host-props.ts',
 				'src/core/lifecycle-data.ts',
 				'src/core/lifecycle-types.ts',
@@ -154,6 +158,7 @@ describe('Lynx runtime compatibility evidence', () => {
 				// shared ownership of the encoding is the point rather than a leak.
 				'src/core/transport-codec.ts',
 				'src/core/transport-identity.ts',
+				'src/core/transport-thread-function-feature.ts',
 				'src/core/transport.ts',
 				'src/core/worklets.ts',
 				'src/resource.ts',
@@ -171,7 +176,9 @@ describe('Lynx runtime compatibility evidence', () => {
 				'src/core/first-screen-host.ts',
 				'src/core/first-screen.ts',
 				'src/core/host-driver.ts',
+				'src/core/host-prop-error.ts',
 				'src/core/host-prop-value.ts',
+				'src/core/host-props-main-thread-feature.ts',
 				'src/core/host-props.ts',
 				'src/core/lifecycle-data.ts',
 				'src/core/lifecycle-types.ts',

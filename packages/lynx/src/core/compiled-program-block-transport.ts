@@ -18,6 +18,7 @@ import {
 	type LynxClientContainer,
 } from './client-driver.js';
 import { createLynxCompiledProgramTransport } from './compiled-program-transport.js';
+import { LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS } from './compiled-program-features.js';
 import {
 	createLynxBlockDeltaProducer,
 	isLynxBlockDeltaTeardown,
@@ -159,16 +160,20 @@ export function createLynxCompiledProgramBlockTransport(
 		return (backgroundWorklets = createLynxCompiledProgramBackgroundWorklets(registry));
 	};
 	const wire = createLynxCompiledProgramTransport(context, {
-		executeBackgroundFunction(fn, args) {
-			if (backgroundWorklets === null) {
-				throw new Error(
-					BLOCK_TRANSPORT_DEVELOPMENT
-						? 'Octane Lynx compact background execution is stale or foreign.'
-						: BLOCK_TRANSPORT_ERROR,
-				);
-			}
-			return backgroundWorklets.run(fn as LynxBackgroundFunctionDescriptor, args);
-		},
+		...(LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS
+			? {
+					executeBackgroundFunction(fn, args) {
+						if (backgroundWorklets === null) {
+							throw new Error(
+								BLOCK_TRANSPORT_DEVELOPMENT
+									? 'Octane Lynx compact background execution is stale or foreign.'
+									: BLOCK_TRANSPORT_ERROR,
+							);
+						}
+						return backgroundWorklets.run(fn as LynxBackgroundFunctionDescriptor, args);
+					},
+				}
+			: null),
 		isPageDestroyed: options.isPageDestroyed,
 		onLifecycle: options.onLifecycle,
 		onPageDestroy: options.onPageDestroy,
@@ -371,7 +376,8 @@ export function createLynxCompiledProgramBlockTransport(
 				);
 			}
 			const preparedWorklets =
-				backgroundWorklets === null && !lynxCompiledProgramFrameRequiresBackgroundWorklets(draft)
+				!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS ||
+				(backgroundWorklets === null && !lynxCompiledProgramFrameRequiresBackgroundWorklets(draft))
 					? null
 					: requireBackgroundWorklets().prepare(draft);
 			let state: 'prepared' | 'applying' | 'accepted' | 'aborted' = 'prepared';
