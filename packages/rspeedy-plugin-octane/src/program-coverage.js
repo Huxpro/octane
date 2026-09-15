@@ -5,6 +5,7 @@ import {
 import { lynxBlockRspeedyBackgroundRenderers } from '@octanejs/lynx/config';
 
 import { installLynxBackgroundCoreReplacement } from './background-core.js';
+import { installLynxBlockComponentFeatureReplacement } from './block-component-features.js';
 import { installLynxApplicationSelectionReplacement } from './application-selection.js';
 
 export const LYNX_PROGRAM_COVERAGE_ASSET_INFO = 'octane:lynx-program-coverage';
@@ -20,6 +21,9 @@ export const LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO = 'octane:lynx-background
 export const LYNX_BACKGROUND_CORE_SELECTION_VERSION = 1;
 export const LYNX_APPLICATION_SELECTION_ASSET_INFO = 'octane:lynx-application-selection';
 export const LYNX_APPLICATION_SELECTION_VERSION = 2;
+export const LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO =
+	'octane:lynx-block-component-feature-selection';
+export const LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_VERSION = 1;
 export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 20;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
@@ -105,6 +109,44 @@ function isLynxBackgroundRoot(module) {
 		(resource.endsWith('/packages/lynx/src/root.ts') ||
 			resource.includes('/node_modules/@octanejs/lynx/src/root.ts'))
 	);
+}
+
+function isLynxBlockComponent(module) {
+	const resource = moduleResource(module);
+	return (
+		resource !== null &&
+		(resource.endsWith('/packages/lynx/src/core/block-component.ts') ||
+			resource.includes('/node_modules/@octanejs/lynx/src/core/block-component.ts'))
+	);
+}
+
+function isLynxBlockComponentFeatures(module, selected) {
+	const resource = moduleResource(module);
+	if (resource === null) return false;
+	return selected === 'structural'
+		? resource.endsWith('/block-component-features.structural.ts')
+		: resource.endsWith('/block-component-features.ts');
+}
+
+function verifyBlockComponentFeatureSelection(compilation, components, selected) {
+	if (selected === 'structural' && components.length === 0) {
+		throw new Error(
+			'@octanejs/rspeedy-plugin: Block component lowering disappeared during feature specialization.',
+		);
+	}
+	for (const component of components) {
+		const resolved = [...compilation.moduleGraph.getOutgoingConnections(component)].some(
+			(connection) =>
+				activeConnection(connection) &&
+				connection.module != null &&
+				isLynxBlockComponentFeatures(connection.module, selected),
+		);
+		if (!resolved) {
+			throw new Error(
+				`@octanejs/rspeedy-plugin: Block component lowering did not resolve the selected ${selected} feature module.`,
+			);
+		}
+	}
 }
 
 function isLynxApplicationSelectionOwner(module) {
@@ -1233,6 +1275,66 @@ function decideBackgroundCore(compiler, entries, reports, configuredCore, backgr
 	});
 }
 
+function reportRequiresOptionalBlockSemantics(report) {
+	if (report?.featureRequirements?.paired !== true) return true;
+	for (const module of report.featureRequirements.modules) {
+		for (const requirements of [module.background, module.mainThread]) {
+			for (const feature of requirements.templateFeatures) {
+				if (feature.kind === 'activity' || feature.kind === 'try' || feature.kind === 'portal') {
+					return true;
+				}
+			}
+		}
+	}
+	if (report?.semanticRequirements?.paired !== true) return true;
+	const transitions = new Set(['startTransition', 'useDeferredValue', 'useTransition']);
+	for (const module of report.semanticRequirements.modules) {
+		for (const requirements of [module.background, module.mainThread]) {
+			for (const site of [...requirements.runtimeUses, ...requirements.runtimeExports]) {
+				if (transitions.has(site.name)) return true;
+			}
+		}
+	}
+	return false;
+}
+
+/**
+ * Select the smallest Block component implementation proved sufficient for
+ * every authored entry. Unknown or unsupported graphs retain the source-safe
+ * full feature module.
+ */
+export function decideLynxBlockComponentFeatures(compiler, entries, reports, coreDecision) {
+	const reasons = [];
+	if (!oneShotProduction(compiler)) {
+		reasons.push(reason('feature-specialization-requires-one-shot-production'));
+	}
+	if (coreDecision.selected !== 'block') {
+		reasons.push(reason('feature-specialization-requires-block-core'));
+	}
+	for (const entry of entries) {
+		const report = reports.get(entry.mainThreadEntry);
+		if (report === undefined) {
+			reasons.push(reason('selection-report-missing', { entry: entry.mainThreadEntry }));
+			continue;
+		}
+		if (report.selection.eligible !== true) {
+			reasons.push(reason('entry-ineligible', { entry: entry.mainThreadEntry }));
+			continue;
+		}
+		if (reportRequiresOptionalBlockSemantics(report)) {
+			reasons.push(
+				reason('entry-requires-optional-block-semantics', { entry: entry.mainThreadEntry }),
+			);
+		}
+	}
+	if (entries.length === 0) reasons.push(reason('no-authored-entries'));
+	return Object.freeze({
+		version: LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_VERSION,
+		selected: reasons.length === 0 ? 'structural' : 'full',
+		reasons: Object.freeze(reasons),
+	});
+}
+
 /** Attach versioned proofs and specialize the one-core production graph. */
 export class LynxProgramCoveragePlugin {
 	constructor(entries, enabled, configuredCore, elementTemplate = false) {
@@ -1253,6 +1355,10 @@ export class LynxProgramCoveragePlugin {
 			compiler,
 			() => activeState?.decision.selected ?? this.configuredCore ?? 'universal',
 		);
+		installLynxBlockComponentFeatureReplacement(
+			compiler,
+			() => activeState?.blockComponentFeatures.selected ?? 'full',
+		);
 		installLynxApplicationSelectionReplacement(
 			compiler,
 			() => activeState?.applicationDecision.selected ?? 'general',
@@ -1271,6 +1377,11 @@ export class LynxProgramCoveragePlugin {
 				applicationDecision: Object.freeze({
 					version: LYNX_APPLICATION_SELECTION_VERSION,
 					selected: 'general',
+					reasons: Object.freeze([reason('application-graph-not-collected')]),
+				}),
+				blockComponentFeatures: Object.freeze({
+					version: LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_VERSION,
+					selected: 'full',
 					reasons: Object.freeze([reason('application-graph-not-collected')]),
 				}),
 			};
@@ -1297,6 +1408,7 @@ export class LynxProgramCoveragePlugin {
 									[LYNX_BLOCK_SELECTION_ASSET_INFO]: report.selection,
 									[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO]: state.decision,
 									[LYNX_APPLICATION_SELECTION_ASSET_INFO]: state.applicationDecision,
+									[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO]: state.blockComponentFeatures,
 								});
 							}
 						}
@@ -1327,6 +1439,12 @@ export class LynxProgramCoveragePlugin {
 				explicitRootReasons,
 				this.elementTemplate,
 			);
+			state.blockComponentFeatures = decideLynxBlockComponentFeatures(
+				compiler,
+				this.entries,
+				state.reports,
+				state.decision,
+			);
 			activeState = state;
 			const rebuild = new Set();
 			if (this.configuredCore === undefined && state.decision.selected === 'block') {
@@ -1348,6 +1466,11 @@ export class LynxProgramCoveragePlugin {
 			if (state.applicationDecision.selected !== 'general') {
 				for (const owner of applicationOwners) rebuild.add(owner);
 			}
+			if (state.blockComponentFeatures.selected !== 'full') {
+				for (const component of [...compilation.modules].filter(isLynxBlockComponent)) {
+					rebuild.add(component);
+				}
+			}
 			if (rebuild.size !== 0) await rebuildLynxModules(compilation, [...rebuild]);
 			const selectedBackgroundRoots = [...compilation.modules].filter(isLynxBackgroundRoot);
 			const selectedApplicationOwners = collectApplicationSelectionOwners(compilation);
@@ -1356,6 +1479,11 @@ export class LynxProgramCoveragePlugin {
 				compilation,
 				selectedApplicationOwners,
 				state.applicationDecision.selected,
+			);
+			verifyBlockComponentFeatureSelection(
+				compilation,
+				[...compilation.modules].filter(isLynxBlockComponent),
+				state.blockComponentFeatures.selected,
 			);
 		});
 	}

@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
 	LYNX_APPLICATION_SELECTION_ASSET_INFO,
 	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
+	LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO,
 	collectLynxBlockFeatureRequirements,
 	collectLynxBlockSemanticRequirements,
 	collectLynxProgramCoverage,
+	decideLynxBlockComponentFeatures,
 	evaluateLynxBlockEligibility,
 	evaluateLynxCompiledProgramEligibility,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
@@ -225,6 +227,59 @@ function completeProofs() {
 		featureRequirements: collectLynxBlockFeatureRequirements(graph, OPTIONS),
 	};
 }
+
+function blockComponentFeatureDecision(
+	feature: 'activity' | 'portal' | 'try' | null = null,
+	runtime: 'startTransition' | 'useDeferredValue' | 'useTransition' | null = null,
+) {
+	const features = featureRequirements({
+		templateFeatures: feature === null ? [] : [{ kind: feature, name: null, line: 1, column: 0 }],
+	});
+	const semantics = semanticRequirements({
+		runtimeUses: runtime === null ? [] : [site(runtime)],
+	});
+	const report = {
+		selection: { eligible: true },
+		featureRequirements: {
+			paired: true,
+			modules: [{ background: features, mainThread: features }],
+		},
+		semanticRequirements: {
+			paired: true,
+			modules: [{ background: semantics, mainThread: semantics }],
+		},
+	};
+	return decideLynxBlockComponentFeatures(
+		{ options: { mode: 'production' }, watchMode: false },
+		[{ mainThreadEntry: 'app__octane_main_thread' }],
+		new Map([['app__octane_main_thread', report]]),
+		{ selected: 'block' },
+	);
+}
+
+describe('Lynx Block component feature selection', () => {
+	it('selects the structural runtime only when optional semantics are absent', () => {
+		expect(blockComponentFeatureDecision()).toEqual({
+			version: 1,
+			selected: 'structural',
+			reasons: [],
+		});
+		for (const feature of ['activity', 'portal', 'try'] as const) {
+			expect(blockComponentFeatureDecision(feature)).toMatchObject({
+				version: 1,
+				selected: 'full',
+				reasons: [{ code: 'entry-requires-optional-block-semantics' }],
+			});
+		}
+		for (const runtime of ['startTransition', 'useDeferredValue', 'useTransition'] as const) {
+			expect(blockComponentFeatureDecision(null, runtime)).toMatchObject({
+				version: 1,
+				selected: 'full',
+				reasons: [{ code: 'entry-requires-optional-block-semantics' }],
+			});
+		}
+	});
+});
 
 describe('Lynx application Block eligibility', () => {
 	it('accepts only the proven intersection of complete program, semantic, and feature facts', () => {
@@ -943,7 +998,11 @@ describe('Lynx application resident-program coverage', () => {
 			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/root.ts',
 			connections: [] as { module: unknown }[],
 		};
-		graph.modules = new Set([root]);
+		const blockComponent = {
+			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/core/block-component.ts',
+			connections: [] as { module: unknown }[],
+		};
+		graph.modules = new Set([root, blockComponent]);
 		const replacements: Array<{
 			test: RegExp;
 			callback: (resource: { request: string }) => void;
@@ -952,6 +1011,23 @@ describe('Lynx application resident-program coverage', () => {
 		const rebuiltModules: unknown[] = [];
 		graph.rebuildModule = (module: unknown, callback: (error: Error | null) => void) => {
 			rebuiltModules.push(module);
+			if (module === blockComponent) {
+				const resource = { request: './block-component-features.js' };
+				for (const replacement of replacements) {
+					if (replacement.test.test(resource.request)) replacement.callback(resource);
+				}
+				rebuiltRequests.push(resource.request);
+				blockComponent.connections = [
+					{
+						module: {
+							nameForCondition: () =>
+								'/repo/node_modules/@octanejs/lynx/src/core/block-component-features.structural.ts',
+						},
+					},
+				];
+				callback(null);
+				return;
+			}
 			const connections = [];
 			for (const request of [
 				'./core/background-core-selection.js',
@@ -1014,11 +1090,12 @@ describe('Lynx application resident-program coverage', () => {
 
 		// The proof passes, compiler-program module selection, owner discovery /
 		// verification, and dependency-first rebuild ordering all inspect the graph.
-		expect(graphVisits).toBe(6);
-		expect(rebuiltModules).toEqual([background, root]);
+		expect(graphVisits).toBe(12);
+		expect(rebuiltModules).toEqual([background, blockComponent, root]);
 		expect(rebuiltRequests).toEqual([
 			'./core/background-core-selection.block.js',
 			'./core/application-selection.compiled-program.js',
+			'./block-component-features.structural.js',
 			'./core/background-core-selection.block.js',
 			'./core/application-selection.compiled-program.js',
 		]);
@@ -1076,6 +1153,11 @@ describe('Lynx application resident-program coverage', () => {
 				mode: 'automatic',
 				selected: 'block',
 				eligible: true,
+				reasons: [],
+			},
+			[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO]: {
+				version: 1,
+				selected: 'structural',
 				reasons: [],
 			},
 		});

@@ -112,6 +112,10 @@ describe('Lynx runtime compatibility evidence', () => {
 				// is what checks it. What this guard still owns is the thing it
 				// always owned: no main-thread-only module reaches the background.
 				'src/core/block-background.ts',
+				// Source-safe builds retain every Block semantic capability. A proved
+				// production graph statically replaces this default with the structural
+				// feature module, which is intentionally absent from this source walk.
+				'src/core/block-component-features.ts',
 				'src/core/block-component.ts',
 				'src/core/block-core.ts',
 				'src/core/block-delta-producer.ts',

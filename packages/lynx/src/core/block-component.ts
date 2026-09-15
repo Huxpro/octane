@@ -128,6 +128,12 @@ import {
 	type LynxCompilerProgramScalarComputation,
 } from './compiler-program.js';
 import type { LynxBlockProgram, LynxBlockProgramContext } from './block-program.js';
+import {
+	LYNX_BLOCK_ACTIVITY,
+	LYNX_BLOCK_PORTALS,
+	LYNX_BLOCK_TRANSITIONS,
+	LYNX_BLOCK_TRY_BOUNDARIES,
+} from './block-component-features.js';
 import { encodeLynxProgramPropValue } from './host-prop-value.js';
 import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import type { LynxBlockListener } from './block-root.js';
@@ -152,9 +158,15 @@ const UNIVERSAL_PROPS: symbol = Symbol.for('octane.universal.props');
 const UNIVERSAL_COMPONENT: symbol = Symbol.for('octane.universal.component');
 const UNIVERSAL_CHILDREN: symbol = Symbol.for('octane.universal.children');
 const UNIVERSAL_CONTEXT: symbol = Symbol.for('octane.universal.context');
-const UNIVERSAL_ACTIVITY: symbol = Symbol.for('octane.universal.activity');
-const UNIVERSAL_TRY: symbol = Symbol.for('octane.universal.try');
-const UNIVERSAL_PORTAL: symbol = Symbol.for('octane.universal.portal');
+const UNIVERSAL_ACTIVITY: symbol | null = LYNX_BLOCK_ACTIVITY
+	? Symbol.for('octane.universal.activity')
+	: null;
+const UNIVERSAL_TRY: symbol | null = LYNX_BLOCK_TRY_BOUNDARIES
+	? Symbol.for('octane.universal.try')
+	: null;
+const UNIVERSAL_PORTAL: symbol | null = LYNX_BLOCK_PORTALS
+	? Symbol.for('octane.universal.portal')
+	: null;
 
 // Guard the call-site arguments as well as the final message. A production
 const UNIVERSAL_IF: symbol = Symbol.for('octane.universal.if');
@@ -164,11 +176,11 @@ const UNIVERSAL_SWITCH: symbol = Symbol.for('octane.universal.switch');
 const IF_THEN_BRANCH = Object.freeze({});
 const IF_ELSE_BRANCH = Object.freeze({});
 const SWITCH_DEFAULT_BRANCH = Object.freeze({});
-const ACTIVITY_BRANCH = Object.freeze({});
-const TRY_BODY_BRANCH = Object.freeze({});
-const TRY_PENDING_BRANCH = Object.freeze({});
-const TRY_CATCH_BRANCH = Object.freeze({});
-const TRY_RETRY_SLOT = Object.freeze({});
+const ACTIVITY_BRANCH = LYNX_BLOCK_ACTIVITY ? Object.freeze({}) : null;
+const TRY_BODY_BRANCH = LYNX_BLOCK_TRY_BOUNDARIES ? Object.freeze({}) : null;
+const TRY_PENDING_BRANCH = LYNX_BLOCK_TRY_BOUNDARIES ? Object.freeze({}) : null;
+const TRY_CATCH_BRANCH = LYNX_BLOCK_TRY_BOUNDARIES ? Object.freeze({}) : null;
+const TRY_RETRY_SLOT = LYNX_BLOCK_TRY_BOUNDARIES ? Object.freeze({}) : null;
 
 /**
  * Give each boundary arm the same independent semantic owner the Universal
@@ -178,10 +190,12 @@ const TRY_RETRY_SLOT = Object.freeze({});
  * it through this stable component lets the existing keyed-row scope own those
  * hooks, effects, retries, and aborts without introducing an interpreter.
  */
-const TRY_ARM_COMPONENT = defineUniversalComponent(
-	LYNX_TRANSPORT_RENDERER,
-	({ render }: { readonly render: () => unknown }) => render() as never,
-);
+const TRY_ARM_COMPONENT = LYNX_BLOCK_TRY_BOUNDARIES
+	? defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			({ render }: { readonly render: () => unknown }) => render() as never,
+		)
+	: null;
 const LYNX_BLOCK_COMPONENT_DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
 
@@ -383,6 +397,7 @@ function isComponentRegionValue(value: unknown): value is UniversalComponentValu
 
 function isActivityValue(value: unknown): value is UniversalActivityValue {
 	return (
+		LYNX_BLOCK_ACTIVITY &&
 		value !== null &&
 		typeof value === 'object' &&
 		(value as { $$kind?: unknown }).$$kind === UNIVERSAL_ACTIVITY
@@ -391,6 +406,7 @@ function isActivityValue(value: unknown): value is UniversalActivityValue {
 
 function isTryValue(value: unknown): value is UniversalTryValue {
 	return (
+		LYNX_BLOCK_TRY_BOUNDARIES &&
 		value !== null &&
 		typeof value === 'object' &&
 		(value as { $$kind?: unknown }).$$kind === UNIVERSAL_TRY
@@ -399,6 +415,7 @@ function isTryValue(value: unknown): value is UniversalTryValue {
 
 function isPortalValue(value: unknown): value is UniversalPortalValue {
 	return (
+		LYNX_BLOCK_PORTALS &&
 		value !== null &&
 		typeof value === 'object' &&
 		(value as { $$kind?: unknown }).$$kind === UNIVERSAL_PORTAL
@@ -804,17 +821,19 @@ export function lynxBlockProgramForComponent<Props>(
 		},
 	});
 	const renderHookScope = <T>(cells: UniversalHookScope, setup: () => T): T =>
-		activeTransitionAttempt === null ? cells.render(setup) : cells.renderTransition(setup);
+		!LYNX_BLOCK_TRANSITIONS || activeTransitionAttempt === null
+			? cells.render(setup)
+			: cells.renderTransition(setup);
 	const publishHookScope = (
 		context: LynxBlockProgramContext,
 		cells: UniversalHookScope,
 		visible: boolean,
 	): void => {
-		const transitionAttempt = activeTransitionAttempt;
+		const transitionAttempt = LYNX_BLOCK_TRANSITIONS ? activeTransitionAttempt : null;
 		context.afterCommit(() => {
 			const hold = transitionAttempt?.suspended === true;
 			cells.commit(visible, hold);
-			if (hold) transitionWorkScopes.add(cells);
+			if (hold) transitionWorkScopes!.add(cells);
 		});
 	};
 	/**
@@ -861,20 +880,24 @@ export function lynxBlockProgramForComponent<Props>(
 	} | null = null;
 	let preparationError: unknown = null;
 	let transitionRenderQueued = false;
-	const transitionWorkScopes = new Set<UniversalHookScope>();
+	const transitionWorkScopes = LYNX_BLOCK_TRANSITIONS ? new Set<UniversalHookScope>() : null;
 	interface BlockTransitionAttempt {
 		suspended: boolean;
 	}
 	let activeTransitionAttempt: BlockTransitionAttempt | null = null;
-	const finishBlockTransitions = (): void => {
-		for (const cells of transitionWorkScopes) cells.finishTransitions();
-		transitionWorkScopes.clear();
-	};
+	const finishBlockTransitions = LYNX_BLOCK_TRANSITIONS
+		? (): void => {
+				for (const cells of transitionWorkScopes!) cells.finishTransitions();
+				transitionWorkScopes!.clear();
+			}
+		: (): void => undefined;
 
 	let encoder: UniversalHostEncoder | null = null;
 	let portalCapability: UniversalPortalCapability<LynxClientContainer> | null = null;
-	const portalHandles = new Map<string | number, UniversalPortalTargetHandle>();
-	const portalTargetClaims = new Map<string | number, RangeState>();
+	const portalHandles = LYNX_BLOCK_PORTALS
+		? new Map<string | number, UniversalPortalTargetHandle>()
+		: null;
+	const portalTargetClaims = LYNX_BLOCK_PORTALS ? new Map<string | number, RangeState>() : null;
 	let portalDraftClaims: Map<string | number, RangeState> | null = null;
 	let plan: UniversalPlan | LynxCompilerProgram | null = null;
 	let compiled: CompiledUniversalTemplateProgram | null = null;
@@ -1046,10 +1069,17 @@ export function lynxBlockProgramForComponent<Props>(
 		const cells = (scope ??= createUniversalHookScope({
 			renderer: LYNX_TRANSPORT_RENDERER,
 			scheduleRender: queueStateRender,
-			scheduleTransitionRender(): void {
-				transitionWorkScopes.add(scope!);
-				queueTransitionRender();
-			},
+			scheduleTransitionRender: LYNX_BLOCK_TRANSITIONS
+				? (): void => {
+						transitionWorkScopes!.add(scope!);
+						queueTransitionRender();
+					}
+				: (): void =>
+						refuse(
+							subject,
+							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+								'this production graph did not declare transition semantics.',
+						),
 			scheduleMicrotask(task): void {
 				liveContext!.scheduleMicrotask(task);
 			},
@@ -1078,7 +1108,7 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			throw error;
 		}
-		const transitionAttempt = activeTransitionAttempt;
+		const transitionAttempt = LYNX_BLOCK_TRANSITIONS ? activeTransitionAttempt : null;
 		context.afterAbort(() => {
 			cells.abort(transitionAttempt !== null);
 			liveContext = previousContext;
@@ -1217,6 +1247,13 @@ export function lynxBlockProgramForComponent<Props>(
 
 	/** Coalesce every promoted scope lane into one serialized Block transaction. */
 	function queueTransitionRender(): void {
+		if (!LYNX_BLOCK_TRANSITIONS) {
+			refuse(
+				subject,
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'this production graph did not declare transition semantics.',
+			);
+		}
 		const context = liveContext;
 		if (context === null || block === null) return;
 		if (transitionRenderQueued) {
@@ -1282,7 +1319,7 @@ export function lynxBlockProgramForComponent<Props>(
 			target,
 			transported: true,
 			createPortalTargetHandle(id) {
-				let handle = portalHandles.get(id);
+				let handle = portalHandles!.get(id);
 				if (handle === undefined) {
 					handle = Object.freeze({
 						$$kind: 'octane.universal.portal-target',
@@ -1290,7 +1327,7 @@ export function lynxBlockProgramForComponent<Props>(
 						root: context.root.transportRoot,
 						id,
 					});
-					portalHandles.set(id, handle);
+					portalHandles!.set(id, handle);
 				}
 				return handle;
 			},
@@ -1301,14 +1338,14 @@ export function lynxBlockProgramForComponent<Props>(
 		context: LynxBlockProgramContext,
 	): Map<string | number, RangeState> => {
 		if (portalDraftClaims !== null) return portalDraftClaims;
-		const draft = new Map(portalTargetClaims);
+		const draft = new Map(portalTargetClaims!);
 		portalDraftClaims = draft;
 		context.afterAbort(() => {
 			if (portalDraftClaims === draft) portalDraftClaims = null;
 		});
 		context.afterCommit(() => {
-			portalTargetClaims.clear();
-			for (const [id, owner] of draft) portalTargetClaims.set(id, owner);
+			portalTargetClaims!.clear();
+			for (const [id, owner] of draft) portalTargetClaims!.set(id, owner);
 			if (portalDraftClaims === draft) portalDraftClaims = null;
 		});
 		return draft;
@@ -1437,10 +1474,17 @@ export function lynxBlockProgramForComponent<Props>(
 					scheduleRender(): void {
 						queueScopedRowStateRender(owner);
 					},
-					scheduleTransitionRender(): void {
-						transitionWorkScopes.add(rowScope!);
-						queueTransitionRender();
-					},
+					scheduleTransitionRender: LYNX_BLOCK_TRANSITIONS
+						? (): void => {
+								transitionWorkScopes!.add(rowScope!);
+								queueTransitionRender();
+							}
+						: (): void =>
+								refuse(
+									subject,
+									LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+										'this production graph did not declare transition semantics.',
+								),
 					scheduleMicrotask(task): void {
 						liveContext!.scheduleMicrotask(task);
 					},
@@ -1464,7 +1508,7 @@ export function lynxBlockProgramForComponent<Props>(
 				scoped = owner;
 			}
 			const cells = rowScope!;
-			const transitionAttempt = activeTransitionAttempt;
+			const transitionAttempt = LYNX_BLOCK_TRANSITIONS ? activeTransitionAttempt : null;
 			context.afterAbort(() => {
 				cells.abort(!created && transitionAttempt !== null);
 				if (created) cells.dispose();
@@ -2378,7 +2422,7 @@ export function lynxBlockProgramForComponent<Props>(
 		const componentRegion = branch !== null && isComponentRegionValue(branch) ? branch : null;
 		let selected: readonly [identity: unknown, render: () => unknown] | null;
 		if (activity !== null) {
-			selected = [ACTIVITY_BRANCH, activity.body];
+			selected = [ACTIVITY_BRANCH!, activity.body];
 		} else if (componentRegion === null) {
 			selected = branch === null ? null : selectedBranch(branch as UniversalBranchValue);
 		} else {
@@ -2558,7 +2602,7 @@ export function lynxBlockProgramForComponent<Props>(
 
 	const tryArmValue = (identity: object, render: () => unknown): UniversalSwitchValue => {
 		const renderArm = () =>
-			universalComponent(LYNX_TRANSPORT_RENDERER, TRY_ARM_COMPONENT, { render });
+			universalComponent(LYNX_TRANSPORT_RENDERER, TRY_ARM_COMPONENT!, { render });
 		return {
 			$$kind: UNIVERSAL_SWITCH,
 			value: identity,
@@ -2566,9 +2610,9 @@ export function lynxBlockProgramForComponent<Props>(
 			// Unselected callbacks are never called, so sharing `render` here avoids
 			// allocating three closures around the authored one.
 			cases: [
-				[TRY_BODY_BRANCH, renderArm],
-				[TRY_PENDING_BRANCH, renderArm],
-				[TRY_CATCH_BRANCH, renderArm],
+				[TRY_BODY_BRANCH!, renderArm],
+				[TRY_PENDING_BRANCH!, renderArm],
+				[TRY_CATCH_BRANCH!, renderArm],
 			],
 			default: null,
 		} as unknown as UniversalSwitchValue;
@@ -2753,7 +2797,7 @@ export function lynxBlockProgramForComponent<Props>(
 			if (!tryState.active || tryState.needsRetry) return;
 			tryState.needsRetry = true;
 			if (transition) queueTransitionRender();
-			else queueStateRender(TRY_RETRY_SLOT);
+			else queueStateRender(TRY_RETRY_SLOT!);
 		};
 		const reset = (): void => {
 			if (!tryState.active || !tryState.hasError) return;
@@ -2776,7 +2820,7 @@ export function lynxBlockProgramForComponent<Props>(
 			);
 		const renderCatch = (error: unknown): RangeRender => {
 			if (boundary.catch === null) throw error;
-			const caught = renderArm(TRY_CATCH_BRANCH, () => boundary.catch!(error, reset));
+			const caught = renderArm(TRY_CATCH_BRANCH!, () => boundary.catch!(error, reset));
 			context.afterCommit(() => {
 				tryState.hasError = true;
 				tryState.error = error;
@@ -2825,7 +2869,7 @@ export function lynxBlockProgramForComponent<Props>(
 				bodyKey !== null && state.keys !== null && state.keys.some((key) => key === bodyKey);
 			const pending =
 				retainedTransition ??
-				renderArm(TRY_PENDING_BRANCH, boundary.pending!, retainsBody ? [bodyKey] : EMPTY_INDEXES);
+				renderArm(TRY_PENDING_BRANCH!, boundary.pending!, retainsBody ? [bodyKey] : EMPTY_INDEXES);
 			let rendered = pending;
 			if (retainedTransition === null && retainsBody) {
 				const bodyTemplate = branchTemplateForKey(state, bodyKey);
@@ -2895,7 +2939,7 @@ export function lynxBlockProgramForComponent<Props>(
 			return renderPending(tryState.suspension, tryState.thenable);
 		}
 		try {
-			const body = renderArm(TRY_BODY_BRANCH, boundary.body);
+			const body = renderArm(TRY_BODY_BRANCH!, boundary.body);
 			const bodyKey = body.keys[0] ?? null;
 			const bodyWasHidden = bodyKey !== null && state.retained?.get(bodyKey)?.visible === false;
 			context.afterCommit(() => {
@@ -2921,21 +2965,23 @@ export function lynxBlockProgramForComponent<Props>(
 	};
 
 	/** Release one portal's renderer-owned target only after its host removal is accepted. */
-	const disposeRangePortal = (context: LynxBlockProgramContext, range: RangeState): void => {
-		const portalState = range.portalState;
-		const registration = portalState?.registration ?? null;
-		if (registration === null) return;
-		context.afterCommit(() => {
-			if (portalTargetClaims.get(registration.handle.id) === range) {
-				portalTargetClaims.delete(registration.handle.id);
+	const disposeRangePortal = LYNX_BLOCK_PORTALS
+		? (context: LynxBlockProgramContext, range: RangeState): void => {
+				const portalState = range.portalState;
+				const registration = portalState?.registration ?? null;
+				if (registration === null) return;
+				context.afterCommit(() => {
+					if (portalTargetClaims!.get(registration.handle.id) === range) {
+						portalTargetClaims!.delete(registration.handle.id);
+					}
+					registration.release();
+					if (range.portalState === portalState) {
+						portalState!.target = null;
+						portalState!.registration = null;
+					}
+				});
 			}
-			registration.release();
-			if (range.portalState === portalState) {
-				portalState!.target = null;
-				portalState!.registration = null;
-			}
-		});
-	};
+		: (_context: LynxBlockProgramContext, _range: RangeState): void => undefined;
 
 	/** Dispose semantic owners held below an outer member after its host leaves. */
 	const disposeNestedScopes = (context: LynxBlockProgramContext, state: NestedRangeState): void => {
@@ -3272,7 +3318,7 @@ export function lynxBlockProgramForComponent<Props>(
 		if (states.length === 0) return EMPTY_RANGE_RENDERS;
 		const renderOne = (range: RangeState): RangeRender => {
 			const value = slotValues[range.slot];
-			if (range.portalState !== null) {
+			if (LYNX_BLOCK_PORTALS && range.portalState !== null) {
 				if (isPortalValue(value)) {
 					return renderPortalRange(context, range, value, contextValues, visible);
 				}
@@ -3483,9 +3529,8 @@ export function lynxBlockProgramForComponent<Props>(
 		transition = false,
 	): void => {
 		const previousTransitionAttempt = activeTransitionAttempt;
-		const transitionAttempt: BlockTransitionAttempt | null = transition
-			? { suspended: false }
-			: null;
+		const transitionAttempt: BlockTransitionAttempt | null =
+			LYNX_BLOCK_TRANSITIONS && transition ? { suspended: false } : null;
 		activeTransitionAttempt = transitionAttempt;
 		try {
 			const restoreRanges = snapshotRangeTemplates();
@@ -3771,9 +3816,9 @@ export function lynxBlockProgramForComponent<Props>(
 				eventIndexesBySlot = EMPTY_SITE_INDEXES;
 				refSlots = null;
 				liveComputations = EMPTY_COMPUTATIONS;
-				portalTargetClaims.clear();
+				portalTargetClaims?.clear();
 				portalDraftClaims = null;
-				portalHandles.clear();
+				portalHandles?.clear();
 				portalCapability = null;
 				// The cells outlive nothing: a setter captured by a handler this
 				// program bound can still be called after release, and a disposed
@@ -3781,7 +3826,7 @@ export function lynxBlockProgramForComponent<Props>(
 				// against a block that is gone.
 				scope?.dispose();
 				scope = null;
-				transitionWorkScopes.clear();
+				transitionWorkScopes?.clear();
 				liveContext = null;
 				liveProps = undefined;
 			});

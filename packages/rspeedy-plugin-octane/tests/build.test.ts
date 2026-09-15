@@ -16,6 +16,7 @@ import { pluginOctane } from '../src/index.js';
 import {
 	LYNX_APPLICATION_SELECTION_ASSET_INFO,
 	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
+	LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
 	LYNX_BLOCK_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
@@ -289,15 +290,25 @@ class ProgramCoverageProbePlugin {
 						const selection = asset.info[LYNX_BLOCK_SELECTION_ASSET_INFO];
 						const core = asset.info[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO];
 						const application = asset.info[LYNX_APPLICATION_SELECTION_ASSET_INFO];
+						const componentFeatures = asset.info[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO];
 						if (
 							program !== undefined ||
 							semantic !== undefined ||
 							feature !== undefined ||
 							selection !== undefined ||
 							core !== undefined ||
-							application !== undefined
+							application !== undefined ||
+							componentFeatures !== undefined
 						) {
-							this.reports.push({ program, semantic, feature, selection, core, application });
+							this.reports.push({
+								program,
+								semantic,
+								feature,
+								selection,
+								core,
+								application,
+								componentFeatures,
+							});
 						}
 					}
 				},
@@ -322,7 +333,7 @@ function programCoverageProbe(reports: unknown[]) {
 async function collectCoreSelections(
 	mode: 'development' | 'production',
 	entry: Record<string, string>,
-	field: 'application' | 'core' = 'core',
+	field: 'application' | 'componentFeatures' | 'core' = 'core',
 ): Promise<unknown[]> {
 	const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-core-selection-'));
 	const reports: unknown[] = [];
@@ -359,6 +370,16 @@ async function collectCoreSelections(
 }
 
 describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
+	it('specializes a production graph with structural semantics only', async () => {
+		expect(
+			await collectCoreSelections(
+				'production',
+				{ main: './src/block-ref.ts' },
+				'componentFeatures',
+			),
+		).toEqual([{ version: 1, selected: 'structural', reasons: [] }]);
+	}, 120_000);
+
 	it('keeps an eligible development graph on universal with a diagnostic reason', async () => {
 		expect(await collectCoreSelections('development', { main: './src/block-eligible.ts' })).toEqual(
 			[
@@ -650,6 +671,16 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					reasons: [],
 				},
 				application: { version: 2, selected: 'compiled-program', reasons: [] },
+				componentFeatures: {
+					version: 1,
+					selected: 'full',
+					reasons: [
+						{
+							code: 'entry-requires-optional-block-semantics',
+							entry: 'main__octane_main_thread',
+						},
+					],
+				},
 			});
 			const retained = retainedModuleIdentifiers.map((identifier) =>
 				identifier
@@ -1204,6 +1235,14 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						selected: 'general',
 						reasons: [
 							{ code: 'compiled-program-requires-block-core' },
+							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
+						],
+					},
+					componentFeatures: {
+						version: 1,
+						selected: 'full',
+						reasons: [
+							{ code: 'feature-specialization-requires-block-core' },
 							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
 						],
 					},
