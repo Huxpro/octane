@@ -55,6 +55,10 @@ const MOUNT_RANGES =
 // and is named by this direct caller rather than by guessing from app markup.
 const DENSE_MOUNT =
 	'(r,n,a,o)=>{var l,d=r.plan;var u=r.count;var c=r.programs;var v=r.firstId;var p=r.stride;var f=d.events;var h=f.length;var y=d.ranges.length;var m=d.values;var ';
+// The same source after an edit in another module changed the minifier's local
+// names. Field order is unchanged; attribution must be unchanged too.
+const DENSE_MOUNT_RENAMED =
+	'(r,n,i,s,l=null)=>{var d,u=r.plan;var c=r.count;var v=r.programs;var p=r.firstId;var f=r.stride;var h=u.events;var y=h.length;var m=u.ranges.length;var g=u.values';
 const DENSE_EMITTED =
 	'(r,i,o,s,l,d){var u=0,c=0,v=0;for(var p=0;p<i;p++){var f=o[u];var h=o[u+1];var y=o[u+2];var m=s[c];var g=s[c+1];var b=t(r);d[v]=b;var w="string"==typeof f?f:"nu';
 const DENSE_MEMBER_SPAN =
@@ -202,6 +206,16 @@ test('a dense emitted driver is named by its direct program-mount caller', () =>
 	assert.equal(result.buckets.get('program mount')?.us, 200);
 	assert.equal(result.buckets.get('compiled program create')?.us, 300);
 	assert.equal(result.sites.get(COMPILED_CREATE_SITE)?.us, 300);
+});
+
+test('the dense mount probe survives minifier-owned local renaming', () => {
+	assert.equal(probeOf(DENSE_MOUNT)?.where, 'core/host-driver.ts mountDenseSpan');
+	assert.equal(probeOf(DENSE_MOUNT_RENAMED)?.where, 'core/host-driver.ts mountDenseSpan');
+	assert.equal(
+		probeOf('.stride;.firstId;.programs;.count;.plan;'),
+		null,
+		'the field set in reverse order is not the mount entry',
+	);
 });
 
 test('dense selection and resident lookup are mount work, not emitted code', () => {
