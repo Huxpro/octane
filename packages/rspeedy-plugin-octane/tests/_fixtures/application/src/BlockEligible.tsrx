@@ -4,6 +4,7 @@ import {
 	createContext,
 	memo,
 	useContext,
+	useEffectEvent,
 	useId,
 	useInsertionEffect,
 	useLayoutEffect,
@@ -40,8 +41,9 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 	useInsertionEffect(() => undefined, [theme]);
 	useLayoutEffect(() => undefined, [theme]);
 	const item = props.item;
+	const select = useEffectEvent(() => props.onSelect(item.label));
 	const onTap = () => {
-		props.onSelect(item.label);
+		select();
 		incrementTaps(1);
 	};
 	<view id={'row-' + item.id + '-' + hookId} class={rowClass}>

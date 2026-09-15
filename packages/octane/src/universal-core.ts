@@ -6698,6 +6698,10 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			if (owner !== null) {
 				for (const [slot, hook] of owner.hooks) {
 					if (hook.kind === 'effect' && !nextBySlot.has(slot)) owner.hooks.delete(slot);
+					else if (hook.kind === 'effect-event') {
+						hook.cell.impl = hook.next;
+						hook.cell.active = true;
+					}
 				}
 				record.hooks = owner.hooks;
 				record.effectOrder = nextEffects;
@@ -6789,6 +6793,9 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				}
 			} finally {
 				record.effectOrder = [];
+				for (const hook of record.hooks.values()) {
+					if (hook.kind === 'effect-event') hook.cell.active = false;
+				}
 				record.hooks.clear();
 				record.updates.clear();
 			}

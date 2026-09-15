@@ -27,6 +27,7 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useEffectEvent,
 	useId,
 	useInsertionEffect,
 	useLayoutEffect,
@@ -64,6 +65,29 @@ function scopeWithLog() {
 }
 
 describe('universal hook scope', () => {
+	it('activates effect events only from the latest accepted hook-scope draft', () => {
+		const scope = createUniversalHookScope({ renderer: 'test', scheduleRender() {} });
+		const render = (value: string): (() => string) =>
+			scope.render(() => useEffectEvent(() => value, 'event'));
+
+		const event = render('alpha');
+		expect(() => event()).toThrow(/cannot run before commit/);
+		scope.commit();
+		expect(event()).toBe('alpha');
+
+		expect(render('beta')).toBe(event);
+		expect(event()).toBe('alpha');
+		scope.abort();
+		expect(event()).toBe('alpha');
+
+		expect(render('gamma')).toBe(event);
+		expect(event()).toBe('alpha');
+		scope.commit();
+		expect(event()).toBe('gamma');
+		scope.dispose();
+		expect(() => event()).toThrow(/cannot run before commit/);
+	});
+
 	it('publishes linked-state source generations only when the adopting host commits', () => {
 		const scheduled: unknown[] = [];
 		const scope = createUniversalHookScope({

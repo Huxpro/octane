@@ -34,6 +34,7 @@ import {
 	useBatch,
 	useContext,
 	useDeferredValue,
+	useEffectEvent,
 	useId,
 	useInsertionEffect,
 	useLayoutEffect,
@@ -137,6 +138,19 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 			'function',
 			'getter:beta',
 		]);
+	});
+
+	it('installs a render-only effect-event placeholder without running its body', () => {
+		const plan = universalPlan('lynx', PLAN);
+		let calls = 0;
+		const App = defineUniversalComponent('lynx', () => {
+			const event = useEffectEvent(() => calls++);
+			event();
+			return universalValue(plan, [typeof event, calls, String(calls)]);
+		});
+
+		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual(['function', '0', '0']);
+		expect(calls).toBe(0);
 	});
 
 	it('normalizes every resident value exactly once before the scalar transport', () => {

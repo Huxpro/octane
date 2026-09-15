@@ -56,6 +56,7 @@ import {
 	useContext,
 	useDeferredValue,
 	useEffect,
+	useEffectEvent,
 	useLayoutEffect,
 	useMemo,
 	useReducer,
@@ -4510,6 +4511,45 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		await retried;
 		await flushMicrotasks();
 		expect(lifecycle).toEqual(['subscribe:alpha', 'unsubscribe:alpha', 'subscribe:beta']);
+	});
+
+	it('publishes an effect-event body only after ACK and retains the old body on rejection', async () => {
+		const taps: string[] = [];
+		const EventCard = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function EventCard({ label, detail, active }: CardProps) {
+				const onTap = useEffectEvent(() => taps.push(label), 'tap-event');
+				return universalValue(CARD_PLAN, [
+					active ? 'card active' : 'card',
+					label,
+					active ? 'card-meta on' : 'card-meta',
+					onTap,
+					detail,
+				]);
+			},
+		);
+		const block = blockColumn<CardProps>();
+		const alpha = { ...LADDER[0]!, onTap: noop };
+		await block.render(EventCard as never, alpha);
+		const listener = boundListener(block.main.commits);
+		deliverTo(block, listener);
+		expect(taps).toEqual(['alpha']);
+
+		const beta = block.background.renderAsync(EventCard as never, {
+			...LADDER[1]!,
+			onTap: noop,
+		});
+		await flushMicrotasks();
+		deliverTo(block, listener, block.main.commits[0]!.version);
+		expect(taps).toEqual(['alpha', 'alpha']);
+		block.main.reject(block.main.commits[1]!, 'injected effect-event rejection');
+		await expect(beta).rejects.toThrow('injected effect-event rejection');
+		deliverTo(block, listener, block.main.commits[0]!.version);
+		expect(taps).toEqual(['alpha', 'alpha', 'alpha']);
+
+		await block.render(EventCard as never, { ...LADDER[4]!, onTap: noop });
+		deliverTo(block, boundListener(block.main.commits));
+		expect(taps.at(-1)).toBe('gamma');
 	});
 
 	it('keeps an ACKed update published when main reports a later host fault', async () => {

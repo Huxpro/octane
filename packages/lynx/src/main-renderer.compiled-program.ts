@@ -952,3 +952,8 @@ export function useTransition(_slot?: unknown): [boolean, typeof startTransition
 	requireRender();
 	return [false, startTransition];
 }
+
+export function useEffectEvent<T extends (...args: any[]) => any>(_fn: T, _slot?: unknown): T {
+	requireRender();
+	return NOOP_UPDATE as T;
+}
