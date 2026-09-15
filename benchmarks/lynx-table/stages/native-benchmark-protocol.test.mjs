@@ -5,9 +5,12 @@ import test from 'node:test';
 
 import {
 	issue194CollectionState,
+	issue194CompleteGroupSampleLimit,
 	issue194DeviceCompletionMode,
 	issue194DeviceResumeMismatch,
 	issue194LifecycleSequence,
+	issue194LogWindow,
+	issue194RejectionReasons,
 	normalizeIssue194NativeReceipt,
 	parseIssue194AndroidProcessMemory,
 	summarizeIssue194LifecycleCensus,
@@ -178,6 +181,74 @@ test('issue #194 bounded collection pauses only before the final target', () => 
 				maxNewSamples: 0,
 			}),
 		/positive integer/,
+	);
+});
+
+test('issue #194 resumed collection stops at a complete cell group within its budget', () => {
+	assert.equal(
+		issue194CompleteGroupSampleLimit({
+			acceptedSamples: 0,
+			targetSamples: 20,
+			maxNewSamples: 4,
+			cellGroupSize: 2,
+		}),
+		4,
+	);
+	assert.equal(
+		issue194CompleteGroupSampleLimit({
+			acceptedSamples: 3,
+			targetSamples: 20,
+			maxNewSamples: 2,
+			cellGroupSize: 2,
+		}),
+		1,
+	);
+	assert.equal(
+		issue194CompleteGroupSampleLimit({
+			acceptedSamples: 3,
+			targetSamples: 20,
+			maxNewSamples: 4,
+			cellGroupSize: 2,
+		}),
+		3,
+	);
+});
+
+test('issue #194 log windows reject stale buffers after their marker is evicted', () => {
+	const marker = '__ISSUE194_LOG_START__measurement-4-123';
+	const initial = issue194LogWindow(
+		[
+			'100.000 1 1 I DevToolLifecycle: DevTool enabled. Transitioning to ENABLED.',
+			`200.000 2 2 I octane-issue194: ${marker}`,
+			'201.000 3 3 I Lynx: current evidence',
+		].join('\n'),
+		marker,
+	);
+	assert.equal(initial.markerEpochMs, 200_000);
+	assert.doesNotMatch(initial.log, /DevTool enabled/);
+	assert.match(initial.log, /current evidence/);
+
+	const afterEviction = issue194LogWindow(
+		[
+			'100.000 1 1 I DevToolLifecycle: DevTool enabled. Transitioning to ENABLED.',
+			'199.999 2 2 I Lynx: older evidence',
+			'202.000 3 3 I Lynx: retained current evidence',
+		].join('\n'),
+		marker,
+		initial.markerEpochMs,
+	);
+	assert.doesNotMatch(afterEviction.log, /DevTool enabled|older evidence/);
+	assert.match(afterEviction.log, /retained current evidence/);
+	assert.deepEqual(issue194LogWindow('100.000 old', marker), {
+		log: '',
+		markerEpochMs: null,
+	});
+});
+
+test('issue #194 rejection reasons name every failed acceptance check', () => {
+	assert.deepEqual(
+		issue194RejectionReasons({ state: false, loadStart: true, devtoolStayedDisabled: false }),
+		['state', 'devtoolStayedDisabled'],
 	);
 });
 

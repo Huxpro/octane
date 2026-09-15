@@ -3869,13 +3869,22 @@ than emitting a partial memory result.
 
 Long device cohorts can stop cleanly at a complete cell-group boundary with
 `--checkpoint <file> --max-new-samples <N>`. For a two-cell AB/BA run, `N` must
-be even, so a lease never splits an adjacent pair. A later invocation with the
-same command and checkpoint resumes the sequence only when the runner commit,
-raw device serial and fingerprint, controls, and every bundle identity still
-match. This supports a second lease of the same physical device; it rejects
-combining different devices into one apparent session. The final invocation
-writes `--out` and removes the checkpoint only after the complete target is
-accepted.
+be even. If an invalid attempt or interruption leaves a partial pair in the
+checkpoint, the next bounded invocation stops at the last complete pair inside
+its requested budget rather than splitting the following pair. A later
+invocation with the same command and checkpoint resumes the sequence only when
+the runner commit, raw device serial and fingerprint, controls, and every
+bundle identity still match. This supports a second lease of the same physical
+device; it rejects combining different devices into one apparent session.
+Invalid attempts are checkpointed immediately and name each failed acceptance
+gate. The final invocation writes `--out` and removes the checkpoint only after
+the complete target is accepted.
+
+Every preflight and measurement also captures its unique log marker's device
+epoch before launching the bundle. If logcat later evicts that marker, the
+runner keeps only records at or after the captured epoch. This is the evidence
+boundary; `adb logcat -c` is best effort because a Sandbox shell can return
+success without clearing every readable buffer.
 
 Re-judge a completed two-cell shipping window without leasing the device again:
 

@@ -81,6 +81,84 @@ export function issue194CollectionState({
 	return 'collecting';
 }
 
+/** Keep a bounded resumed run on the last complete cell group within its budget. */
+export function issue194CompleteGroupSampleLimit({
+	acceptedSamples,
+	targetSamples,
+	maxNewSamples,
+	cellGroupSize,
+}) {
+	if (!Number.isSafeInteger(acceptedSamples) || acceptedSamples < 0) {
+		throw new TypeError('acceptedSamples must be non-negative.');
+	}
+	for (const [label, value] of [
+		['targetSamples', targetSamples],
+		['cellGroupSize', cellGroupSize],
+	]) {
+		if (!Number.isSafeInteger(value) || value < 1) {
+			throw new TypeError(`${label} must be positive.`);
+		}
+	}
+	if (acceptedSamples > targetSamples || targetSamples % cellGroupSize !== 0) {
+		throw new Error('accepted and target samples must describe complete target cell groups.');
+	}
+	if (maxNewSamples === null) return null;
+	if (!Number.isSafeInteger(maxNewSamples) || maxNewSamples < 1) {
+		throw new TypeError('maxNewSamples must be null or a positive integer.');
+	}
+	if (acceptedSamples === targetSamples) return maxNewSamples;
+	const requestedStop = Math.min(targetSamples, acceptedSamples + maxNewSamples);
+	const completeStop = requestedStop - (requestedStop % cellGroupSize);
+	if (completeStop <= acceptedSamples && acceptedSamples < targetSamples) {
+		throw new Error('maxNewSamples cannot reach the next complete cell group.');
+	}
+	return completeStop - acceptedSamples;
+}
+
+function issue194LogEpochMs(line) {
+	const match = line.match(/^\s*(\d+\.\d+)/);
+	return match === null ? null : Number(match[1]) * 1000;
+}
+
+/**
+ * Keep one logcat observation inside its unique marker's epoch even when the
+ * ring evicts the marker itself. Sandbox shells may report success for
+ * `logcat -c` without clearing every readable buffer, so falling back to the
+ * whole merged log can import DevTool or crash evidence from an older window.
+ */
+export function issue194LogWindow(fullLog, marker, markerEpochMs = null) {
+	if (typeof fullLog !== 'string' || typeof marker !== 'string' || marker.length === 0) {
+		throw new TypeError('fullLog and a non-empty marker must be strings.');
+	}
+	if (markerEpochMs !== null && (!Number.isFinite(markerEpochMs) || markerEpochMs < 0)) {
+		throw new TypeError('markerEpochMs must be null or a non-negative finite number.');
+	}
+	const lines = fullLog.split('\n');
+	const markerLineIndex = lines.findLastIndex((line) => line.includes(marker));
+	if (markerLineIndex !== -1) {
+		const observedEpochMs = issue194LogEpochMs(lines[markerLineIndex]);
+		return {
+			log: lines.slice(markerLineIndex).join('\n'),
+			markerEpochMs: observedEpochMs ?? markerEpochMs,
+		};
+	}
+	if (markerEpochMs === null) return { log: '', markerEpochMs: null };
+	const firstCurrentLine = lines.findIndex((line) => {
+		const lineEpochMs = issue194LogEpochMs(line);
+		return lineEpochMs !== null && lineEpochMs >= markerEpochMs;
+	});
+	return {
+		log: firstCurrentLine === -1 ? '' : lines.slice(firstCurrentLine).join('\n'),
+		markerEpochMs,
+	};
+}
+
+export function issue194RejectionReasons(checks) {
+	return Object.entries(checks)
+		.filter(([, passed]) => passed !== true)
+		.map(([name]) => name);
+}
+
 /** Repeated lifecycle cycles with an explicit reset between populated end states. */
 export function issue194LifecycleSequence(cycles, create, clear) {
 	if (!Number.isSafeInteger(cycles) || cycles < 1) {

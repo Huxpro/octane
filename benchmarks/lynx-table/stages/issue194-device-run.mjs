@@ -6,9 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 import {
 	issue194CollectionState,
+	issue194CompleteGroupSampleLimit,
 	issue194DeviceCompletionMode,
 	issue194DeviceResumeMismatch,
 	issue194LifecycleSequence,
+	issue194LogWindow,
+	issue194RejectionReasons,
 	normalizeIssue194NativeReceipt,
 	parseIssue194AndroidProcessMemory,
 	summarizeIssue194LifecycleCensus,
@@ -385,6 +388,10 @@ async function measure(cell, ordinal) {
 	adb('logcat', '-c');
 	const preflightMarker = `__ISSUE194_LOG_START__preflight-${ordinal}-${Date.now()}`;
 	adb('shell', 'log', '-t', 'octane-issue194', preflightMarker);
+	let preflightWindow = issue194LogWindow(adb('logcat', '-d', '-v', 'epoch'), preflightMarker);
+	if (preflightWindow.markerEpochMs === null) {
+		throw new Error('could not establish the DevTool preflight log boundary.');
+	}
 	adb(
 		'shell',
 		'am',
@@ -401,8 +408,8 @@ async function measure(cell, ordinal) {
 	while (Date.now() < disableDeadline) {
 		await delay(250);
 		const fullLog = adb('logcat', '-d', '-v', 'epoch');
-		const markerIndex = fullLog.lastIndexOf(preflightMarker);
-		disableLog = markerIndex === -1 ? '' : fullLog.slice(markerIndex);
+		preflightWindow = issue194LogWindow(fullLog, preflightMarker, preflightWindow.markerEpochMs);
+		disableLog = preflightWindow.log;
 		disableParsed = parseLog(disableLog);
 		const disabledIndex = disableLog.lastIndexOf('DevTool disabled. Transitioning to ATTACHED.');
 		const acknowledgementIndex = disableLog.lastIndexOf('__OCTANE_DEVTOOL_DISABLED__=true');
@@ -417,12 +424,15 @@ async function measure(cell, ordinal) {
 	if (/DevTool enabled\. Transitioning to ENABLED\./.test(disableLog.slice(disabledIndex))) {
 		throw new Error('DevTool preflight re-enabled after the disable transition.');
 	}
-	// The process-scoped lifecycle is now disabled. Clearing only logcat makes
-	// every enabled line in the next snapshot unambiguously part of the measured
-	// bundle instead of Explorer's cold-start prelude.
+	// Clearing is best effort: some Sandbox shells leave readable buffers intact.
+	// The epoch boundary below, rather than this command, owns attribution.
 	adb('logcat', '-c');
 	const measurementMarker = `__ISSUE194_LOG_START__measurement-${ordinal}-${Date.now()}`;
 	adb('shell', 'log', '-t', 'octane-issue194', measurementMarker);
+	let measurementWindow = issue194LogWindow(adb('logcat', '-d', '-v', 'epoch'), measurementMarker);
+	if (measurementWindow.markerEpochMs === null) {
+		throw new Error('could not establish the measurement log boundary.');
+	}
 	adb(
 		'shell',
 		'am',
@@ -479,12 +489,14 @@ async function measure(cell, ordinal) {
 	while (Date.now() < deadline) {
 		await delay(processMemory ? 100 : 2000);
 		const fullLog = adb('logcat', '-d', '-v', 'epoch');
-		const markerIndex = fullLog.lastIndexOf(measurementMarker);
-		// The buffer was cleared at window start, so everything in it postdates
-		// the marker. A multi-megabyte ART dump can evict the marker line itself;
-		// falling back to the empty string here would discard exactly that
-		// evidence and reject an otherwise valid crash sample.
-		log = markerIndex === -1 ? fullLog : fullLog.slice(markerIndex);
+		measurementWindow = issue194LogWindow(
+			fullLog,
+			measurementMarker,
+			measurementWindow.markerEpochMs,
+		);
+		// A multi-megabyte ART dump can evict the marker. Its captured epoch keeps
+		// the remaining crash evidence without importing older log buffers.
+		log = measurementWindow.log;
 		parsed = parseLog(log);
 		observeParsed(parsed);
 		if ((nativeCrashOutcome || capacityOutcome) && parsed.nativeCrashMs !== null) {
@@ -494,8 +506,12 @@ async function measure(cell, ordinal) {
 			// in device round 1 (#194 / #222).
 			await delay(3000);
 			const fullLog = adb('logcat', '-d', '-v', 'epoch');
-			const markerIndex = fullLog.lastIndexOf(measurementMarker);
-			log = markerIndex === -1 ? fullLog : fullLog.slice(markerIndex);
+			measurementWindow = issue194LogWindow(
+				fullLog,
+				measurementMarker,
+				measurementWindow.markerEpochMs,
+			);
+			log = measurementWindow.log;
 			parsed = parseLog(log);
 			observeParsed(parsed);
 			completed = true;
@@ -720,25 +736,41 @@ async function measure(cell, ordinal) {
 				? validBackgroundState
 				: validFirstScreenShape);
 	const errors = [...new Set(observedErrors)];
-	const completedAndValid =
-		(engineOnly || mode === 'native-only' || attribution !== null) &&
-		validState &&
-		parsed.loadStartMs !== null &&
-		(engineOnly || parsed.renderPageMs !== null) &&
-		parsed.firstScreenMs !== null &&
-		parsed.loadEndMs !== null &&
-		errors.length === 0 &&
-		parsed.devtoolEnabledEvidence.length === 0;
+	const completionChecks = {
+		attribution: engineOnly || mode === 'native-only' || attribution !== null,
+		state: validState,
+		loadStart: parsed.loadStartMs !== null,
+		renderPage: engineOnly || parsed.renderPageMs !== null,
+		firstScreen: parsed.firstScreenMs !== null,
+		loadEnd: parsed.loadEndMs !== null,
+		noErrors: errors.length === 0,
+		devtoolStayedDisabled: parsed.devtoolEnabledEvidence.length === 0,
+	};
+	const completedAndValid = issue194RejectionReasons(completionChecks).length === 0;
+	const capacityTerminalOutcome =
+		parsed.loadStartMs !== null && (parsed.nativeCrashMs !== null || timedOut);
+	const nativeCrashChecks = {
+		devtoolStayedDisabled: parsed.devtoolEnabledEvidence.length === 0,
+		loadStart: parsed.loadStartMs !== null,
+		nativeCrash: parsed.nativeCrashMs !== null,
+		nativeCrashEvidence: parsed.nativeCrashEvidence.length > 0,
+	};
 	const accepted =
 		parsed.devtoolEnabledEvidence.length === 0 &&
 		(capacityOutcome
-			? completedAndValid ||
-				(parsed.loadStartMs !== null && (parsed.nativeCrashMs !== null || timedOut))
+			? completedAndValid || capacityTerminalOutcome
 			: nativeCrashOutcome
-				? parsed.loadStartMs !== null &&
-					parsed.nativeCrashMs !== null &&
-					parsed.nativeCrashEvidence.length > 0
+				? issue194RejectionReasons(nativeCrashChecks).length === 0
 				: completedAndValid);
+	const rejectionReasons = accepted
+		? []
+		: capacityOutcome
+			? capacityTerminalOutcome
+				? issue194RejectionReasons({
+						devtoolStayedDisabled: parsed.devtoolEnabledEvidence.length === 0,
+					})
+				: [...issue194RejectionReasons(completionChecks), 'capacityTerminalOutcome']
+			: issue194RejectionReasons(nativeCrashOutcome ? nativeCrashChecks : completionChecks);
 	return {
 		ordinal,
 		cell: cell.label,
@@ -820,6 +852,7 @@ async function measure(cell, ordinal) {
 				: { workload, x: tapX, y: tapY, issuedAtMs: tapAtMs, issued: tapped },
 		attribution,
 		errors,
+		rejectionReasons: [...new Set(rejectionReasons)],
 	};
 }
 
@@ -929,6 +962,13 @@ if (checkpoint !== null && fs.existsSync(checkpoint)) {
 	);
 }
 
+const boundedMaxNewSamples = issue194CompleteGroupSampleLimit({
+	acceptedSamples: report.samples.length,
+	targetSamples: samples * cells.length,
+	maxNewSamples,
+	cellGroupSize: cells.length,
+});
+
 function saveCheckpoint() {
 	if (checkpoint === null) return;
 	fs.writeFileSync(checkpoint, `${JSON.stringify(report, null, 2)}\n`);
@@ -962,7 +1002,8 @@ collection: for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
 			);
 		} else {
 			report.invalidAttempts.push(sample);
-			console.log(`[issue194] rejected ${cell.label}: ${JSON.stringify(sample.errors)}`);
+			saveCheckpoint();
+			console.log(`[issue194] rejected ${cell.label}: ${JSON.stringify(sample.rejectionReasons)}`);
 		}
 	}
 	if (!accepted)
@@ -972,7 +1013,7 @@ collection: for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
 			acceptedSamples: report.samples.length,
 			targetSamples: samples * cells.length,
 			newlyAcceptedSamples,
-			maxNewSamples,
+			maxNewSamples: boundedMaxNewSamples,
 		}) === 'paused'
 	) {
 		break collection;
@@ -983,7 +1024,7 @@ const collectionState = issue194CollectionState({
 	acceptedSamples: report.samples.length,
 	targetSamples: samples * cells.length,
 	newlyAcceptedSamples,
-	maxNewSamples,
+	maxNewSamples: boundedMaxNewSamples,
 });
 if (collectionState === 'complete') {
 	fs.mkdirSync(path.dirname(output), { recursive: true });
