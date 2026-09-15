@@ -40,3 +40,15 @@ test('M0 Native memory probe patches both frozen Octane producers without runtim
 		assert.equal(receipt.capabilities.nativeSafeMacrotask, true);
 	}
 });
+
+test('current M4 candidate already carries the shipping Native memory boundary', () => {
+	const receipt = issue291M0ProbeReceipt(
+		show('HEAD', 'benchmarks/lynx-table/app/src/App.lynx.tsrx'),
+		show('HEAD', 'benchmarks/lynx-table/app/src/index.ts'),
+	);
+	assert.deepEqual(receipt.capabilities, {
+		nativeStartupReceipt: true,
+		semanticSnapshot: true,
+		nativeSafeMacrotask: true,
+	});
+});

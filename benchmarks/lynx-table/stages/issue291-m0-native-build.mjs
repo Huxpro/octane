@@ -72,15 +72,22 @@ function commandIdentity(directory, command, args) {
 const { values } = parseArgs({
 	options: {
 		checkout: { type: 'string' },
+		'expected-commit': { type: 'string' },
 		label: { type: 'string' },
 		out: { type: 'string' },
 	},
 });
 const label = values.label;
-const expectedCommit = label === undefined ? undefined : pins[label];
-if (values.checkout === undefined || values.out === undefined || expectedCommit === undefined) {
+const isCandidate = label === 'm4-candidate';
+const expectedCommit = isCandidate ? values['expected-commit'] : pins[label];
+if (
+	values.checkout === undefined ||
+	values.out === undefined ||
+	expectedCommit === undefined ||
+	!/^[0-9a-f]{40}$/.test(expectedCommit)
+) {
 	throw new Error(
-		'usage: issue291-m0-native-build.mjs --label m0-current|m0-upstream --checkout <clean-checkout> --out <new-directory>',
+		'usage: issue291-m0-native-build.mjs --label m0-current|m0-upstream|m4-candidate --checkout <clean-checkout> --out <new-directory> [--expected-commit <candidate-full-sha>]',
 	);
 }
 const checkout = path.resolve(values.checkout);
@@ -120,10 +127,12 @@ if (dirty !== '') throw new Error(`${label} checkout is dirty:\n${dirty}`);
 const originals = new Map(
 	sourceFiles.map((relative) => [relative, fs.readFileSync(path.join(checkout, relative), 'utf8')]),
 );
-const patched = new Map([
-	[sourceFiles[0], patchIssue291M0App(originals.get(sourceFiles[0]))],
-	[sourceFiles[1], patchIssue291M0Index(originals.get(sourceFiles[1]))],
-]);
+const patched = isCandidate
+	? originals
+	: new Map([
+			[sourceFiles[0], patchIssue291M0App(originals.get(sourceFiles[0]))],
+			[sourceFiles[1], patchIssue291M0Index(originals.get(sourceFiles[1]))],
+		]);
 const originalReceipt = issue291M0ProbeReceipt(
 	originals.get(sourceFiles[0]),
 	originals.get(sourceFiles[1]),
@@ -147,7 +156,8 @@ try {
 	Object.assign(environment, {
 		NODE_ENV: 'production',
 		BENCH_AUTOROWS: '0',
-		BENCH_CORE: 'universal',
+		BENCH_CORE: isCandidate ? 'automatic' : 'universal',
+		...(isCandidate ? { BENCH_ELEMENT_TEMPLATE: '1' } : null),
 		OCTANE_LYNX_PROFILE: '0',
 	});
 	execFileSync(
@@ -176,7 +186,7 @@ for (const marker of bundleProbeMarkers) {
 }
 
 const receipt = {
-	protocol: 'octane-issue291-m0-native-build-v1',
+	protocol: 'octane-issue291-native-build-v1',
 	label,
 	source: {
 		commit,
@@ -188,7 +198,10 @@ const receipt = {
 		},
 	},
 	probe: {
-		purpose: 'Native create/clear semantic receipt only; framework runtime source is unmodified',
+		purpose: isCandidate
+			? 'Use the shipping candidate Native create/clear receipt without source instrumentation'
+			: 'Add only a Native create/clear semantic receipt; framework runtime source is unmodified',
+		sourcePatchedForReceipt: !isCandidate,
 		originalSource: originalReceipt,
 		patchedSource: patchedReceipt,
 		producer: {
@@ -198,8 +211,8 @@ const receipt = {
 	},
 	configuration: {
 		production: true,
-		core: 'universal',
-		elementTemplates: false,
+		core: isCandidate ? 'automatic' : 'universal',
+		elementTemplates: isCandidate,
 		profile: false,
 		initialRows: 0,
 		workloads: ['create-1000', 'clear'],
