@@ -3904,6 +3904,34 @@ Even when settled and after-clear pass, the overall #291 memory verdict remains
 `inconclusive` until a separate instrument captures true peak heap; the
 operational post-receipt high-water statistic is reported but never relabelled.
 
+##### M0-current versus shipping M4 formal process-memory window
+
+The receipt-bound shipping candidate at `204f4cf4c535` completed the registered
+process-memory cohort against M0-current `e82160fc0e66` on one physical Aries 10
+device with Explorer 1.0 / Lynx SDK 4.2. The run used 10 balanced adjacent
+AB/BA pairs (five in each order), 20 lifecycle cycles and 79 actions per sample,
+a 4-second settle, DevTool disabled, and zero invalid attempts. Its 9,594,779
+byte raw record has SHA-256
+`dad1c380dfda570d3973d08a8faefc4de422fd1257cae7dc78d8392b01f9fe42`;
+the compact checked-in comparison is
+`stages/results/issue291-m0-candidate-formal-204f4cf4c.json`.
+
+| process metric | checkpoint | candidate / M0 | paired 95% CI | ≤ 1.05 |
+|---|---|---:|---:|---|
+| Native heap allocated | empty first screen | 0.9795 | [0.9763, 0.9828] | pass |
+| Native heap allocated | operational create high-water | 0.8320 | [0.8292, 0.8355] | pass |
+| Native heap allocated | settled populated | 0.9794 | [0.9754, 0.9831] | pass |
+| Native heap allocated | after clear | 0.9770 | [0.9731, 0.9817] | pass |
+| total PSS | empty first screen | 0.9371 | [0.9256, 0.9492] | pass |
+| total PSS | operational create high-water | 0.7862 | [0.7727, 0.8001] | pass |
+| total PSS | settled populated | 0.8148 | [0.7774, 0.8507] | pass |
+| total PSS | after clear | 0.8236 | [0.7793, 0.8678] | pass |
+
+The analyzer therefore reports `availableChecksPassed: true`, with settled and
+after-clear heap passing. The registered overall memory gate remains
+`inconclusive`: the operational high-water sample is taken only after the ACK
+and second native frame, so it cannot prove the instantaneous peak requirement.
+
 The clear@1k cross-framework window found a measurement-fidelity boundary, not
 a Native rank:
 
