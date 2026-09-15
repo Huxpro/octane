@@ -162,6 +162,25 @@ function firstFrame() {
 }
 
 describe('whole-root Element Template program store', () => {
+	it('omits the permanent visibility slot for a structurally proved application graph', () => {
+		const { creates, page, papi } = fakePAPI();
+		const store = createLynxElementTemplateProgramStore(
+			papi,
+			page,
+			73,
+			1,
+			undefined,
+			undefined,
+			false,
+		);
+		applyLynxCompiledProgramFrame(store, store.page, resolver, firstFrame());
+
+		expect(creates.map((created) => created.attributes.length)).toEqual([0, 2, 2]);
+		store.begin();
+		expect(() => store.visibility(3, false)).toThrow(/proved not to retain hidden instances/);
+		store.rollback();
+	});
+
 	it('drains a large mount before it exceeds the native callback-reference limit', () => {
 		const { flush, page, papi } = fakePAPI();
 		const store = createLynxElementTemplateProgramStore(papi, page, 73);

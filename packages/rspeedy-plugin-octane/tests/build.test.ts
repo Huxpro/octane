@@ -866,6 +866,61 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 		}
 	}, 120_000);
 
+	it('selects the structural Element Template visibility policy in a production graph', async () => {
+		const temporaryRoot = mkdtempSync(
+			join(tmpdir(), 'octane-rspeedy-element-template-structural-'),
+		);
+		const reports: unknown[] = [];
+		const retainedModuleIdentifiers: string[] = [];
+		const rspeedy = await createRspeedy({
+			cwd: APPLICATION_FIXTURE,
+			loadEnv: false,
+			environment: ['lynx'],
+			rspeedyConfig: {
+				mode: 'production',
+				environments: { lynx: {} },
+				dev: { hmr: false, liveReload: false },
+				output: {
+					cleanDistPath: true,
+					distPath: { root: join(temporaryRoot, 'dist') },
+					filenameHash: false,
+					sourceMap: false,
+				},
+				source: { entry: { main: './src/element-template-structural.ts' } },
+				splitChunks: false,
+				plugins: [
+					pluginOctane({ dev: false, hmr: false, experimentalElementTemplate: true }),
+					programCoverageProbe(reports),
+					metadataProbe([], [], [], retainedModuleIdentifiers),
+				],
+			},
+		});
+		let result: Awaited<ReturnType<typeof rspeedy.build>> | undefined;
+		try {
+			result = await rspeedy.build();
+			expect(reports).toHaveLength(1);
+			expect(reports[0]).toMatchObject({
+				core: { selected: 'block' },
+				application: { selected: 'compiled-program-element-template' },
+				componentFeatures: { selected: 'structural', reasons: [] },
+			});
+			const retained = retainedModuleIdentifiers.map((identifier) =>
+				identifier.replaceAll('\\', '/'),
+			);
+			expect(
+				retained.some((identifier) =>
+					identifier.includes('/core/block-component-features.structural.ts'),
+				),
+			).toBe(true);
+			expect(
+				retained.some((identifier) => identifier.includes('/core/element-template-visibility.ts')),
+			).toBe(true);
+		} finally {
+			await result?.close();
+			rmSync(temporaryRoot, { recursive: true, force: true });
+		}
+	}, 120_000);
+
 	it('fails the explicit Element Template build before encoding an unsupported native list', async () => {
 		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-element-template-refusal-'));
 		const rspeedy = await createRspeedy({

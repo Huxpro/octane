@@ -12,6 +12,7 @@ import {
 	createLynxElementTemplateNativeBudget,
 	type LynxElementTemplateNativeBudget,
 } from './element-template-native-budget.js';
+import { LYNX_ELEMENT_TEMPLATE_VISIBILITY } from './element-template-visibility.js';
 import type {
 	LynxCompiledProgramAdoption,
 	LynxCompiledProgramMount,
@@ -160,6 +161,7 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 	firstListener = 1,
 	seed?: LynxElementTemplateAdoptionSeedResolver<Handle>,
 	nativeBudget: LynxElementTemplateNativeBudget = createLynxElementTemplateNativeBudget(papi),
+	retainsVisibility = LYNX_ELEMENT_TEMPLATE_VISIBILITY,
 ): LynxCompiledProgramStore<LynxElementTemplateAddress> & {
 	readonly page: LynxElementTemplateAddress;
 } {
@@ -278,6 +280,9 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 		);
 	};
 	const setVisibility = (value: TemplateInstance<Handle>, visible: boolean): void => {
+		if (!retainsVisibility) {
+			fail('received visibility work in a graph proved not to retain hidden instances');
+		}
 		const template = planTemplate(value.plan);
 		const changed: Array<readonly [number, LynxElementTemplateAttributeValue]> = [];
 		const write = (slot: number, next: LynxElementTemplateAttributeValue): void => {
@@ -485,9 +490,8 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 					valueOffset + row * input.plan.values.length,
 					valueOffset + (row + 1) * input.plan.values.length,
 				);
-				const attributes = new Array<LynxElementTemplateAttributeValue>(
-					template.attributeSlots,
-				).fill(null);
+				const attributeSlots = template.attributeSlots - (retainsVisibility ? 0 : 1);
+				const attributes = new Array<LynxElementTemplateAttributeValue>(attributeSlots).fill(null);
 				for (let slot = 0; slot < values.length; slot++) {
 					attributes[slot] = values[slot] as LynxElementTemplateAttributeValue;
 				}
@@ -502,7 +506,7 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 						event.priority,
 					);
 				}
-				attributes[template.visibilitySlot] = false;
+				if (retainsVisibility) attributes[template.visibilitySlot] = false;
 				nativeBudget.reserveResident(1, input.plan.nodes);
 				let native: Handle;
 				try {

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { collectLynxElementTemplates } from '../src/application.js';
+import {
+	collectLynxElementTemplates,
+	retainLynxElementTemplateVisibility,
+} from '../src/application.js';
+import { installLynxBlockComponentFeatureReplacement } from '../src/block-component-features.js';
 
 function compilerModule(
 	id: string,
@@ -28,7 +32,10 @@ function compilerModule(
 	};
 }
 
-function collect(modules: readonly object[]): Readonly<Record<string, unknown>> {
+function collect(
+	modules: readonly object[],
+	retainVisibility = true,
+): Readonly<Record<string, unknown>> {
 	const chunk = {};
 	return collectLynxElementTemplates(
 		{
@@ -40,10 +47,25 @@ function collect(modules: readonly object[]): Readonly<Record<string, unknown>> 
 			},
 		},
 		[{ chunks: [chunk] }],
+		retainVisibility,
 	);
 }
 
 describe('Lynx Element Template encoder metadata', () => {
+	it('derives native visibility residency from the paired Block feature proof', () => {
+		const compiler = {
+			webpack: {
+				NormalModuleReplacementPlugin: class {
+					constructor(_test: RegExp, _callback: (resource: { request: string }) => void) {}
+					apply() {}
+				},
+			},
+		};
+		expect(retainLynxElementTemplateVisibility(compiler)).toBe(true);
+		installLynxBlockComponentFeatureReplacement(compiler, () => 'structural');
+		expect(retainLynxElementTemplateVisibility(compiler)).toBe(false);
+	});
+
 	it('deduplicates compiler-proved templates in stable template-id order', () => {
 		const row = {
 			kind: 'element',
@@ -91,6 +113,62 @@ describe('Lynx Element Template encoder metadata', () => {
 				]),
 			]),
 		).toThrow(/covered 1 of 2 main-thread plans/);
+	});
+
+	it('drops only the compiler-owned root visibility slot after structural graph proof', () => {
+		const nestedHidden = {
+			kind: 'element',
+			type: 'text',
+			attributesArray: [{ kind: 'static', key: 'hidden', value: true }],
+			children: [],
+		};
+		const result = collect(
+			[
+				compilerModule('src/App.lynx.tsrx', 1, 1, [
+					{
+						templateId: '_octane_et_row',
+						compiledTemplate: {
+							kind: 'element',
+							type: 'view',
+							attributesArray: [
+								{ kind: 'slot', key: 'class', attrSlotIndex: 0 },
+								{ kind: 'slot', key: 'hidden', attrSlotIndex: 1 },
+							],
+							children: [nestedHidden],
+						},
+					},
+				]),
+			],
+			false,
+		);
+
+		expect(result._octane_et_row).toEqual({
+			kind: 'element',
+			type: 'view',
+			attributesArray: [{ kind: 'slot', key: 'class', attrSlotIndex: 0 }],
+			children: [nestedHidden],
+		});
+	});
+
+	it('refuses malformed structural metadata instead of deleting an authored attribute', () => {
+		expect(() =>
+			collect(
+				[
+					compilerModule('src/App.lynx.tsrx', 1, 1, [
+						{
+							templateId: '_octane_et_row',
+							compiledTemplate: {
+								kind: 'element',
+								type: 'view',
+								attributesArray: [],
+								children: [],
+							},
+						},
+					]),
+				],
+				false,
+			),
+		).toThrow(/invalid visibility slot/);
 	});
 
 	it('rejects collisions instead of letting module order select native structure', () => {

@@ -198,6 +198,24 @@ count, and resident native-node cost require separate caps. See
 It does not replace the broader Android/iOS, parity, memory, list, and
 comparative-performance gates.
 
+The 2026-09-15 #383 memory correction further narrowed the remaining gap. Nine
+eligible fresh-process pairs directionally favored Element Template over the
+latest-upstream Native heap allocation (`0.9023745x` paired geometric mean),
+but the tenth comparator arm lost its CDP channel and latest upstream still had
+no timing acknowledgement, so that cohort is incomplete. Against the merged
+automatic owner, six diagnostic pairs still measured `1.149152x` Native heap
+allocation. A device ablation rejected shared per-row JavaScript value slices
+as the cause and moved the next gate to native template-instance/slot residency.
+
+For applications whose paired production graph already proves that Activity,
+retained try/Suspense boundaries, and transitions are absent, the Element
+Template encoder and both creation paths now omit the otherwise permanent root
+`hidden` attribute slot. Visibility-capable and source-safe graphs retain the
+slot unchanged, and a specialized store rejects an unexpected VIS operation.
+This is a structural reduction of one native attribute slot per live template
+instance, not a memory-performance claim: the corrected 10-pair comparator and
+the full #291 matrix still require a qualified native device.
+
 ## Milestone 9 runner inventory
 
 At the exact `@lynx-js/react@0.123.0` tag, Vitest 3.2.4 expands the pinned

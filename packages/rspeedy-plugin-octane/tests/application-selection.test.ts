@@ -4,8 +4,26 @@ import {
 	installLynxApplicationSelectionReplacement,
 	selectedLynxApplication,
 } from '../src/application-selection.js';
+import {
+	installLynxBlockComponentFeatureReplacement,
+	selectedLynxBlockComponentFeatures,
+} from '../src/block-component-features.js';
 
 describe('Lynx application source specialization', () => {
+	it('publishes the paired feature decision to encoder metadata', () => {
+		const compiler = {
+			webpack: {
+				NormalModuleReplacementPlugin: class {
+					constructor(_test: RegExp, _callback: (resource: { request: string }) => void) {}
+					apply() {}
+				},
+			},
+		};
+		expect(selectedLynxBlockComponentFeatures(compiler)).toBe('full');
+		installLynxBlockComponentFeatureReplacement(compiler, () => 'structural');
+		expect(selectedLynxBlockComponentFeatures(compiler)).toBe('structural');
+	});
+
 	it('uses the Element Template owner while retaining the proved compiled background seams', () => {
 		const replacements: Array<{
 			test: RegExp;

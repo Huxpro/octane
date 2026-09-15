@@ -13,6 +13,7 @@ import { getOctaneRspackBuildInfo } from '@octanejs/rspack-plugin';
 
 import { installLynxBackgroundCoreReplacement } from './background-core.js';
 import { selectedLynxApplication } from './application-selection.js';
+import { selectedLynxBlockComponentFeatures } from './block-component-features.js';
 import { LYNX_BACKGROUND_LAYER, LYNX_MAIN_THREAD_LAYER } from './layers.js';
 import { LynxProgramCoveragePlugin } from './program-coverage.js';
 
@@ -62,6 +63,11 @@ export const LYNX_TARGET_SDK_VERSION = '3.9';
 // before either application thread can run.
 export const LYNX_ELEMENT_TEMPLATE_TARGET_SDK_VERSION = '3.2';
 
+/** Apply the same paired graph proof to native Template Definition residency. */
+export function retainLynxElementTemplateVisibility(compiler) {
+	return selectedLynxBlockComponentFeatures(compiler) !== 'structural';
+}
+
 /** Let Rspeedy's framework-neutral diagnostics observe encoded template hooks. */
 export function exposeLynxTemplatePlugin(api) {
 	api.expose?.(Symbol.for('LynxTemplatePlugin'), {
@@ -95,7 +101,7 @@ class MarkMainThreadAssetPlugin {
 }
 
 /** Collect one entry's compiler-proved Template Definitions in stable order. */
-export function collectLynxElementTemplates(compilation, chunkGroups) {
+export function collectLynxElementTemplates(compilation, chunkGroups, retainVisibility = true) {
 	const modules = new Set();
 	const visit = (module) => {
 		if (modules.has(module)) return;
@@ -149,11 +155,34 @@ export function collectLynxElementTemplates(compilation, chunkGroups) {
 	const templates = {};
 	templates[BUILTIN_RAW_TEXT_TEMPLATE_ID] = BUILTIN_RAW_TEXT_TEMPLATE;
 	for (const record of records) {
+		let compiledTemplate = record.compiledTemplate;
+		if (!retainVisibility) {
+			const attributes = compiledTemplate.attributesArray;
+			if (!Array.isArray(attributes)) {
+				throw new Error(
+					`${PLUGIN_NAME}: Element Template ${record.templateId} has no root attribute table.`,
+				);
+			}
+			const visibility = attributes.filter(
+				(attribute) => attribute?.kind === 'slot' && attribute.key === 'hidden',
+			);
+			if (visibility.length !== 1 || attributes.at(-1) !== visibility[0]) {
+				throw new Error(
+					`${PLUGIN_NAME}: Element Template ${record.templateId} has an invalid visibility slot.`,
+				);
+			}
+			compiledTemplate = Object.freeze({
+				...compiledTemplate,
+				attributesArray: Object.freeze(
+					attributes.filter((attribute) => attribute !== visibility[0]),
+				),
+			});
+		}
 		const previous = templates[record.templateId];
-		if (previous !== undefined && !isDeepStrictEqual(previous, record.compiledTemplate)) {
+		if (previous !== undefined && !isDeepStrictEqual(previous, compiledTemplate)) {
 			throw new Error(`${PLUGIN_NAME}: Element Template id collision for ${record.templateId}.`);
 		}
-		templates[record.templateId] ??= record.compiledTemplate;
+		templates[record.templateId] ??= compiledTemplate;
 	}
 	return Object.freeze(templates);
 }
@@ -167,7 +196,11 @@ class LynxElementTemplateMetadataPlugin {
 				if (selectedLynxApplication(compiler) !== 'compiled-program-element-template') {
 					return args;
 				}
-				const templates = collectLynxElementTemplates(compilation, args.chunkGroups);
+				const templates = collectLynxElementTemplates(
+					compilation,
+					args.chunkGroups,
+					retainLynxElementTemplateVisibility(compiler),
+				);
 				args.encodeData.sourceContent.config.enableUnifyFixedBehavior = true;
 				args.encodeData.elementTemplate = templates;
 				return args;

@@ -18,6 +18,7 @@ import {
 	LYNX_ELEMENT_TEMPLATE_PENDING_NATIVE_COST_LIMIT,
 	type LynxElementTemplateNativeBudget,
 } from './element-template-native-budget.js';
+import { LYNX_ELEMENT_TEMPLATE_VISIBILITY } from './element-template-visibility.js';
 import { encodePrevalidatedLynxNativeEventToken } from './native-events.js';
 
 const DEVELOPMENT =
@@ -129,6 +130,7 @@ export function paintLynxElementTemplateFirstScreen<Handle extends LynxElementTe
 	papi: LynxElementTemplatePAPI<Handle>,
 	page: Handle,
 	nativeBudget: LynxElementTemplateNativeBudget = createLynxElementTemplateNativeBudget(papi),
+	retainsVisibility = LYNX_ELEMENT_TEMPLATE_VISIBILITY,
 ): LynxElementTemplateFirstScreenSource<Handle> {
 	if (
 		firstScreenNativeCost(result.nodes as readonly FirstScreenNode[]) >
@@ -188,9 +190,8 @@ export function paintLynxElementTemplateFirstScreen<Handle extends LynxElementTe
 			const paintedIndex = painted.length;
 			painted.push(undefined);
 			const listener = plan.events.length === 0 ? null : nextListener;
-			const attributes = new Array<LynxElementTemplateAttributeValue>(template.attributeSlots).fill(
-				null,
-			);
+			const attributeSlots = template.attributeSlots - (retainsVisibility ? 0 : 1);
+			const attributes = new Array<LynxElementTemplateAttributeValue>(attributeSlots).fill(null);
 			for (let slot = 0; slot < values.length; slot++) {
 				const value = values[slot];
 				if (
@@ -218,7 +219,7 @@ export function paintLynxElementTemplateFirstScreen<Handle extends LynxElementTe
 				}
 			}
 			nextListener += plan.events.length;
-			attributes[template.visibilitySlot] = false;
+			if (retainsVisibility) attributes[template.visibilitySlot] = false;
 			const childSlots: Handle[][] = [];
 			const ownedChildren: PaintedNativeTree<Handle>[] = [];
 			let residents = 1;

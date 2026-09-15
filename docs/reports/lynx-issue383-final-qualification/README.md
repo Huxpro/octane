@@ -21,7 +21,7 @@ eligible opt-in slice and adds a narrowly qualified Android safety boundary.
 ## Current-head status (2026-09-15)
 
 The frozen campaign below still describes code candidate `b62a642a1`, not the
-newer local product code at `514a62b10`. The newer head passed complete Lynx and
+newer local product line. The later product head passed complete Lynx and
 Rspeedy package suites and reduced an ordinary structural application's decoded
 background program by 6,794 raw / 2,080 gzip bytes through compiler-proved
 feature pruning; its decoded main-thread program stayed byte-identical. See the
@@ -34,6 +34,28 @@ evidence. The latest #383 follow-up also leaves Element Template fail-closed
 pending same-runtime fresh-process memory and the powered full matrix. The
 release decision therefore remains **NO-GO**, and neither the default switch nor
 old-path retirement is authorized.
+
+The latest authoritative #383 correction invalidates the earlier `6.5655x`
+Element Template/latest-upstream Native-heap ratio because timeout recovery had
+restarted Explorer before that memory sample. The corrected screen preserved
+the timed-out page: nine eligible pairs all favored Element Template, with a
+Native-heap-allocation paired geometric mean of `0.9023745x`, but pair 7 lost
+the CDP channel before semantic census, leaving the required 10-pair cohort
+incomplete. A separate six-pair comparison against the merged automatic owner
+still measured `1.149152x`; a real-device shared-row-values experiment measured
+`0.998643x` Native heap and `1.008772x` creation latency, rejecting per-row
+JavaScript slices as the remaining owner.
+
+The current native-owner reduction therefore reuses the already-versioned
+paired feature proof. When a one-shot production graph proves that Activity,
+retained try/Suspense boundaries, and transitions are absent, encoder metadata,
+synchronous first-screen creation, and background-frame creation omit the
+synthetic root `hidden` slot. Source-safe or visibility-capable graphs retain it
+unchanged, and an impossible specialized VIS fails closed. Unit tests assert
+the reduced slot arity and metadata shape, and a real production Element
+Template build retains the structural feature module. This proves one fewer
+native attribute slot per live template instance; it does not establish the
+Native heap delta without a new qualified-device cohort.
 
 ## Frozen cohort
 

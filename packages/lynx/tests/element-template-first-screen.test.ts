@@ -137,6 +137,14 @@ function result() {
 }
 
 describe('Element Template first-screen ownership', () => {
+	it('omits the permanent visibility slot after structural graph proof', () => {
+		const { created, page, papi } = host();
+		const source = paintLynxElementTemplateFirstScreen(result(), papi, page, undefined, false);
+
+		expect(created.map((value) => value.attributes.length)).toEqual([2, 2, 0]);
+		source.dispose();
+	});
+
 	it('defers an unsafe synchronous tree intact to the first background frame', () => {
 		const { created, page, papi } = host();
 		const oversized = {
