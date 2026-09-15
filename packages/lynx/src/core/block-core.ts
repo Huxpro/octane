@@ -446,6 +446,13 @@ export interface LynxBlockCore {
 		departed?: (block: LynxBlock) => void,
 	): void;
 	/**
+	 * Swap two compiler-proven retained keys.
+	 *
+	 * No member mounts, leaves, or changes values, so the core can emit the one
+	 * or two physical moves and defer its O(1) logical relink until acceptance.
+	 */
+	swapKeysForSlot(slot: LynxBlockForSlot, firstKey: unknown, secondKey: unknown): void;
+	/**
 	 * Every slot of one row of a range, by key, in one visit.
 	 *
 	 * `setKeyedSlotValue` is the primitive for a caller that knows which slot
@@ -1141,6 +1148,95 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 		else publish();
 	};
 
+	/** Emit the one physical placement a keyed survivor move owns. */
+	const moveBlockForSlot = (
+		slot: LynxBlockForSlot,
+		block: LynxBlock,
+		beforeBlock: LynxBlock | null,
+	): void => {
+		const site = slot as LynxBlockProgramRangeSite;
+		if (deltaProducer !== null) {
+			if (
+				block.instance === null ||
+				site[0] === undefined ||
+				site[1] === null ||
+				(beforeBlock !== null && beforeBlock.instance === null)
+			) {
+				fail(
+					LYNX_BLOCK_CORE_DEVELOPMENT &&
+						'a direct MOVE requires retained instance and compiler range identities',
+				);
+			}
+			deltaProducer.move(
+				block.instance,
+				{ instance: site[1], slot: site[0] },
+				beforeBlock !== null
+					? { instance: beforeBlock.instance!, slot: 0 }
+					: site[2] === null
+						? null
+						: { instance: site[1], slot: site[2] },
+			);
+			commandCount++;
+			return;
+		}
+		const move: UniversalHostCommand = {
+			op: 'move',
+			parent: slot.parent,
+			id: block.firstId,
+			before: beforeBlock?.firstId ?? nextSiblingHead(site)?.firstId ?? site[3],
+		};
+		if (site[0] != null) recordUniversalProgramRangeCommand(move, site[0]);
+		emit(move);
+	};
+
+	/**
+	 * Apply a proven two-member transposition without materializing row values,
+	 * running LIS, or snapshotting the committed range for rollback.
+	 *
+	 * Every possible refusal is resolved by the validation pass before the first
+	 * MOVE. The physical commands can then be discarded with the render attempt,
+	 * while the linked-list publication waits for ACK. A rejection consequently
+	 * has no logical range mutation to restore.
+	 */
+	const swapKeysForSlot = (slot: LynxBlockForSlot, firstKey: unknown, secondKey: unknown): void => {
+		const first = slot.items.get(firstKey);
+		const second = slot.items.get(secondKey);
+		blockLookups += 2;
+		if (first === undefined || second === undefined || first === second) {
+			fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a proven keyed swap requires two distinct members');
+		}
+		const left = first.index < second.index ? first : second;
+		const right = first.index < second.index ? second : first;
+		const leftPrevious = left.prev;
+		const leftNext = left.next;
+		const rightPrevious = right.prev;
+		const rightNext = right.next;
+		moveBlockForSlot(slot, right, left);
+		if (leftNext !== right) moveBlockForSlot(slot, left, rightNext);
+		const publish = (): void => {
+			if (leftPrevious === null) slot.head = right;
+			else leftPrevious.next = right;
+			right.prev = leftPrevious;
+			if (leftNext === right) {
+				right.next = left;
+				left.prev = right;
+			} else {
+				right.next = leftNext;
+				leftNext!.prev = right;
+				rightPrevious!.next = left;
+				left.prev = rightPrevious;
+			}
+			left.next = rightNext;
+			if (rightNext === null) slot.tail = left;
+			else rightNext.prev = left;
+			const leftIndex = left.index;
+			left.index = right.index;
+			right.index = leftIndex;
+		};
+		if (attemptActive) (attemptAccepts ??= []).push(publish);
+		else publish();
+	};
+
 	const core: LynxBlockCore = {
 		beginAttempt() {
 			if (attemptActive) fail(LYNX_BLOCK_CORE_DEVELOPMENT && 'a render attempt is already active');
@@ -1293,6 +1389,8 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 
 		removeKeysForSlot,
 
+		swapKeysForSlot,
+
 		reconcileForSlot(
 			slot,
 			template,
@@ -1410,45 +1508,7 @@ export function createLynxBlockCore(options: LynxBlockCoreOptions = {}): LynxBlo
 						write(survivor, valueIndex, next[valueIndex]);
 					}
 				}
-				if (stable !== null && stable[index] !== -2) {
-					if (deltaProducer !== null) {
-						if (
-							survivor.instance === null ||
-							site[0] === undefined ||
-							site[1] === null ||
-							(beforeBlock !== null && beforeBlock.instance === null)
-						) {
-							fail(
-								LYNX_BLOCK_CORE_DEVELOPMENT &&
-									'a direct MOVE requires retained instance and compiler range identities',
-							);
-						}
-						deltaProducer.move(
-							survivor.instance,
-							{ instance: site[1], slot: site[0] },
-							beforeBlock !== null
-								? { instance: beforeBlock.instance!, slot: 0 }
-								: site[2] === null
-									? null
-									: site[1] === null
-										? fail(
-												LYNX_BLOCK_CORE_DEVELOPMENT &&
-													'a direct MOVE static anchor requires an owning instance',
-											)
-										: { instance: site[1], slot: site[2] },
-						);
-						commandCount++;
-					} else {
-						const move: UniversalHostCommand = {
-							op: 'move',
-							parent: slot.parent,
-							id: survivor.firstId,
-							before: beforeBlock?.firstId ?? nextSiblingHead(site)?.firstId ?? site[3],
-						};
-						if (site[0] != null) recordUniversalProgramRangeCommand(move, site[0]);
-						emit(move);
-					}
-				}
+				if (stable !== null && stable[index] !== -2) moveBlockForSlot(slot, survivor, beforeBlock);
 				ordered[index] = survivor;
 			}
 			link(slot, ordered);
