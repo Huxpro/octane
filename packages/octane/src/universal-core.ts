@@ -561,15 +561,18 @@ export interface UniversalForValue {
 	 * Compiler-only proof that one captured value affects a component row only
 	 * through a strict comparison with the row key. Renderers may use this to
 	 * revisit the old/new keyed rows when the iterable and every other capture
-	 * are unchanged. The optional final bit additionally proves the row receives
-	 * no index-dependent prop, so a renderer may retain it across a move; absent
-	 * metadata always means ordinary range evaluation.
+	 * are unchanged. The optional fourth member proves the row receives no
+	 * index-dependent prop, so a renderer may retain it across a move. The
+	 * optional fifth names the direct item property used by the authored key, so
+	 * a renderer may validate a same-order replacement collection without calling
+	 * a second key wrapper. Absent metadata always means ordinary range evaluation.
 	 */
 	readonly keyedSelection?: readonly [
 		value: unknown,
 		deps: readonly unknown[],
 		itemProp: string,
 		indexIndependent?: boolean,
+		keyProp?: string,
 	];
 	/**
 	 * Compiler-only proof that a component row receives only the item, index, static
@@ -2416,6 +2419,7 @@ export function universalFor<T>(
 		deps: readonly unknown[],
 		itemProp: string,
 		indexIndependent?: boolean,
+		keyProp?: string,
 	],
 	componentRows?: readonly unknown[],
 ): UniversalForValue {

@@ -748,6 +748,7 @@ export function universalFor<T>(
 		deps: readonly unknown[],
 		itemProp: string,
 		indexIndependent?: boolean,
+		keyProp?: string,
 	],
 	_componentRows?: readonly unknown[],
 ): UniversalRenderable {

@@ -95,7 +95,7 @@ function getConfig(inlineConfig = {}, configDirectory) {
 	};
 	if (config.tmpDir) config.tmpDir = resolveTmpDir(config.tmpDir);
 	else if (process.env.TSR_TMP_DIR) config.tmpDir = resolveTmpDir(process.env.TSR_TMP_DIR);
-	else config.tmpDir = resolveTmpDir(['.tanstack', 'tmp']);
+	else config.tmpDir = path.resolve(configDirectory, '.tanstack', 'tmp');
 	validateConfig(config);
 	return config;
 }

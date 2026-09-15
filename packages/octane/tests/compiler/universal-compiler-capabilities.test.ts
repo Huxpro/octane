@@ -290,6 +290,7 @@ describe('component-owned Lynx template rows', () => {
 					},
 					{ type: 'Literal', value: 'row' },
 					{ type: 'Literal', value: true },
+					{ type: 'Literal', value: 'id' },
 				],
 			});
 		}
@@ -317,6 +318,7 @@ describe('component-owned Lynx template rows', () => {
 				},
 				{ type: 'Literal', value: 'row' },
 				{ type: 'Literal', value: true },
+				{ type: 'Literal', value: 'id' },
 			],
 		});
 	});
@@ -350,6 +352,7 @@ describe('component-owned Lynx template rows', () => {
 			source.replace('selected === row.id', 'isSelected(selected, row.id)'),
 			{},
 		],
+		['a computed key property', source.replace('key row.id', "key row['id']"), {}],
 		['the item is not directly forwarded', source.replace('row={row}', 'row={row.data}'), {}],
 		[
 			'an imported live component binding',
@@ -387,7 +390,7 @@ describe('component-owned Lynx template rows', () => {
 
 		expect(args[10]).toMatchObject({
 			type: 'ArrayExpression',
-			elements: [{}, {}, {}, { type: 'Literal', value: false }],
+			elements: [{}, {}, {}, { type: 'Literal', value: false }, { type: 'Literal', value: 'id' }],
 		});
 	});
 
@@ -427,7 +430,7 @@ export function App({ rows, selected }) @{
 				rendererRegistry: config.registry,
 				...options,
 			}).code;
-		const proof = "[selected, [], 'row', true]";
+		const proof = "[selected, [], 'row', true, 'id']";
 
 		expect(compileBoundary()).toContain(proof);
 		expect(compileBoundary({ dev: true })).not.toContain(proof);

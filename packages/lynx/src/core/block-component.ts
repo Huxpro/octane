@@ -1454,6 +1454,60 @@ export function lynxBlockProgramForComponent<Props>(
 		listenersAt(prepared!.events, slotValues);
 
 	/**
+	 * Encode a retained row while preserving scalar values the Lynx wire already
+	 * holds. The client driver is identity for scalar props before the canonical
+	 * resident-program coercion below, so an equal canonical scalar is exactly the
+	 * accepted value. Objects still take the complete resource/worklet/serializer
+	 * path, and any changed scalar takes it once as well.
+	 */
+	const valuesForRetainedRow = (
+		context: LynxBlockProgramContext,
+		template: PreparedUniversalTemplateProgram,
+		slotValues: readonly unknown[],
+		previousValues: readonly UniversalHostTemplateProgramValue[],
+	): readonly UniversalHostTemplateProgramValue[] => {
+		const values: UniversalHostTemplateProgramValue[] = new Array(template.values.length);
+		for (let index = 0; index < template.values.length; index++) {
+			const binding = template.values[index]!;
+			const source = slotValues[binding.slot];
+			if (
+				source === null ||
+				source === undefined ||
+				typeof source === 'string' ||
+				typeof source === 'number' ||
+				typeof source === 'boolean' ||
+				typeof source === 'bigint'
+			) {
+				const host = template.wire.nodes[binding.node]!;
+				const encoded = binding.text
+					? typeof source === 'string' || typeof source === 'number' || typeof source === 'bigint'
+						? String(source)
+						: UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED
+					: encodeLynxProgramPropValue(host.type, binding.name, source);
+				if (Object.is(encoded, previousValues[index])) {
+					values[index] = previousValues[index]!;
+					continue;
+				}
+			}
+			const value = prepareUniversalTemplateProgramValueFromWire(
+				encoderFor(context),
+				template,
+				binding,
+				source,
+			);
+			if (value === UNIVERSAL_TEMPLATE_PROGRAM_VALUE_REFUSED) {
+				refuse(
+					subject,
+					LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+						'a row of one of its keyed ranges holds a value the row template cannot carry.',
+				);
+			}
+			values[index] = value;
+		}
+		return Object.freeze(values);
+	};
+
+	/**
 	 * Render one row and lower it, deriving the row template from the first row
 	 * that ever exists.
 	 *
@@ -1648,11 +1702,15 @@ export function lynxBlockProgramForComponent<Props>(
 			);
 		}
 		const sites = templateState.prepared!.events;
-		const values = prepareUniversalTemplateProgramValuesFromWire(
-			encoderFor(context),
-			templateState.prepared!,
-			withHandlerStubs(rendered.source, sites, rendered.values),
-		);
+		const slotValues = withHandlerStubs(rendered.source, sites, rendered.values);
+		const values =
+			previous === null
+				? prepareUniversalTemplateProgramValuesFromWire(
+						encoderFor(context),
+						templateState.prepared!,
+						slotValues,
+					)
+				: valuesForRetainedRow(context, templateState.prepared!, slotValues, previous.values);
 		if (values === null) {
 			refuse(
 				subject,
@@ -1698,6 +1756,59 @@ export function lynxBlockProgramForComponent<Props>(
 			visible: parentVisible && rendered.visible,
 			nested,
 		};
+	};
+
+	/** Build one compiler-certified sparse component-row replacement. */
+	const renderSparseComponentRow = (
+		context: LynxBlockProgramContext,
+		state: RangeState,
+		list: UniversalForValue,
+		itemKey: unknown,
+		item: unknown,
+		index: number,
+		prior: RetainedRow,
+		contextValues: SemanticContexts,
+		parentVisible: boolean,
+	): SparseRangeRow | null => {
+		const produced = list.render(item, index);
+		const invocation = rowComponentInvocation(produced);
+		const component =
+			(invocation?.component as unknown as LynxComponent<never> | undefined) ?? null;
+		const props = invocation === null ? null : forwardedProps(invocation);
+		if (component === null || component !== prior.component) {
+			refuse(
+				subject,
+				LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+					'a compiler-certified sparse row later produced a different component.',
+			);
+		}
+		if (blockShallowEqual(prior.props, props)) return null;
+		const row = renderRow(
+			context,
+			state,
+			state.rowTemplate,
+			produced,
+			component,
+			props,
+			prior,
+			null,
+			false,
+			contextValues,
+			parentVisible,
+		);
+		const retained: RetainedRow = {
+			component,
+			props,
+			scope: row.scope,
+			scoped: row.scoped,
+			values: row.values,
+			listeners: row.listeners,
+			refs: row.refs,
+			visible: row.visible,
+			index,
+		};
+		publishScopedRow(context, state, state.rowTemplate, itemKey, retained);
+		return { key: itemKey, retained };
 	};
 
 	/** Apply one outer member's recursively rendered structural sites. */
@@ -1888,6 +1999,7 @@ export function lynxBlockProgramForComponent<Props>(
 		let nestedStates: Map<unknown, NestedRangeState> | null = null;
 		let nestedRenders: Map<unknown, NestedRangeRender> | null = null;
 		let materializedItems: unknown[] | null = null;
+		let materializedKeys: unknown[] | null = null;
 		if (list.empty !== null) {
 			materializedItems = Array.from(list.items as Iterable<unknown>);
 			if (materializedItems.length === 0) {
@@ -2061,47 +2173,18 @@ export function lynxBlockProgramForComponent<Props>(
 				candidates.sort((left, right) => left.prior.index - right.prior.index);
 				for (const { key: itemKey, prior } of candidates) {
 					const item = (prior.props as Record<string, unknown>)[nextSelection[2]];
-					const produced = list.render(item, prior.index);
-					const invocation = rowComponentInvocation(produced);
-					const component =
-						(invocation?.component as unknown as LynxComponent<never> | undefined) ?? null;
-					const props = invocation === null ? null : forwardedProps(invocation);
-					if (component === null || component !== prior.component) {
-						refuse(
-							subject,
-							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
-								'a compiler-certified keyed selection later produced a different row component.',
-						);
-					}
-					if (blockShallowEqual(prior.props, props)) continue;
-					const row = renderRow(
+					const rendered = renderSparseComponentRow(
 						context,
 						state,
-						state.rowTemplate,
-						produced,
-						component,
-						props,
+						list,
+						itemKey,
+						item,
+						prior.index,
 						prior,
-						null,
-						false,
 						contextValues,
+						parentVisible,
 					);
-					sparse.push({
-						key: itemKey,
-						retained: {
-							component,
-							props,
-							scope: row.scope,
-							scoped: row.scoped,
-							values: row.values,
-							listeners: row.listeners,
-							refs: row.refs,
-							visible: row.visible,
-							index: prior.index,
-						},
-					});
-					const retainedRow = sparse[sparse.length - 1]!.retained;
-					publishScopedRow(context, state, state.rowTemplate, itemKey, retainedRow);
+					if (rendered !== null) sparse.push(rendered);
 				}
 			}
 			return {
@@ -2127,6 +2210,113 @@ export function lynxBlockProgramForComponent<Props>(
 				nested: EMPTY_NESTED_RANGE_RENDERS,
 				nestedStates: null,
 			};
+		}
+		// A compiler-certified component row receives the item directly, compares
+		// selection only with one direct item key, and observes no index. When a new
+		// array keeps every committed key at the same position, neither the keyed
+		// reconciler nor the full per-row descriptor arrays have work to own. Visit
+		// only positions whose item identity changed and publish those descriptors
+		// through the same sparse write path used by selection changes above.
+		//
+		// Validate the whole key sequence before calling a row. A later mismatch can
+		// therefore fall through without leaving lifecycle tasks from a speculative
+		// prefix behind. The compiler proved the authored key is exactly `item[prop]`,
+		// so read that property directly: accessors and proxies still run once. If one
+		// key differs, finish and retain the materialized sequence so the ordinary
+		// reconciler below does not evaluate those authored property reads twice.
+		const sourceItems = Array.isArray(list.items) ? list.items : null;
+		const previousSourceItems = Array.isArray(state.source) ? state.source : null;
+		if (
+			contextsStable &&
+			nextSelection !== null &&
+			previousSelection !== null &&
+			previous !== null &&
+			previousKeys !== null &&
+			!state.hasScopedRows &&
+			state.nested === null &&
+			sourceItems !== null &&
+			previousSourceItems !== null &&
+			sourceItems.length === previousKeys.length &&
+			previousSourceItems.length === sourceItems.length &&
+			nextSelection[3] === true &&
+			previousSelection[3] === true &&
+			typeof nextSelection[4] === 'string' &&
+			previousSelection[4] === nextSelection[4] &&
+			previousSelection[2] === nextSelection[2] &&
+			Object.is(previousSelection[0], nextSelection[0]) &&
+			depsEqual(previousSelection[1], nextSelection[1])
+		) {
+			const keyProp = nextSelection[4];
+			let aligned = true;
+			const changed: number[] = [];
+			for (let index = 0; index < sourceItems.length; index++) {
+				const itemKey = (sourceItems[index] as Record<string, unknown>)[keyProp];
+				if (!Object.is(itemKey, previousKeys[index])) {
+					aligned = false;
+					materializedKeys = new Array(sourceItems.length);
+					for (let previousIndex = 0; previousIndex < index; previousIndex++) {
+						materializedKeys[previousIndex] = previousKeys[previousIndex];
+					}
+					materializedKeys[index] = itemKey;
+					for (let nextIndex = index + 1; nextIndex < sourceItems.length; nextIndex++) {
+						materializedKeys[nextIndex] = (sourceItems[nextIndex] as Record<string, unknown>)[
+							keyProp
+						];
+					}
+					break;
+				}
+				if (!Object.is(sourceItems[index], previousSourceItems[index])) changed.push(index);
+			}
+			if (aligned) {
+				const sparse: SparseRangeRow[] = [];
+				for (const index of changed) {
+					const item = sourceItems[index];
+					const itemKey = previousKeys[index];
+					const prior = previous.get(itemKey);
+					if (prior == null || prior.scope !== null) {
+						refuse(
+							subject,
+							LYNX_BLOCK_COMPONENT_DEVELOPMENT &&
+								'a compiler-certified same-key row lost its retained component descriptor.',
+						);
+					}
+					const rendered = renderSparseComponentRow(
+						context,
+						state,
+						list,
+						itemKey,
+						item,
+						index,
+						prior,
+						contextValues,
+						parentVisible,
+					);
+					if (rendered !== null) sparse.push(rendered);
+				}
+				return {
+					state,
+					templateState: state.rowTemplate,
+					items: EMPTY_INDEXES,
+					rows: EMPTY_PROGRAM_ROWS,
+					handlers: EMPTY_HANDLER_ROWS,
+					refs: EMPTY_REF_ROWS,
+					visibilities: null,
+					keys: previousKeys,
+					retained: previous,
+					removedRetainedKeys: null,
+					hasScopedRows: false,
+					structural: false,
+					rendered: EMPTY_INDEXES,
+					source: list.items,
+					keyedSelection: nextSelection,
+					componentRows: nextComponentRows,
+					sparse,
+					contextValues,
+					visible: parentVisible,
+					nested: EMPTY_NESTED_RANGE_RENDERS,
+					nestedStates: null,
+				};
+			}
 		}
 
 		const items = materializedItems ?? Array.from(list.items as Iterable<unknown>);
@@ -2240,7 +2430,7 @@ export function lynxBlockProgramForComponent<Props>(
 		let structural = previousKeys === null || previousKeys.length !== items.length;
 		for (let index = 0; index < items.length; index++) {
 			const item = items[index];
-			const itemKey = list.key(item, index);
+			const itemKey = materializedKeys === null ? list.key(item, index) : materializedKeys[index];
 			// The core rejects a duplicate key too, but its rejection lands after
 			// the page block was mounted — mid-write — so a retried render would
 			// mount a second copy of the page. Rejecting here keeps the
