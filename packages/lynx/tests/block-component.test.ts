@@ -1722,6 +1722,67 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		).toHaveLength(2);
 	});
 
+	it('rebases a rejected keyed-range replay onto the next state update', async () => {
+		vi.useFakeTimers();
+		try {
+			let componentRuns = 0;
+			let computationRuns = 0;
+			let setRows: ((value: readonly TableRow[]) => void) | undefined;
+			const rows = [1, 2, 3].map((id) => ({ id, label: `row ${id}` }));
+			const range = (items: readonly TableRow[]) =>
+				universalFor(
+					items,
+					(row: TableRow) => row.id,
+					(row: TableRow) => universalValue(ROW_PLAN, ['row', String(row.id), noop, row.label]),
+				);
+			const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+				componentRuns++;
+				const [items, updateRows, getRows] = useState<readonly TableRow[]>([rows[0]!], 'rows');
+				setRows = updateRows;
+				return lynxProgramValue(
+					TABLE_COMPILER_PROGRAM,
+					[range(items)],
+					[
+						{
+							kind: 'structural',
+							purity: 'descriptor-pure',
+							escape: 'component-render',
+							sources: [getRows],
+							slots: [0],
+							run() {
+								computationRuns++;
+								return [range(getRows())];
+							},
+						},
+					],
+				) as never;
+			});
+			const block = blockColumn<Record<string, never>>(
+				createLynxBlockCore({ templateRuns: () => false }),
+			);
+
+			await block.render(Scene as LynxComponent<Record<string, never>>, {});
+			setRows!(rows.slice(0, 2));
+			await flushMicrotasks();
+			expect(block.main.commits).toHaveLength(2);
+			block.main.reject(block.main.commits[1]!, 'injected range replay rejection');
+			await flushMicrotasks();
+
+			setRows!(rows);
+			await block.settle(Promise.resolve());
+
+			expect(componentRuns).toBe(1);
+			expect(computationRuns).toBe(2);
+			expect(
+				JSON.parse(paint([block.main.commits[0]!, block.main.commits[2]!]).tree).children[0]
+					.children[1].children,
+			).toHaveLength(3);
+		} finally {
+			vi.clearAllTimers();
+			vi.useRealTimers();
+		}
+	});
+
 	it('keeps the cell across a re-render driven by new props', async () => {
 		const block = blockColumn<{ readonly base: string }>();
 		const render = (base: string) =>
