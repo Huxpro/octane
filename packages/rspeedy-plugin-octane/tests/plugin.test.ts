@@ -15,6 +15,7 @@ import { mergeRsbuildConfig } from '@rsbuild/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { compile } from 'octane/compiler';
 import { signature as lynxElementTemplateBackendSignature } from '../../lynx/src/compiler-element-template.js';
+import { signature as lynxStructuralElementTemplateBackendSignature } from '../../lynx/src/compiler-element-template.structural.js';
 import { signature as lynxMainThreadProgramBackendSignature } from '../../lynx/src/compiler/index.js';
 
 import {
@@ -450,16 +451,19 @@ describe('@octanejs/rspeedy-plugin', () => {
 		expect(configured.layerSpecializations?.[LYNX_MAIN_THREAD_LAYER].mainThreadProgramBackend).toBe(
 			configured.mainThreadProgramBackend,
 		);
-		expect(
-			applyPlugin(
-				{ experimentalElementTemplate: true },
-				'lynx',
-				{},
-				{ app: ['./src/App.lynx.tsrx'] },
-			)
-				.plugins.get('@octanejs/rspeedy-plugin:program-coverage')
-				?.options.at(-1),
-		).toBe(true);
+		const coverageOptions = applyPlugin(
+			{ experimentalElementTemplate: true },
+			'lynx',
+			{},
+			{ app: ['./src/App.lynx.tsrx'] },
+		).plugins.get('@octanejs/rspeedy-plugin:program-coverage')?.options;
+		expect(coverageOptions?.[3]).toBe(true);
+		expect(coverageOptions?.[4]).toMatchObject({
+			request: expect.stringMatching(
+				/packages[/\\]lynx[/\\]src[/\\]compiler-element-template\.structural\.ts$/,
+			),
+			signature: lynxStructuralElementTemplateBackendSignature,
+		});
 		expect(() =>
 			pluginOctane({ thread: 'main-thread', experimentalElementTemplate: true }),
 		).toThrow(/requires the two-layer application build/);

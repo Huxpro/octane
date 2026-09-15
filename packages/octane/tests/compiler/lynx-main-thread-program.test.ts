@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { compile } from '../../src/compiler/compile.js';
 import { lynxMainThreadRenderer } from '../../../lynx/src/config.js';
 import * as ElementTemplateBackend from '../../../lynx/src/compiler-element-template.js';
+import * as StructuralElementTemplateBackend from '../../../lynx/src/compiler-element-template.structural.js';
 import * as Backend from '../../../lynx/src/compiler/index.js';
 import {
 	compileLynxBlockTemplate,
@@ -125,13 +126,14 @@ function compileCard(
 ): {
 	code: string;
 	map: any;
+	programAddresses?: readonly unknown[];
 	mainThreadProgramCoverage?: { total: number; addressed: number };
 	lynxElementTemplates?: readonly {
 		templateId: string;
 		compiledTemplate: Readonly<Record<string, unknown>>;
 		sourceFile: string;
 	}[];
-	lynxElementTemplateCoverage?: { total: number; lowered: number };
+	lynxElementTemplateCoverage?: { total: number; lowered: number; visibilitySlots: number };
 	lynxBlockSemanticRequirements?: {
 		version: number;
 		runtimeUses: readonly { name: string; line: number; column: number }[];
@@ -191,13 +193,14 @@ function compileCard(
 	}) as {
 		code: string;
 		map: any;
+		programAddresses?: readonly unknown[];
 		mainThreadProgramCoverage?: { total: number; addressed: number };
 		lynxElementTemplates?: readonly {
 			templateId: string;
 			compiledTemplate: Readonly<Record<string, unknown>>;
 			sourceFile: string;
 		}[];
-		lynxElementTemplateCoverage?: { total: number; lowered: number };
+		lynxElementTemplateCoverage?: { total: number; lowered: number; visibilitySlots: number };
 		lynxBlockSemanticRequirements?: {
 			version: number;
 			runtimeUses: readonly { name: string; line: number; column: number }[];
@@ -427,7 +430,11 @@ describe('emitting a compiled create function from the lynx main-thread compile'
 			module: 'src/Card.lynx.tsrx',
 		});
 		const { roots } = evaluate(result.code);
-		expect(result.lynxElementTemplateCoverage).toEqual({ total: 1, lowered: 1 });
+		expect(result.lynxElementTemplateCoverage).toEqual({
+			total: 1,
+			lowered: 1,
+			visibilitySlots: 1,
+		});
 		expect(result.lynxElementTemplates).toEqual([
 			{
 				templateId: expect.stringMatching(/^_et_[0-9a-f]{12}$/),
@@ -448,6 +455,56 @@ describe('emitting a compiled create function from the lynx main-thread compile'
 				visibilitySlot: 5,
 			},
 		});
+	});
+
+	it('emits structural Element Template arity without a synthetic visibility field', () => {
+		const result = compileCard(ADDRESSABLE_CARD, {
+			backend: StructuralElementTemplateBackend,
+			module: 'src/Card.lynx.tsrx',
+		});
+		const sourceSafe = compileCard(ADDRESSABLE_CARD, {
+			backend: ElementTemplateBackend,
+			module: 'src/Card.lynx.tsrx',
+		});
+		const { roots } = evaluate(result.code);
+		const definition = result.lynxElementTemplates![0]!.compiledTemplate as {
+			readonly attributesArray: readonly { readonly key?: string }[];
+		};
+
+		expect(definition.attributesArray.some((attribute) => attribute.key === 'hidden')).toBe(false);
+		expect(result.lynxElementTemplateCoverage).toEqual({
+			total: 1,
+			lowered: 1,
+			visibilitySlots: 0,
+		});
+		expect(result.lynxElementTemplates![0]!.templateId).not.toBe(
+			sourceSafe.lynxElementTemplates![0]!.templateId,
+		);
+		expect(roots[0]).toMatchObject({
+			elementTemplate: {
+				templateId: result.lynxElementTemplates![0]!.templateId,
+				attributeSlots: 5,
+				childSlots: 0,
+			},
+		});
+		expect(roots[0].elementTemplate).not.toHaveProperty('visibilitySlot');
+	});
+
+	it('rejects a structural Element Template backend whose plan and definition arity drift', () => {
+		const invalidBackend = {
+			...StructuralElementTemplateBackend,
+			deriveLynxElementTemplateProgram(derived: never) {
+				const lowered = StructuralElementTemplateBackend.deriveLynxElementTemplateProgram(derived)!;
+				return { ...lowered, attributeSlots: lowered.attributeSlots + 1 };
+			},
+		};
+
+		expect(() =>
+			compileCard(ADDRESSABLE_CARD, {
+				backend: invalidBackend,
+				module: 'src/Card.lynx.tsrx',
+			}),
+		).toThrow(/Element Template backend returned an invalid program/);
 	});
 
 	it('emits an independent versioned background program for the Block core', () => {

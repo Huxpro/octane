@@ -208,13 +208,17 @@ allocation. A device ablation rejected shared per-row JavaScript value slices
 as the cause and moved the next gate to native template-instance/slot residency.
 
 For applications whose paired production graph already proves that Activity,
-retained try/Suspense boundaries, and transitions are absent, the Element
-Template encoder and both creation paths now omit the otherwise permanent root
-`hidden` attribute slot. Visibility-capable and source-safe graphs retain the
-slot unchanged, and a specialized store rejects an unexpected VIS operation.
-This is a structural reduction of one native attribute slot per live template
-instance, not a memory-performance claim: the corrected 10-pair comparator and
-the full #291 matrix still require a qualified native device.
+retained try/Suspense boundaries, and transitions are absent, finishMake now
+rebuilds only the reachable main-thread compiler modules with a dedicated
+structural Element Template backend. That backend omits the otherwise permanent
+root `hidden` attribute from both the emitted plan and Template Definition, so
+the runtime and native arities agree without an encoder rewrite. Visibility-
+capable and source-safe graphs retain the slot unchanged. Encoder handoff checks
+the compiler-reported visibility-slot count against that graph decision, and a
+store rejects an unexpected VIS operation when its plan has no visibility slot. This is a
+structural reduction of one native attribute slot per live template instance,
+not a memory-performance claim: the corrected 10-pair comparator and the full
+#291 matrix still require a qualified native device.
 
 ## Milestone 9 runner inventory
 

@@ -125,6 +125,15 @@ const ROW: UniversalProgramPlan = {
 	bind,
 };
 
+const STRUCTURAL_SHELL: UniversalProgramPlan = {
+	...SHELL,
+	elementTemplate: { templateId: '_octane_et_shell', attributeSlots: 0, childSlots: 1 },
+};
+const STRUCTURAL_ROW: UniversalProgramPlan = {
+	...ROW,
+	elementTemplate: { templateId: '_octane_et_row', attributeSlots: 2, childSlots: 0 },
+};
+
 const addresses = [
 	{ id: 1, address: { module: 'tests/App.lynx.tsrx', index: 0 } },
 	{ id: 2, address: { module: 'tests/App.lynx.tsrx', index: 1 } },
@@ -133,6 +142,11 @@ const addresses = [
 function resolver(module: string, index: number): UniversalProgramPlan | undefined {
 	if (module !== 'tests/App.lynx.tsrx') return undefined;
 	return index === 0 ? SHELL : index === 1 ? ROW : undefined;
+}
+
+function structuralResolver(module: string, index: number): UniversalProgramPlan | undefined {
+	if (module !== 'tests/App.lynx.tsrx') return undefined;
+	return index === 0 ? STRUCTURAL_SHELL : index === 1 ? STRUCTURAL_ROW : undefined;
 }
 
 function firstFrame() {
@@ -164,16 +178,8 @@ function firstFrame() {
 describe('whole-root Element Template program store', () => {
 	it('omits the permanent visibility slot for a structurally proved application graph', () => {
 		const { creates, page, papi } = fakePAPI();
-		const store = createLynxElementTemplateProgramStore(
-			papi,
-			page,
-			73,
-			1,
-			undefined,
-			undefined,
-			false,
-		);
-		applyLynxCompiledProgramFrame(store, store.page, resolver, firstFrame());
+		const store = createLynxElementTemplateProgramStore(papi, page, 73);
+		applyLynxCompiledProgramFrame(store, store.page, structuralResolver, firstFrame());
 
 		expect(creates.map((created) => created.attributes.length)).toEqual([0, 2, 2]);
 		store.begin();

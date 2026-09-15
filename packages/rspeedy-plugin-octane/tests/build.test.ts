@@ -871,6 +871,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			join(tmpdir(), 'octane-rspeedy-element-template-structural-'),
 		);
 		const reports: unknown[] = [];
+		const compilerMetadata: any[] = [];
 		const retainedModuleIdentifiers: string[] = [];
 		const rspeedy = await createRspeedy({
 			cwd: APPLICATION_FIXTURE,
@@ -891,7 +892,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				plugins: [
 					pluginOctane({ dev: false, hmr: false, experimentalElementTemplate: true }),
 					programCoverageProbe(reports),
-					metadataProbe([], [], [], retainedModuleIdentifiers),
+					metadataProbe(compilerMetadata, [], [], retainedModuleIdentifiers),
 				],
 			},
 		});
@@ -914,7 +915,20 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			).toBe(true);
 			expect(
 				retained.some((identifier) => identifier.includes('/core/element-template-visibility.ts')),
-			).toBe(true);
+			).toBe(false);
+			const structuralModule = compilerMetadata.find(
+				(metadata) =>
+					metadata.canonicalId?.endsWith('/ElementTemplateStructural.tsrx') &&
+					metadata.universalRuntime?.thread === 'main-thread',
+			);
+			expect(structuralModule?.lynxElementTemplates).toHaveLength(2);
+			for (const record of structuralModule.lynxElementTemplates) {
+				expect(
+					record.compiledTemplate.attributesArray.some(
+						(attribute: { key?: string }) => attribute.key === 'hidden',
+					),
+				).toBe(false);
+			}
 		} finally {
 			await result?.close();
 			rmSync(temporaryRoot, { recursive: true, force: true });

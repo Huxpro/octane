@@ -42,7 +42,7 @@ export interface LynxElementTemplateProgram {
 	readonly template: LynxElementTemplateNode;
 	readonly attributeSlots: number;
 	readonly childSlots: number;
-	readonly visibilitySlot: number;
+	readonly visibilitySlot?: number;
 }
 
 function templateType(type: string): string {
@@ -70,8 +70,9 @@ function staticValue(value: unknown): string | number | boolean | null | undefin
  * worklets, typed native list hosts, text-polymorphic ranges, and native
  * attribute-composition cases remain on the existing application backend.
  */
-export function deriveLynxElementTemplateProgram(
+function deriveElementTemplateProgram(
 	ir: LynxProgramIR,
+	visibility: boolean,
 ): LynxElementTemplateProgram | null {
 	if (ir.version !== LYNX_PROGRAM_IR_VERSION) return null;
 	const nodes = ir.wire.nodes;
@@ -165,8 +166,10 @@ export function deriveLynxElementTemplateProgram(
 		});
 	}
 	const visibilitySlot = ir.values.length + ir.events.length;
-	if (attributeNames[0]!.has('hidden')) return null;
-	attributes[0]!.push({ kind: 'slot', key: 'hidden', attrSlotIndex: visibilitySlot });
+	if (visibility) {
+		if (attributeNames[0]!.has('hidden')) return null;
+		attributes[0]!.push({ kind: 'slot', key: 'hidden', attrSlotIndex: visibilitySlot });
+	}
 
 	const lower = (index: number): LynxElementTemplateNode => {
 		const ownedRanges = ranges.get(index);
@@ -200,8 +203,26 @@ export function deriveLynxElementTemplateProgram(
 
 	return Object.freeze({
 		template: lower(0),
-		attributeSlots: visibilitySlot + 1,
+		attributeSlots: visibilitySlot + (visibility ? 1 : 0),
 		childSlots: ir.ranges.length,
-		visibilitySlot,
+		...(visibility ? { visibilitySlot } : null),
 	});
+}
+
+/** Lower a source-safe Template Definition that can hide a mounted instance. */
+export function deriveLynxElementTemplateProgram(
+	ir: LynxProgramIR,
+): LynxElementTemplateProgram | null {
+	return deriveElementTemplateProgram(ir, true);
+}
+
+/**
+ * Lower a Template Definition for a whole graph proved never to retain hidden
+ * instances. This is a distinct backend contract rather than an encoder edit:
+ * the emitted plan arity and the native definition therefore agree exactly.
+ */
+export function deriveLynxStructuralElementTemplateProgram(
+	ir: LynxProgramIR,
+): LynxElementTemplateProgram | null {
+	return deriveElementTemplateProgram(ir, false);
 }

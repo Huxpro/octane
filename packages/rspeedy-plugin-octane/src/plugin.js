@@ -1,5 +1,4 @@
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import {
 	lynxBlockRspeedyBackgroundRenderers,
@@ -25,6 +24,10 @@ import {
 } from './layers.js';
 import { assertLynxToolchain } from './toolchain.js';
 import { selectedLynxApplication } from './application-selection.js';
+import {
+	DEFAULT_MAIN_THREAD_PROGRAM_BACKEND,
+	ELEMENT_TEMPLATE_MAIN_THREAD_PROGRAM_BACKEND,
+} from './program-backends.js';
 
 const PLUGIN_NAME = '@octanejs/rspeedy-plugin';
 const MAIN_THREAD_FACADE_PLUGIN = `${PLUGIN_NAME}:main-thread-facade`;
@@ -41,17 +44,6 @@ const lynxProductMainThreadRenderers = Object.freeze({
 	}),
 });
 
-// A serializable reference keeps Octane's default Rspack worker path available.
-// The loader verifies this cache identity against the loaded renderer backend,
-// and the backend signature test forces both constants to move together.
-const DEFAULT_MAIN_THREAD_PROGRAM_BACKEND = Object.freeze({
-	request: fileURLToPath(import.meta.resolve('@octanejs/lynx/compiler')),
-	signature: 'lynx-main-thread-program/33',
-});
-const ELEMENT_TEMPLATE_MAIN_THREAD_PROGRAM_BACKEND = Object.freeze({
-	request: fileURLToPath(import.meta.resolve('@octanejs/lynx/compiler/element-template')),
-	signature: 'lynx-main-thread-program/33+element-template/5',
-});
 /**
  * What the main-thread layer compiles differently from the background one.
  *

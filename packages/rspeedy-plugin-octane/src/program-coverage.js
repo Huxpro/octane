@@ -444,6 +444,20 @@ function lynxBackgroundCompilerModules(entryModules) {
 	);
 }
 
+/** Main-thread source modules in an already-collected graph that emit programs. */
+function lynxMainThreadCompilerModules(entryModules) {
+	return Object.freeze(
+		[...entryModules.main.modules].filter((module) => {
+			const info = getOctaneRspackBuildInfo(module);
+			return (
+				info?.transformKind === 'compile' &&
+				info.universalRuntime?.runtime === 'lynx' &&
+				info.universalRuntime.thread === 'main-thread'
+			);
+		}),
+	);
+}
+
 function layerCoverage(modules, thread) {
 	const observations = new Map();
 	const unavailable = [];
@@ -1189,6 +1203,7 @@ function collectApplicationReports(compilation, entries, enabled) {
 			entry.mainThreadEntry,
 			Object.freeze({
 				backgroundCompilerModules: lynxBackgroundCompilerModules(entryModules),
+				mainThreadCompilerModules: lynxMainThreadCompilerModules(entryModules),
 				programCoverage,
 				semanticRequirements,
 				featureRequirements,
@@ -1337,11 +1352,18 @@ export function decideLynxBlockComponentFeatures(compiler, entries, reports, cor
 
 /** Attach versioned proofs and specialize the one-core production graph. */
 export class LynxProgramCoveragePlugin {
-	constructor(entries, enabled, configuredCore, elementTemplate = false) {
+	constructor(
+		entries,
+		enabled,
+		configuredCore,
+		elementTemplate = false,
+		structuralElementTemplateBackend,
+	) {
 		this.entries = entries;
 		this.enabled = enabled;
 		this.configuredCore = configuredCore;
 		this.elementTemplate = elementTemplate;
+		this.structuralElementTemplateBackend = structuralElementTemplateBackend;
 	}
 
 	apply(compiler) {
@@ -1469,6 +1491,24 @@ export class LynxProgramCoveragePlugin {
 			if (state.blockComponentFeatures.selected !== 'full') {
 				for (const component of [...compilation.modules].filter(isLynxBlockComponent)) {
 					rebuild.add(component);
+				}
+			}
+			if (
+				state.applicationDecision.selected === 'compiled-program-element-template' &&
+				state.blockComponentFeatures.selected === 'structural'
+			) {
+				if (this.structuralElementTemplateBackend === undefined) {
+					throw new Error(
+						'@octanejs/rspeedy-plugin: structural Element Template selection has no compiler backend.',
+					);
+				}
+				for (const report of state.reports.values()) {
+					for (const module of report.mainThreadCompilerModules) {
+						setOctaneRspackModuleCompilerOptions(module, {
+							mainThreadProgramBackend: this.structuralElementTemplateBackend,
+						});
+						rebuild.add(module);
+					}
 				}
 			}
 			if (rebuild.size !== 0) await rebuildLynxModules(compilation, [...rebuild]);

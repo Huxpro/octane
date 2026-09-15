@@ -346,7 +346,8 @@ export interface UniversalProgramPlan {
 		readonly templateId: string;
 		readonly attributeSlots: number;
 		readonly childSlots: number;
-		readonly visibilitySlot: number;
+		/** Present only when this plan can retain a mounted hidden instance. */
+		readonly visibilitySlot?: number;
 	};
 	/**
 	 * Take the host once; return the per-instance create.

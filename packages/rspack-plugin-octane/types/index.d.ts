@@ -378,6 +378,18 @@ export interface OctaneRspackBuildInfo {
 		readonly total: number;
 		readonly addressed: number;
 	};
+	/** Compiler-proved native Template Definition coverage and visibility shape. */
+	lynxElementTemplateCoverage?: {
+		readonly total: number;
+		readonly lowered: number;
+		readonly visibilitySlots: number;
+	};
+	/** Native Template Definitions emitted out of band from main-thread JavaScript. */
+	lynxElementTemplates?: readonly {
+		readonly templateId: string;
+		readonly compiledTemplate: Readonly<Record<string, unknown>>;
+		readonly sourceFile: string;
+	}[];
 	/**
 	 * Module-local authored facts for a later Block-core graph selector. This is
 	 * not, by itself, a compatibility or selection decision.
@@ -417,6 +429,7 @@ export declare function getOctaneRspackBuildInfo(module: unknown): OctaneRspackB
 export declare function setOctaneRspackModuleCompilerOptions(
 	module: object,
 	options: {
-		readonly renderers: OctaneRendererConfigOptions | OctaneResolvedRendererConfig;
+		readonly renderers?: OctaneRendererConfigOptions | OctaneResolvedRendererConfig;
+		readonly mainThreadProgramBackend?: OctaneMainThreadProgramBackendOption;
 	},
 ): void;

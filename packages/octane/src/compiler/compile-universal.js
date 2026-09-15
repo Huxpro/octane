@@ -5752,12 +5752,25 @@ function canonicalDigestSource(value) {
  * FNV-1a over the canonical bytes, as 16 lowercase hex digits.
  *
  * Hand-rolled rather than `node:crypto` because this module has no node imports
- * and gains nothing by acquiring one: the digest is a build-time equality
- * witness between two compiles of the same source, not a security primitive.
+ * and gains nothing by acquiring one: these digests are build-time identity
+ * and equality witnesses, not security primitives.
  * What it has to be is deterministic across machines and package managers,
  * which a fixed integer recurrence over a canonical string is and a hash of an
  * object's iteration order is not.
  */
+function lynxCanonicalDigest(source) {
+	let high = 0x811c9dc5;
+	let low = 0x9dc5811c;
+	for (let index = 0; index < source.length; index++) {
+		const code = source.charCodeAt(index);
+		high = (high ^ code) >>> 0;
+		low = (low ^ ((code << 7) | (code >>> 9))) >>> 0;
+		high = Math.imul(high, 0x01000193) >>> 0;
+		low = Math.imul(low, 0x85ebca6b) >>> 0;
+	}
+	return `${high.toString(16).padStart(8, '0')}${low.toString(16).padStart(8, '0')}`;
+}
+
 function programDigest(derived) {
 	let source = canonicalDigestSource(derived.wire);
 	if (derived.ranges.length !== 0) {
@@ -5782,16 +5795,7 @@ function programDigest(derived) {
 		source += '\0' + canonicalDigestSource(derived.refs);
 	}
 	if (derived.resident !== undefined) source += '\0' + canonicalDigestSource(derived.resident);
-	let high = 0x811c9dc5;
-	let low = 0x9dc5811c;
-	for (let index = 0; index < source.length; index++) {
-		const code = source.charCodeAt(index);
-		high = (high ^ code) >>> 0;
-		low = (low ^ ((code << 7) | (code >>> 9))) >>> 0;
-		high = Math.imul(high, 0x01000193) >>> 0;
-		low = Math.imul(low, 0x85ebca6b) >>> 0;
-	}
-	return `${high.toString(16).padStart(8, '0')}${low.toString(16).padStart(8, '0')}`;
+	return lynxCanonicalDigest(source);
 }
 
 /**
@@ -5932,23 +5936,25 @@ function lynxElementTemplateObjectAst(state, derived, origin) {
 	}
 	const lowered = backend.deriveLynxElementTemplateProgram(derived);
 	if (lowered === null) return null;
+	const valueAndEventSlots = derived.values.length + derived.events.length;
+	const hasVisibility = lowered?.visibilitySlot !== undefined;
 	if (
 		lowered === undefined ||
 		typeof lowered !== 'object' ||
 		lowered.template === null ||
 		typeof lowered.template !== 'object' ||
 		!Number.isSafeInteger(lowered.attributeSlots) ||
-		lowered.attributeSlots !== derived.values.length + derived.events.length + 1 ||
+		lowered.attributeSlots !== valueAndEventSlots + (hasVisibility ? 1 : 0) ||
 		!Number.isSafeInteger(lowered.childSlots) ||
 		lowered.childSlots !== derived.ranges.length ||
-		lowered.visibilitySlot !== lowered.attributeSlots - 1
+		(hasVisibility && lowered.visibilitySlot !== lowered.attributeSlots - 1)
 	) {
 		throw new TypeError('Octane Lynx Element Template backend returned an invalid program.');
 	}
 	// Lynx reserves the `_et_<12 hex>` identity envelope for content-addressed
 	// user Template Definitions. Keep the native identifier in that envelope;
 	// the full resident-program digest remains on the independent program address.
-	const templateId = `_et_${programDigest(derived).slice(0, 12)}`;
+	const templateId = `_et_${lynxCanonicalDigest(canonicalDigestSource(lowered.template)).slice(0, 12)}`;
 	const record = Object.freeze({
 		templateId,
 		compiledTemplate: lowered.template,
@@ -5964,12 +5970,15 @@ function lynxElementTemplateObjectAst(state, derived, origin) {
 	}
 	templates.set(templateId, existing ?? record);
 	state.lynxElementTemplateLowered = (state.lynxElementTemplateLowered ?? 0) + 1;
+	if (hasVisibility) {
+		state.lynxElementTemplateVisibilitySlots = (state.lynxElementTemplateVisibilitySlots ?? 0) + 1;
+	}
 	return jsonValueToAst(
 		{
 			templateId,
 			attributeSlots: lowered.attributeSlots,
 			childSlots: lowered.childSlots,
-			visibilitySlot: lowered.visibilitySlot,
+			...(hasVisibility ? { visibilitySlot: lowered.visibilitySlot } : null),
 		},
 		origin,
 	);
@@ -6952,6 +6961,7 @@ export function compileUniversal(
 					lynxElementTemplateCoverage: Object.freeze({
 						total: state.plans.length,
 						lowered: state.lynxElementTemplateLowered ?? 0,
+						visibilitySlots: state.lynxElementTemplateVisibilitySlots ?? 0,
 					}),
 				}),
 		// A graph-level selector cannot infer complete resident-program coverage

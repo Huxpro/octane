@@ -18,7 +18,6 @@ import {
 	LYNX_ELEMENT_TEMPLATE_PENDING_NATIVE_COST_LIMIT,
 	type LynxElementTemplateNativeBudget,
 } from './element-template-native-budget.js';
-import { LYNX_ELEMENT_TEMPLATE_VISIBILITY } from './element-template-visibility.js';
 import { encodePrevalidatedLynxNativeEventToken } from './native-events.js';
 
 const DEVELOPMENT =
@@ -130,7 +129,6 @@ export function paintLynxElementTemplateFirstScreen<Handle extends LynxElementTe
 	papi: LynxElementTemplatePAPI<Handle>,
 	page: Handle,
 	nativeBudget: LynxElementTemplateNativeBudget = createLynxElementTemplateNativeBudget(papi),
-	retainsVisibility = LYNX_ELEMENT_TEMPLATE_VISIBILITY,
 ): LynxElementTemplateFirstScreenSource<Handle> {
 	if (
 		firstScreenNativeCost(result.nodes as readonly FirstScreenNode[]) >
@@ -179,10 +177,14 @@ export function paintLynxElementTemplateFirstScreen<Handle extends LynxElementTe
 			if (ids.length !== plan.nodes) fail('received the wrong host-id arity');
 			if (spans.length !== plan.ranges.length) fail('received the wrong range-span arity');
 			if (template.childSlots !== plan.ranges.length) fail('received the wrong child-slot arity');
-			if (template.attributeSlots !== plan.values.length + plan.events.length + 1) {
+			const hasVisibility = template.visibilitySlot !== undefined;
+			if (
+				template.attributeSlots !==
+				plan.values.length + plan.events.length + (hasVisibility ? 1 : 0)
+			) {
 				fail('received the wrong attribute-slot arity');
 			}
-			if (template.visibilitySlot !== template.attributeSlots - 1) {
+			if (hasVisibility && template.visibilitySlot !== template.attributeSlots - 1) {
 				fail('received the wrong visibility-slot position');
 			}
 			const handle = nextHandle++;
@@ -190,8 +192,9 @@ export function paintLynxElementTemplateFirstScreen<Handle extends LynxElementTe
 			const paintedIndex = painted.length;
 			painted.push(undefined);
 			const listener = plan.events.length === 0 ? null : nextListener;
-			const attributeSlots = template.attributeSlots - (retainsVisibility ? 0 : 1);
-			const attributes = new Array<LynxElementTemplateAttributeValue>(attributeSlots).fill(null);
+			const attributes = new Array<LynxElementTemplateAttributeValue>(template.attributeSlots).fill(
+				null,
+			);
 			for (let slot = 0; slot < values.length; slot++) {
 				const value = values[slot];
 				if (
@@ -219,7 +222,7 @@ export function paintLynxElementTemplateFirstScreen<Handle extends LynxElementTe
 				}
 			}
 			nextListener += plan.events.length;
-			if (retainsVisibility) attributes[template.visibilitySlot] = false;
+			if (template.visibilitySlot !== undefined) attributes[template.visibilitySlot] = false;
 			const childSlots: Handle[][] = [];
 			const ownedChildren: PaintedNativeTree<Handle>[] = [];
 			let residents = 1;

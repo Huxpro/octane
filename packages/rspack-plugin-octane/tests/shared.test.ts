@@ -298,10 +298,27 @@ describe('module compiler specialization', () => {
 		expect(getOctaneRspackModuleCompilerOptions(untouched)).toBeUndefined();
 	});
 
+	it('normalizes a main-thread backend override onto exactly one module', () => {
+		const selected = {};
+		const backend = { request: '/renderer/compiler.js', signature: 'renderer-program/2' };
+
+		setOctaneRspackModuleCompilerOptions(selected, { mainThreadProgramBackend: backend });
+
+		expect(getOctaneRspackModuleCompilerOptions(selected)).toEqual({
+			mainThreadProgramBackend: backend,
+		});
+		expect(Object.isFrozen(getOctaneRspackModuleCompilerOptions(selected))).toBe(true);
+	});
+
 	it.each([
 		[null, { renderers: {} }, /requires a module/],
 		[{}, null, /must be an object/],
-		[{}, {}, /require `renderers`/],
+		[{}, {}, /require `renderers` or `mainThreadProgramBackend`/],
+		[
+			{},
+			{ mainThreadProgramBackend: { request: '', signature: 'backend/1' } },
+			/mainThreadProgramBackend\.request/,
+		],
 		[{}, { renderers: {}, runtime: 'other' }, /unknown module compiler option/],
 	] as const)('rejects an invalid specialization %#', (module, options, message) => {
 		expect(() =>
@@ -718,5 +735,42 @@ describe('getOctaneRspackBuildInfo', () => {
 			}),
 		).toBeNull();
 		expect(getOctaneRspackBuildInfo(null)).toBeNull();
+	});
+
+	it('validates Element Template visibility coverage as paired main-thread metadata', () => {
+		const template = {
+			templateId: '_et_0123456789ab',
+			compiledTemplate: { kind: 'element', type: 'view' },
+			sourceFile: '/src/App.tsrx',
+		};
+		const value = {
+			canonicalId: '/src/App.tsrx',
+			transformKind: 'compile' as const,
+			serverRpc: false,
+			universalRuntime: { runtime: 'lynx', thread: 'main-thread' as const },
+			lynxElementTemplateCoverage: { total: 2, lowered: 2, visibilitySlots: 0 },
+			lynxElementTemplates: [template],
+		};
+
+		expect(getOctaneRspackBuildInfo({ buildInfo: { octane: value } })).toBe(value);
+		for (const coverage of [
+			{ total: 2, lowered: 2 },
+			{ total: 2, lowered: 2, visibilitySlots: 3 },
+			{ total: 2, lowered: 1, visibilitySlots: 2 },
+			{ total: 2, lowered: 2, visibilitySlots: -1 },
+		]) {
+			expect(
+				getOctaneRspackBuildInfo({
+					buildInfo: {
+						octane: { ...value, lynxElementTemplateCoverage: coverage },
+					},
+				}),
+			).toBeNull();
+		}
+		expect(
+			getOctaneRspackBuildInfo({
+				buildInfo: { octane: { ...value, lynxElementTemplates: undefined } },
+			}),
+		).toBeNull();
 	});
 });

@@ -20,6 +20,7 @@ import finalizeOctaneLoader, { pitch as pitchOctaneLoader } from '../src/finaliz
 import parallelOctaneLoader from '../src/parallel-loader.js';
 import { CSS_MODULE_CONTEXT_KEY, cssModuleSourceHash } from '../src/css-module-data.js';
 import { PROGRAM_ADDRESSES_BUILD_INFO_KEY } from '../src/program-addresses.js';
+import { signature as lynxMainThreadProgramBackendSignature } from '../../lynx/src/compiler/index.js';
 
 interface LoaderResult {
 	error: Error | null;
@@ -494,7 +495,7 @@ describe('octane Rspack loader', () => {
 			options: {
 				mainThreadProgramBackend: {
 					request,
-					signature: 'lynx-main-thread-program/31',
+					signature: lynxMainThreadProgramBackendSignature,
 				},
 			},
 		});
@@ -502,7 +503,7 @@ describe('octane Rspack loader', () => {
 		expect(mocks.createOctaneCompiler).toHaveBeenLastCalledWith(
 			expect.objectContaining({
 				mainThreadProgramBackend: expect.objectContaining({
-					signature: 'lynx-main-thread-program/31',
+					signature: lynxMainThreadProgramBackendSignature,
 					deriveLynxProgramIR: expect.any(Function),
 					deriveLynxMainThreadProgram: expect.any(Function),
 					emitLynxMainThreadProgram: expect.any(Function),

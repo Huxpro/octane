@@ -210,17 +210,20 @@ The class plugin is recommended unless another integration owns those concerns.
 ## App-level metadata
 
 Transformed Rspack modules receive a serializable `buildInfo.octane` record
-containing `canonicalId`, `transformKind`, and `serverRpc`. App integrations can
+containing `canonicalId`, `transformKind`, and `serverRpc`. Compiler-specialized
+modules can also report program and Element Template coverage, including the
+number of definitions with a synthetic visibility slot. App integrations can
 read the validated value with `getOctaneRspackBuildInfo(module)` without
-depending on compiler output parsing for module identity.
+depending on compiler output parsing for module identity or native-template
+shape.
 
 Proof-aware integrations can call
-`setOctaneRspackModuleCompilerOptions(module, { renderers })` before
-`compilation.rebuildModule(module, callback)`. The override applies only to
-that module's next and subsequent builds, and parallel workers receive the same
-normalized renderer config through loader pitch data. This lets a complete
-graph proof select a stricter compiler artifact without changing the
-conservative first pass or unrelated compilation graphs.
+`setOctaneRspackModuleCompilerOptions(module, { renderers })` or provide a
+`mainThreadProgramBackend` before `compilation.rebuildModule(module, callback)`.
+The override applies only to that module's next and subsequent builds, and
+parallel workers receive the same normalized compiler options through loader
+pitch data. This lets a complete graph proof select a stricter compiler artifact
+without changing the conservative first pass or unrelated compilation graphs.
 
 When a renderer is declared `server: 'client-only'`, client compilations also
 emit `octane-client-references.json`. Its stable reference IDs map each omitted

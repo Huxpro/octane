@@ -16,6 +16,7 @@ import { selectedLynxApplication } from './application-selection.js';
 import { selectedLynxBlockComponentFeatures } from './block-component-features.js';
 import { LYNX_BACKGROUND_LAYER, LYNX_MAIN_THREAD_LAYER } from './layers.js';
 import { LynxProgramCoveragePlugin } from './program-coverage.js';
+import { STRUCTURAL_ELEMENT_TEMPLATE_MAIN_THREAD_PROGRAM_BACKEND } from './program-backends.js';
 
 const PLUGIN_NAME = '@octanejs/rspeedy-plugin';
 const DEFAULT_BUNDLE_FILENAME = '[name].[platform].bundle';
@@ -62,11 +63,6 @@ export const LYNX_TARGET_SDK_VERSION = '3.9';
 // this envelope to 3.9 makes Explorer 4.1 reject the bundle in DecodeHeader,
 // before either application thread can run.
 export const LYNX_ELEMENT_TEMPLATE_TARGET_SDK_VERSION = '3.2';
-
-/** Apply the same paired graph proof to native Template Definition residency. */
-export function retainLynxElementTemplateVisibility(compiler) {
-	return selectedLynxBlockComponentFeatures(compiler) !== 'structural';
-}
 
 /** Let Rspeedy's framework-neutral diagnostics observe encoded template hooks. */
 export function exposeLynxTemplatePlugin(api) {
@@ -118,6 +114,7 @@ export function collectLynxElementTemplates(compilation, chunkGroups, retainVisi
 	let observed = 0;
 	let total = 0;
 	let lowered = 0;
+	let visibilitySlots = 0;
 	for (const module of modules) {
 		const info = getOctaneRspackBuildInfo(module);
 		if (
@@ -135,6 +132,7 @@ export function collectLynxElementTemplates(compilation, chunkGroups, retainVisi
 		}
 		total += info.lynxElementTemplateCoverage.total;
 		lowered += info.lynxElementTemplateCoverage.lowered;
+		visibilitySlots += info.lynxElementTemplateCoverage.visibilitySlots;
 		records.push(...info.lynxElementTemplates);
 	}
 	if (observed === 0) {
@@ -147,6 +145,12 @@ export function collectLynxElementTemplates(compilation, chunkGroups, retainVisi
 			`${PLUGIN_NAME}: Element Template lowering covered ${lowered} of ${total} main-thread plans.`,
 		);
 	}
+	const expectedVisibilitySlots = retainVisibility ? lowered : 0;
+	if (visibilitySlots !== expectedVisibilitySlots) {
+		throw new Error(
+			`${PLUGIN_NAME}: Element Template compiler retained ${visibilitySlots} of ${lowered} visibility slots, expected ${expectedVisibilitySlots}.`,
+		);
+	}
 	records.sort(
 		(left, right) =>
 			left.templateId.localeCompare(right.templateId) ||
@@ -155,29 +159,7 @@ export function collectLynxElementTemplates(compilation, chunkGroups, retainVisi
 	const templates = {};
 	templates[BUILTIN_RAW_TEXT_TEMPLATE_ID] = BUILTIN_RAW_TEXT_TEMPLATE;
 	for (const record of records) {
-		let compiledTemplate = record.compiledTemplate;
-		if (!retainVisibility) {
-			const attributes = compiledTemplate.attributesArray;
-			if (!Array.isArray(attributes)) {
-				throw new Error(
-					`${PLUGIN_NAME}: Element Template ${record.templateId} has no root attribute table.`,
-				);
-			}
-			const visibility = attributes.filter(
-				(attribute) => attribute?.kind === 'slot' && attribute.key === 'hidden',
-			);
-			if (visibility.length !== 1 || attributes.at(-1) !== visibility[0]) {
-				throw new Error(
-					`${PLUGIN_NAME}: Element Template ${record.templateId} has an invalid visibility slot.`,
-				);
-			}
-			compiledTemplate = Object.freeze({
-				...compiledTemplate,
-				attributesArray: Object.freeze(
-					attributes.filter((attribute) => attribute !== visibility[0]),
-				),
-			});
-		}
+		const compiledTemplate = record.compiledTemplate;
 		const previous = templates[record.templateId];
 		if (previous !== undefined && !isDeepStrictEqual(previous, compiledTemplate)) {
 			throw new Error(`${PLUGIN_NAME}: Element Template id collision for ${record.templateId}.`);
@@ -199,7 +181,7 @@ class LynxElementTemplateMetadataPlugin {
 				const templates = collectLynxElementTemplates(
 					compilation,
 					args.chunkGroups,
-					retainLynxElementTemplateVisibility(compiler),
+					selectedLynxBlockComponentFeatures(compiler) !== 'structural',
 				);
 				args.encodeData.sourceContent.config.enableUnifyFixedBehavior = true;
 				args.encodeData.elementTemplate = templates;
@@ -561,6 +543,9 @@ export function applyLynxApplication(chain, context, rspeedyConfig, options) {
 			options.programAddressing === true,
 			options.core,
 			options.experimentalElementTemplate === true,
+			...(options.experimentalElementTemplate === true
+				? [STRUCTURAL_ELEMENT_TEMPLATE_MAIN_THREAD_PROGRAM_BACKEND]
+				: []),
 		]);
 	chain.plugin(`${PLUGIN_NAME}:mark-main-thread`).use(MarkMainThreadAssetPlugin);
 	if (kind === 'lynx') {

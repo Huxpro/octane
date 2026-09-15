@@ -1,5 +1,7 @@
 import { normalizeRendererConfig } from 'octane/compiler/renderers';
 
+import { normalizeMainThreadProgramBackend } from './shared.js';
+
 const MODULE_COMPILER_OPTIONS = Symbol.for('octane.rspack.module-compiler-options');
 
 /** Loader-context slot copied through Rspack's parallel-loader boundary. */
@@ -25,15 +27,27 @@ export function setOctaneRspackModuleCompilerOptions(module, options) {
 		throw new TypeError('@octanejs/rspack-plugin: module compiler options must be an object.');
 	}
 	for (const key of Object.keys(options)) {
-		if (key !== 'renderers') {
+		if (key !== 'renderers' && key !== 'mainThreadProgramBackend') {
 			throw new TypeError(`@octanejs/rspack-plugin: unknown module compiler option \`${key}\`.`);
 		}
 	}
-	if (options.renderers === undefined) {
-		throw new TypeError('@octanejs/rspack-plugin: module compiler options require `renderers`.');
+	if (options.renderers === undefined && options.mainThreadProgramBackend === undefined) {
+		throw new TypeError(
+			'@octanejs/rspack-plugin: module compiler options require `renderers` or `mainThreadProgramBackend`.',
+		);
 	}
 	module[MODULE_COMPILER_OPTIONS] = Object.freeze({
-		renderers: normalizeRendererConfig(options.renderers),
+		...(options.renderers === undefined
+			? null
+			: { renderers: normalizeRendererConfig(options.renderers) }),
+		...(options.mainThreadProgramBackend === undefined
+			? null
+			: {
+					mainThreadProgramBackend: normalizeMainThreadProgramBackend(
+						options.mainThreadProgramBackend,
+						'mainThreadProgramBackend',
+					),
+				}),
 	});
 }
 

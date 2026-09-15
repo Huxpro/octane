@@ -1,9 +1,13 @@
 ---
 '@octanejs/lynx': patch
+'@octanejs/rspack-plugin': patch
 '@octanejs/rspeedy-plugin': patch
+'octane': patch
 ---
 
-Omit the permanent Element Template `hidden` attribute slot when paired
-production graph analysis proves the application uses structural Block
-semantics only. Preserve the slot for source-safe and visibility-capable graphs,
-and reject unexpected visibility work after specialization.
+Compile paired production graphs that need structural Block semantics only with
+a dedicated Element Template backend. Its emitted plan and native Template
+Definition both omit the permanent `hidden` attribute slot, while source-safe
+and visibility-capable graphs retain it and unexpected visibility work fails
+closed. Allow proof-aware Rspack integrations to select a main-thread program
+backend for one module before rebuilding it.

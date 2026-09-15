@@ -1011,6 +1011,10 @@ describe('Lynx application resident-program coverage', () => {
 		const rebuiltModules: unknown[] = [];
 		graph.rebuildModule = (module: unknown, callback: (error: Error | null) => void) => {
 			rebuiltModules.push(module);
+			if (module === mainThread) {
+				callback(null);
+				return;
+			}
 			if (module === blockComponent) {
 				const resource = { request: './block-component-features.js' };
 				for (const replacement of replacements) {
@@ -1084,14 +1088,17 @@ describe('Lynx application resident-program coverage', () => {
 				},
 			],
 			true,
+			undefined,
+			true,
+			{ request: '/repo/structural-element-template.js', signature: 'structural-et/1' },
 		).apply(compiler);
 		await finishMake(graph);
 		processAssets();
 
 		// The proof passes, compiler-program module selection, owner discovery /
 		// verification, and dependency-first rebuild ordering all inspect the graph.
-		expect(graphVisits).toBe(12);
-		expect(rebuiltModules).toEqual([background, blockComponent, root]);
+		expect(graphVisits).toBe(13);
+		expect(rebuiltModules).toEqual([background, mainThread, blockComponent, root]);
 		expect(rebuiltRequests).toEqual([
 			'./core/background-core-selection.block.js',
 			'./core/application-selection.compiled-program.js',
@@ -1145,7 +1152,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_APPLICATION_SELECTION_ASSET_INFO]: {
 				version: 2,
-				selected: 'compiled-program',
+				selected: 'compiled-program-element-template',
 				reasons: [],
 			},
 			[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO]: {

@@ -340,10 +340,22 @@ an explicit `experimentalElementTemplate: true` mode. The shared immutable
 program IR lowers to collision-checked Template Definitions; the encoder writes
 them to `encodeData.elementTemplate` with target SDK `3.2`; and the application
 selector atomically installs a typed template page and opaque template-handle
-owner. Value slots, delegated background-event slots, the root visibility slot,
+owner. Value slots, delegated background-event slots, optional root visibility,
 and structural child slots retain the compact background protocol's positional
 ABI. Adoption, update, move, removal, rollback, disposal, and serialization stay
 inside that handle domain.
+
+The paired graph proof now also owns the compiler shape. When the graph selects
+structural Block semantics, finishMake rebuilds only its reachable main-thread
+compiler modules with a separately cache-identified structural Element Template
+backend. That backend emits no root `hidden` slot and no `visibilitySlot` plan
+field; the runtime allocates the exact reported arity and refuses VIS from the
+plan itself. The encoder only collects the already-lowered definition, removing
+the earlier post-lowering metadata rewrite and making plan, JavaScript creation
+arrays, and native Template Definition agree by construction. Its handoff also
+checks the compiler-reported visibility-slot count against the graph selection,
+so a stale or skipped specialization fails the build instead of silently losing
+the reduction.
 
 The implementation deliberately does not claim the unsupported part of the
 earlier precondition list. Refs, native lists, `main-thread:*` bindings,
@@ -374,9 +386,9 @@ cross-framework A/B, general Android support, memory result, or iOS release gate
 
 ## Upstream alignment and remaining owner work
 
-At the 2026-09-14 09:40 UTC read-only refresh, published `new-lynx` still pointed
+At the 2026-09-15 read-only refresh, published `new-lynx` still pointed
 to `7a523bf20d04578c39fe0b5fe532cdef6dab3e9e`, upstream `main` still pointed to
-`8e5ca22a6e17582b4293232406a2c0420509f4a4`, and
+`277c10c3fa80f56ef162959832dba35c1b43b32e`, and
 [octanejs/octane#1055](https://github.com/octanejs/octane/issues/1055) remained
 open. The shared compiler IR, independent two-thread lowering, versioned paired
 ABI, attempt/acceptance boundary, hybrid generated/resident representation, and

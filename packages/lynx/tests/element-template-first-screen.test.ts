@@ -87,13 +87,24 @@ const ROW: UniversalProgramPlan = {
 	bind,
 };
 
-function result() {
+const STRUCTURAL_SHELL: UniversalProgramPlan = {
+	...SHELL,
+	elementTemplate: { templateId: 'shell', attributeSlots: 0, childSlots: 1 },
+};
+const STRUCTURAL_ROW: UniversalProgramPlan = {
+	...ROW,
+	elementTemplate: { templateId: 'row', attributeSlots: 2, childSlots: 0 },
+};
+
+function result(structural = false) {
+	const shell = structural ? STRUCTURAL_SHELL : SHELL;
+	const row = structural ? STRUCTURAL_ROW : ROW;
 	return {
 		nodes: [
 			{
 				kind: 'program' as const,
 				id: 1,
-				plan: SHELL,
+				plan: shell,
 				selectedValues: [],
 				ids: [1],
 				spans: [2],
@@ -101,7 +112,7 @@ function result() {
 					{
 						kind: 'program' as const,
 						id: 2,
-						plan: ROW,
+						plan: row,
 						selectedValues: ['a'],
 						ids: [2],
 						spans: [],
@@ -110,7 +121,7 @@ function result() {
 					{
 						kind: 'program' as const,
 						id: 3,
-						plan: ROW,
+						plan: row,
 						selectedValues: ['b'],
 						ids: [3],
 						spans: [],
@@ -139,7 +150,7 @@ function result() {
 describe('Element Template first-screen ownership', () => {
 	it('omits the permanent visibility slot after structural graph proof', () => {
 		const { created, page, papi } = host();
-		const source = paintLynxElementTemplateFirstScreen(result(), papi, page, undefined, false);
+		const source = paintLynxElementTemplateFirstScreen(result(true), papi, page);
 
 		expect(created.map((value) => value.attributes.length)).toEqual([2, 2, 0]);
 		source.dispose();

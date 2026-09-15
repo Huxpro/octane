@@ -94,7 +94,7 @@ const LAYER_SPECIALIZATION_KEYS = new Set([
  * object identity cannot be salted, and the presence of *a* backend is too weak
  * a key: two backends that both exist are not the same backend.
  */
-function normalizeMainThreadProgramBackend(value, label) {
+export function normalizeMainThreadProgramBackend(value, label) {
 	if (value === undefined) return undefined;
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
 		throw new TypeError(
@@ -542,7 +542,10 @@ export function getOctaneRspackBuildInfo(module) {
 		value.lynxElementTemplateCoverage.total >= 0 &&
 		Number.isSafeInteger(value.lynxElementTemplateCoverage.lowered) &&
 		value.lynxElementTemplateCoverage.lowered >= 0 &&
-		value.lynxElementTemplateCoverage.lowered <= value.lynxElementTemplateCoverage.total;
+		value.lynxElementTemplateCoverage.lowered <= value.lynxElementTemplateCoverage.total &&
+		Number.isSafeInteger(value.lynxElementTemplateCoverage.visibilitySlots) &&
+		value.lynxElementTemplateCoverage.visibilitySlots >= 0 &&
+		value.lynxElementTemplateCoverage.visibilitySlots <= value.lynxElementTemplateCoverage.lowered;
 	const lynxElementTemplatesValid =
 		Array.isArray(value?.lynxElementTemplates) &&
 		value.lynxElementTemplates.every(

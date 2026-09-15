@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { deriveLynxElementTemplateProgram } from '../src/compiler/derive-element-template.js';
+import {
+	deriveLynxElementTemplateProgram,
+	deriveLynxStructuralElementTemplateProgram,
+} from '../src/compiler/derive-element-template.js';
 import { LYNX_PROGRAM_IR_VERSION, type LynxProgramIR } from '../src/compiler/ir.js';
 
 function ir(input: Omit<LynxProgramIR, 'version' | 'resident'>): LynxProgramIR {
@@ -31,10 +34,10 @@ describe('Element Template program lowering', () => {
 					events: [{ node: 1, type: 'bindtap', priority: 'discrete' }],
 				},
 				values: [
-					{ slot: 4, node: 0, name: 'class' },
-					{ slot: 7, node: 2, name: 'value' },
+					{ slot: 4, node: 0, name: 'class', text: false },
+					{ slot: 7, node: 2, name: 'value', text: true },
 				],
-				events: [{ slot: 9, node: 1, type: 'bindtap', priority: 'discrete' }],
+				events: [{ slot: 9, node: 1, prop: 'bindtap', type: 'bindtap', priority: 'discrete' }],
 				ranges: [{ slot: 11, node: 0, before: 3 }],
 				addressable: true,
 			}),
@@ -112,6 +115,40 @@ describe('Element Template program lowering', () => {
 		});
 	});
 
+	it('emits truthful native arity when graph proof removes visibility', () => {
+		const result = deriveLynxStructuralElementTemplateProgram(
+			ir({
+				wire: {
+					nodes: [
+						{
+							type: 'view',
+							parent: -1,
+							props: {},
+							bindings: [{ name: 'id', valueIndex: 0 }],
+						},
+					],
+					events: [{ node: 0, type: 'bindtap', priority: 'discrete' }],
+				},
+				values: [{ slot: 1, node: 0, name: 'id', text: false }],
+				events: [{ slot: 2, node: 0, prop: 'bindtap', type: 'bindtap', priority: 'discrete' }],
+				ranges: [],
+				addressable: true,
+			}),
+		);
+
+		expect(result).toMatchObject({
+			attributeSlots: 2,
+			childSlots: 0,
+			template: {
+				attributesArray: [
+					{ kind: 'slot', key: 'id', attrSlotIndex: 0 },
+					{ kind: 'slot', key: 'bindtap', attrSlotIndex: 1 },
+				],
+			},
+		});
+		expect(result).not.toHaveProperty('visibilitySlot');
+	});
+
 	it('fails closed instead of mixing ordinary refs or typed-list handles', () => {
 		const base = ir({
 			wire: { nodes: [{ type: 'view', parent: -1, props: {} }], events: [] },
@@ -142,7 +179,7 @@ describe('Element Template program lowering', () => {
 				],
 				events: [],
 			},
-			values: [{ slot: 0, node: 0, name: 'className' }],
+			values: [{ slot: 0, node: 0, name: 'className', text: false }],
 			events: [],
 			ranges: [],
 			addressable: true,
@@ -152,7 +189,7 @@ describe('Element Template program lowering', () => {
 		expect(
 			deriveLynxElementTemplateProgram({
 				...base,
-				values: [{ slot: 0, node: 0, name: 'id' }],
+				values: [{ slot: 0, node: 0, name: 'id', text: false }],
 			}),
 		).toBeNull();
 	});
