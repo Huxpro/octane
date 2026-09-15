@@ -846,12 +846,10 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			expect(product.includes('octane-lynx:background-to-main')).toBe(false);
 			expect(product.includes('octane-lynx:main-to-background')).toBe(false);
 			expect(
-				moduleSources.some(
-					(module) =>
-						module.layer === 'octane:background' &&
-						module.identifier
-							.replaceAll(String.fromCharCode(92), '/')
-							.endsWith('/packages/lynx/src/core/nodes-ref.ts'),
+				moduleSources.some((module) =>
+					module.identifier
+						.replaceAll(String.fromCharCode(92), '/')
+						.endsWith('/packages/lynx/src/core/nodes-ref.ts'),
 				),
 			).toBe(false);
 			const backgroundProgram = moduleSources.find(

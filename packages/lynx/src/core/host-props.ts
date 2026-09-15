@@ -1,4 +1,4 @@
-import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref.js';
+import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref-attribute.js';
 import { hasCrossRealmPlainPrototype } from './plain-object.js';
 import {
 	parseLynxMainThreadEventProp,

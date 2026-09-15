@@ -4,6 +4,7 @@ import type { UniversalProgramCreate, UniversalProgramPlan } from 'octane/univer
 
 import { encodePrevalidatedLynxNativeEventToken } from './native-events.js';
 import type { LynxHostAttachmentChange } from './protocol.js';
+import { LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS } from './compiled-program-features.js';
 import { requireLynxMainThreadWorkletFeature } from './main-thread-worklet-feature.js';
 import type { LynxCompiledProgramWorkletStore } from './compiled-program-worklets.js';
 import type { LynxMainThreadWorkletRegistry } from './worklets.js';
@@ -350,7 +351,10 @@ function isSlotValue<Node extends LynxElementRef>(
 	const kind = plan.slots[plan.values[slot]!];
 	if (kind === 'c') return typeof value === 'string';
 	if (kind?.startsWith('p:') !== true) return false;
-	return isScalar(value) || worklets?.validValue(plan, slot, value) === true;
+	return (
+		isScalar(value) ||
+		(LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS && worklets?.validValue(plan, slot, value) === true)
+	);
 }
 
 function validateResidentNodes(plan: UniversalProgramPlan): void {
@@ -530,6 +534,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	const workletsFor = (
 		plan: UniversalProgramPlan,
 	): LynxCompiledProgramWorkletStore<Node> | null => {
+		if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) return null;
 		if (noWorkletPlans.has(plan)) return null;
 		if (workletStore !== null) {
 			if (workletStore.hasSites(plan)) return workletStore;

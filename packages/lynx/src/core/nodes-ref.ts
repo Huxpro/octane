@@ -2,9 +2,9 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import type { UniversalSerializableValue } from 'octane/universal/native';
 import { hasOwnSymbolFields } from './own-symbols.js';
+import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref-attribute.js';
 
-/** Compiler-inaccessible native attribute used by the public selector-query API. */
-export const LYNX_NODES_REF_ATTRIBUTE = 'octane-ref';
+export { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref-attribute.js';
 
 /**
  * Build the immutable selector installed for one root/host generation.

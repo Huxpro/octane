@@ -1,6 +1,6 @@
 declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
-import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref.js';
+import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref-attribute.js';
 import { LYNX_COMPILED_PROGRAM_NATIVE_LIST } from './compiled-program-native-list-feature.js';
 import type { LynxMainThreadWorkletDescriptor } from './worklets.js';
 
