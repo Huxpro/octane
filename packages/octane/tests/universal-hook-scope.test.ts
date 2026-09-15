@@ -30,6 +30,7 @@ import {
 	useId,
 	useInsertionEffect,
 	useLayoutEffect,
+	useLinkedState,
 	useMemo,
 	useRef,
 	useState,
@@ -63,6 +64,45 @@ function scopeWithLog() {
 }
 
 describe('universal hook scope', () => {
+	it('publishes linked-state source generations only when the adopting host commits', () => {
+		const scheduled: unknown[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				scheduled.push(slot);
+			},
+		});
+		let update!: (value: string | ((previous: string) => string)) => void;
+		const render = (source: string): string =>
+			scope.render(() => {
+				const [value, setValue] = useLinkedState(
+					source,
+					(next, previous) =>
+						previous === undefined ? `initial:${next}` : `${next}<-${previous.value}`,
+					undefined,
+					'linked',
+				);
+				update = setValue;
+				return value;
+			});
+		const pass = (source: string): string => {
+			const value = render(source);
+			scope.commit();
+			return value;
+		};
+
+		expect(pass('alpha')).toBe('initial:alpha');
+		update((value) => value + '!');
+		expect(scheduled).toEqual(['linked']);
+		expect(pass('alpha')).toBe('initial:alpha!');
+
+		expect(render('beta')).toBe('beta<-initial:alpha!');
+		scope.abort();
+		expect(pass('alpha')).toBe('initial:alpha!');
+		expect(pass('beta')).toBe('beta<-initial:alpha!');
+		scope.dispose();
+	});
+
 	it('keeps a state cell across renders and schedules when a committed setter writes it', () => {
 		const { scope, scheduled, pass } = scopeWithLog();
 

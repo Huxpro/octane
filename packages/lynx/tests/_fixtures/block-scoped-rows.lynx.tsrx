@@ -8,6 +8,7 @@ import {
 	useId,
 	useInsertionEffect,
 	useLayoutEffect,
+	useLinkedState,
 	useState,
 } from 'octane';
 
@@ -38,6 +39,36 @@ export function BlockInsertionFixture(props: BlockInsertionProps) @{
 	}, [label]);
 	<view class="insertion-fixture">
 		<text>{label as string}</text>
+	</view>
+}
+
+export interface BlockLinkedStateRowValue {
+	readonly id: number;
+	readonly source: string;
+}
+
+export interface BlockLinkedStateProps {
+	readonly rows: readonly BlockLinkedStateRowValue[];
+}
+
+function BlockLinkedStateRow(props: { readonly row: BlockLinkedStateRowValue }) @{
+	const row = props.row;
+	const [value, setValue, getValue] = useLinkedState(
+		row.source,
+		(source, previous) => previous === undefined
+			? 'initial:' + source
+			: 'linked:' + source + ':' + previous.value,
+	);
+	<view class="linked-row">
+		<text bindtap={() => setValue(getValue() + '!')}>{value as string}</text>
+	</view>
+}
+
+export function BlockLinkedStateFixture(props: BlockLinkedStateProps) @{
+	<view class="linked-rows">
+		@for (const row of props.rows; key row.id) {
+			<BlockLinkedStateRow row={row} />
+		}
 	</view>
 }
 

@@ -37,10 +37,12 @@ import {
 	useId,
 	useInsertionEffect,
 	useLayoutEffect,
+	useLinkedState,
 	useMemo,
 	useReducer,
 	useState,
 	useTransition,
+	__useLinkedStateWithGetter,
 } from '../src/main-renderer.compiled-program.js';
 
 const WIRE: UniversalHostTemplateProgram = {
@@ -112,6 +114,29 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 			const selected = renderLynxFirstScreen(App, {}).nodes[0]?.children[0]?.selectedValues;
 			expect(selected?.[0]).toBe(discarded);
 		}
+	});
+
+	it('evaluates linked-state pairs and getter tuples for the first screen', () => {
+		const plan = universalPlan('lynx', PLAN);
+		const Pair = defineUniversalComponent('lynx', ({ source }: { readonly source: string }) => {
+			const [value, update] = useLinkedState(source, (next) => `pair:${next}`);
+			return universalValue(plan, [value, typeof update, value]);
+		});
+		const Getter = defineUniversalComponent('lynx', ({ source }: { readonly source: string }) => {
+			const [value, update, read] = __useLinkedStateWithGetter(source, (next) => `getter:${next}`);
+			return universalValue(plan, [value, typeof update, read()]);
+		});
+
+		expect(renderLynxFirstScreen(Pair, { source: 'alpha' }).nodes[0]?.selectedValues).toEqual([
+			'pair:alpha',
+			'function',
+			'pair:alpha',
+		]);
+		expect(renderLynxFirstScreen(Getter, { source: 'beta' }).nodes[0]?.selectedValues).toEqual([
+			'getter:beta',
+			'function',
+			'getter:beta',
+		]);
 	});
 
 	it('normalizes every resident value exactly once before the scalar transport', () => {

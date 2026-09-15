@@ -7,6 +7,7 @@ import {
 	useId,
 	useInsertionEffect,
 	useLayoutEffect,
+	useLinkedState,
 	useMemo,
 	useReducer,
 } from 'octane';
@@ -30,6 +31,10 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 }) @{
 	const [taps, incrementTaps] = useReducer((value: number, amount: number) => value + amount, 0);
 	const hookId = useId();
+	const [linkedLabel, , getLinkedLabel] = useLinkedState(
+		props.item.label,
+		(label) => 'linked-' + label,
+	);
 	const theme = useContext(BlockTheme);
 	const rowClass = useMemo(() => ['row', theme, 'taps-' + taps], [theme, taps]);
 	useInsertionEffect(() => undefined, [theme]);
@@ -41,7 +46,7 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 	};
 	<view id={'row-' + item.id + '-' + hookId} class={rowClass}>
 		<image id={'image-' + item.id} src={item.image} mode="aspectFill" />
-		<text bindtap={onTap}>{item.label + ':' + taps as string}</text>
+		<text bindtap={onTap}>{linkedLabel + ':' + getLinkedLabel() + ':' + taps as string}</text>
 	</view>
 });
 

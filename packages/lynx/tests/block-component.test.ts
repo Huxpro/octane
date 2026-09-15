@@ -101,6 +101,8 @@ import {
 	type BlockDynamicComponentProps,
 	BlockInsertionFixture,
 	type BlockInsertionProps,
+	BlockLinkedStateFixture,
+	type BlockLinkedStateProps,
 	BlockCompositionFixture,
 	type BlockCompositionProps,
 	BlockScopedRow,
@@ -549,6 +551,21 @@ function rowListener(
 	const label = rows.children[row]!.children[1]!;
 	const resolved = resolveLynxHostNativeEvent(host, [...label.events.values()][0]);
 	if (resolved === null) throw new Error(`row ${row} bound no event site`);
+	return resolved;
+}
+
+/** The tap site on a row in the authored linked-state fixture. */
+function linkedRowListener(
+	commits: readonly LynxTransportCommitMessage[],
+	row: number,
+): LynxResolvedNativeEvent {
+	const papi = createFakePAPI();
+	const host = createLynxHostContainer(papi, { root: 1 });
+	for (const commit of commits) prepareLynxHostBatch(host, commit.batch).apply();
+	// linked-rows > the nth linked-row > its text.
+	const label = papi.pages[0]!.children[0]!.children[row]!.children[0]!;
+	const resolved = resolveLynxHostNativeEvent(host, [...label.events.values()][0]);
+	if (resolved === null) throw new Error(`linked row ${row} bound no event site`);
 	return resolved;
 }
 
@@ -2406,6 +2423,27 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		await block.render(component, props([two, one]));
 		expect(observed.get(1)!.at(-1)).not.toBe(oneId);
 		expect(observed.get(2)!.at(-1)).toBe(twoId);
+	});
+
+	it('reconciles compiled keyed-row linked state without losing local edits on moves', async () => {
+		const block = blockColumn<BlockLinkedStateProps>();
+		const component = BlockLinkedStateFixture as never as LynxComponent<BlockLinkedStateProps>;
+		const one = { id: 1, source: 'one' };
+		const two = { id: 2, source: 'two' };
+
+		await block.render(component, { rows: [one, two] });
+		expect(paint(block.main.commits).tree).toContain('initial:one');
+		deliverTo(block, linkedRowListener(block.main.commits, 0));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('initial:one!');
+
+		await block.render(component, {
+			rows: [two, { id: 1, source: 'one-next' }],
+		});
+		const moved = paint(block.main.commits).tree;
+		expect(moved.indexOf('initial:two')).toBeLessThan(
+			moved.indexOf('linked:one-next:initial:one!'),
+		);
 	});
 
 	it('propagates context updates through keyed moves without resetting row state', async () => {
