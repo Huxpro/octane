@@ -70,6 +70,21 @@ for (let index = 0; index < args.length; index++) {
 	if (cell === undefined) throw new Error(`--cell-file has no matching --cell: ${label}`);
 	cell.file = path.resolve(value.slice(split + 1));
 }
+for (let index = 0; index < args.length; index++) {
+	if (args[index] !== '--cell-commit') continue;
+	const value = args[index + 1] ?? '';
+	const split = value.indexOf('=');
+	if (split < 1) throw new Error(`invalid --cell-commit ${JSON.stringify(value)}`);
+	const label = value.slice(0, split);
+	const sourceCommit = value.slice(split + 1);
+	const cell = cells.find((candidate) => candidate.label === label);
+	if (cell === undefined) throw new Error(`--cell-commit has no matching --cell: ${label}`);
+	if (cell.sourceCommit !== undefined) throw new Error(`duplicate --cell-commit: ${label}`);
+	if (!/^[0-9a-f]{40}$/.test(sourceCommit)) {
+		throw new Error(`--cell-commit requires a full lowercase Git SHA: ${label}`);
+	}
+	cell.sourceCommit = sourceCommit;
+}
 if (!Number.isSafeInteger(scale) || scale < 1) throw new Error('scale must be positive.');
 if (!Number.isSafeInteger(samples) || samples < 1) throw new Error('samples must be positive.');
 if (cells.length < 1 || cells.length > 2) {
@@ -108,6 +123,9 @@ validateIssue194ProcessMemoryControls({
 	createClearRecreate,
 	settleMs,
 });
+if (processMemory && cells.some((cell) => cell.sourceCommit === undefined)) {
+	throw new Error('--process-memory requires one --cell-commit=<full-sha> for every cell.');
+}
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../app');
 const run = (command, commandArgs, { allowFailure = false } = {}) => {
@@ -866,7 +884,14 @@ let report = {
 		bundle: bundleIdentity({ label: 'disable-devtool', url: disableUrl, file: disableFile }),
 	},
 	cells: Object.fromEntries(
-		cells.map((cell) => [cell.label, { url: cell.url, bundle: bundleIdentity(cell) }]),
+		cells.map((cell) => [
+			cell.label,
+			{
+				url: cell.url,
+				sourceCommit: cell.sourceCommit ?? null,
+				bundle: bundleIdentity(cell),
+			},
+		]),
 	),
 	samples: [],
 	invalidAttempts: [],

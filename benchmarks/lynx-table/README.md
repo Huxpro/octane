@@ -3847,13 +3847,37 @@ timeout, question, and output), plus:
 The shipping memory lane additionally appends:
 
 ```bash
---native-only --process-memory --settle-ms 4000
+--native-only --process-memory --settle-ms 4000 \
+--cell-commit baseline=<full-40-character-sha> \
+--cell-commit candidate=<full-40-character-sha>
 ```
+
+Every memory cell requires its own full source SHA; the runner already records
+the independently hashed bundle bytes. A checkout SHA alone is not accepted as
+the identity of two bundles that can come from different revisions.
 
 The timeout covers first-screen settling and every per-action settle delay, so
 a 20-cycle memory window needs more than 316 seconds before launch and device
 overhead are included. A process-accounting parse failure aborts the run rather
 than emitting a partial memory result.
+
+Re-judge a completed two-cell shipping window without leasing the device again:
+
+```bash
+node stages/issue291-native-memory-analyze.mjs \
+  --input <raw-device-window.json> \
+  --reference baseline --candidate candidate \
+  --out <paired-memory-comparison.json>
+```
+
+The analyzer requires 20 cycles per sample, at least 10 balanced adjacent AB/BA
+pairs, exact source and bundle identities, all three Android accounting sources,
+and the complete per-action memory/state sequence. It bootstraps whole
+session-pair ratios rather than individual checkpoints and applies #291's frozen
+1.05 CI-upper non-inferiority limit. A failed measured check exits non-zero.
+Even when settled and after-clear pass, the overall #291 memory verdict remains
+`inconclusive` until a separate instrument captures true peak heap; the
+operational post-receipt high-water statistic is reported but never relabelled.
 
 The clear@1k cross-framework window found a measurement-fidelity boundary, not
 a Native rank:
