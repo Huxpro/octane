@@ -18,6 +18,23 @@ Element Template owner. It does not change the NO-GO decision or the default,
 but it replaces the earlier unbounded ordinary-Element creation path for the
 eligible opt-in slice and adds a narrowly qualified Android safety boundary.
 
+## Current-head status (2026-09-15)
+
+The frozen campaign below still describes code candidate `b62a642a1`, not the
+newer local product code at `514a62b10`. The newer head passed complete Lynx and
+Rspeedy package suites and reduced an ordinary structural application's decoded
+background program by 6,794 raw / 2,080 gzip bytes through compiler-proved
+feature pruning; its decoded main-thread program stayed byte-identical. See the
+[R10 current-head addendum](../lynx-issue382-release-candidate/README.md#post-candidate-current-head-graph-requalification).
+
+No qualified Android or iOS client is connected in the current environment;
+the only available runtime is the built-in headless Linux client, which cannot
+stand in for native latency, memory/GC, no-JIT, device bytecode, or AB/BA
+evidence. The latest #383 follow-up also leaves Element Template fail-closed
+pending same-runtime fresh-process memory and the powered full matrix. The
+release decision therefore remains **NO-GO**, and neither the default switch nor
+old-path retirement is authorized.
+
 ## Frozen cohort
 
 The cohort was last checked against the live remotes at 2026-09-14 02:55:01

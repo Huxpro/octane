@@ -79,6 +79,37 @@ Lynx VM bytecode size, native chunk load latency, and native execution latency
 are not exposed by this build-only environment. They are intentionally not
 estimated from decoded JavaScript and remain mandatory Android/iOS R11 cells.
 
+## Post-candidate current-head graph requalification
+
+The frozen candidate above remains the input to the original R11 decision. A
+newer local product head, `514a62b10`, contains the subsequent R9 cleanup series
+and a paired-proof Block feature specialization. For a one-shot production
+application, the selector now rebuilds `block-component.ts` against a
+structural-only capability module only when every authored module in both Lynx
+thread graphs proves that Activity, error/Suspense boundaries, portals, and
+transition APIs are absent. Development, incomplete/ineligible graphs, and any
+application requiring one of those semantics retain the full runtime.
+
+The same-toolchain rows-0 A/B against clean parent `d4d1e6fec` measured the
+current-head change as follows:
+
+| Boundary | Parent raw | Current raw | Raw delta | Parent gzip | Current gzip | gzip delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Web bundle | 270,581 | 263,778 | -6,803 | 79,769 | 77,624 | -2,145 |
+| Encoded Lynx bundle | 269,943 | 263,149 | -6,794 | 94,303 | 92,060 | -2,243 |
+| Decoded MTS script | 86,495 | 86,495 | 0 | 26,911 | 26,911 | 0 |
+| Decoded BTS script | 178,700 | 171,906 | -6,794 | 51,959 | 49,879 | -2,080 |
+
+The MTS SHA-256 is byte-identical across the A/B. Full Lynx tests passed
+1,174/1,174 and the full Rspeedy plugin suite passed 115/115, including
+structural selection, full-feature retention, packed consumers, and production
+bundle decoding. The exact command, product-source digest, Brotli values, and
+the stale proportional-owner-budget caveat are recorded in
+[`r10-block-feature-specialization.md`](../../../benchmarks/lynx-bundle-size/results/r10-block-feature-specialization.md).
+
+This requalifies the current production graph boundary; it does not promote the
+new head to an R11 release candidate without a fresh native campaign.
+
 ## Relationship to upstream #1055
 
 The release candidate follows upstream's natural seams: a shared compiler-owned
