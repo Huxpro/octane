@@ -17,6 +17,7 @@ import {
 	type LynxPublicHandle,
 } from './core/client-driver.js';
 import { LYNX_COMPILED_PROGRAM_APPLICATION } from './core/application-selection.js';
+import { LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS } from './core/compiled-program-features.js';
 import { prepareLynxBackgroundLifecycleReceiver } from './core/background-lifecycle.js';
 import { applyLynxBackgroundLifecycleData } from './core/lifecycle-data.js';
 import { LYNX_BLOCK_BACKGROUND_CORE } from './core/background-core-selection.js';
@@ -41,9 +42,8 @@ import { createLynxBlockBackgroundCore, type LynxBackgroundCore } from './core/b
 import {
 	createLynxBackgroundFunctionRegistry,
 	installBackgroundCallBridge,
-	type LynxBackgroundFunctionDescriptor,
-	type LynxWorkletValue,
-} from './core/worklets.js';
+} from './core/background-thread-function-feature.js';
+import type { LynxBackgroundFunctionDescriptor, LynxWorkletValue } from './core/worklets.js';
 import type { Lynx } from './platform.js';
 
 interface LynxBackgroundGlobals {
@@ -313,7 +313,9 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 				? createLynxCompiledProgramBlockTransport(context, container, {
 						onDiagnostic: options.onDiagnostic,
 						isPageDestroyed: () => compiledProgramDestroyedLifetimes.has(target.lynx as object),
-						createBackgroundFunctionRegistry: createLynxBackgroundFunctionRegistry,
+						...(LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS
+							? { createBackgroundFunctionRegistry: createLynxBackgroundFunctionRegistry }
+							: null),
 						onLifecycle(message) {
 							applyLynxBackgroundLifecycleData(target.lynx as unknown as Lynx, message);
 						},
@@ -385,18 +387,20 @@ export function createLynxRoot(options: CreateLynxRootOptions = {}): LynxRoot {
 	};
 	try {
 		const callTransport = transport as LynxBackgroundTransport | LynxCompiledProgramBlockTransport;
-		uninstallCallBridge = installBackgroundCallBridge({
-			callMain<Result>(
-				worklet: import('./core/worklets.js').LynxMainThreadWorkletDescriptor,
-				args: readonly LynxWorkletValue[],
-			) {
-				const call = callTransport.callMain(
-					worklet as LynxMainThreadWorkletWireDescriptor,
-					args as never,
-				);
-				return { promise: call.promise as Promise<Result>, cancel: call.cancel };
-			},
-		});
+		if (LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS || !LYNX_COMPILED_PROGRAM_APPLICATION) {
+			uninstallCallBridge = installBackgroundCallBridge({
+				callMain<Result>(
+					worklet: import('./core/worklets.js').LynxMainThreadWorkletDescriptor,
+					args: readonly LynxWorkletValue[],
+				) {
+					const call = callTransport.callMain(
+						worklet as LynxMainThreadWorkletWireDescriptor,
+						args as never,
+					);
+					return { promise: call.promise as Promise<Result>, cancel: call.cancel };
+				},
+			});
+		}
 	} catch (error) {
 		lifecycleInstallation?.rollback();
 		transport.close(error);

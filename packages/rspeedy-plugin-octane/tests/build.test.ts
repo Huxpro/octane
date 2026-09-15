@@ -17,6 +17,7 @@ import {
 	LYNX_APPLICATION_SELECTION_ASSET_INFO,
 	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO,
+	LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
 	LYNX_BLOCK_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
@@ -291,6 +292,7 @@ class ProgramCoverageProbePlugin {
 						const core = asset.info[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO];
 						const application = asset.info[LYNX_APPLICATION_SELECTION_ASSET_INFO];
 						const componentFeatures = asset.info[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO];
+						const compiledFeatures = asset.info[LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO];
 						if (
 							program !== undefined ||
 							semantic !== undefined ||
@@ -298,7 +300,8 @@ class ProgramCoverageProbePlugin {
 							selection !== undefined ||
 							core !== undefined ||
 							application !== undefined ||
-							componentFeatures !== undefined
+							componentFeatures !== undefined ||
+							compiledFeatures !== undefined
 						) {
 							this.reports.push({
 								program,
@@ -308,6 +311,7 @@ class ProgramCoverageProbePlugin {
 								core,
 								application,
 								componentFeatures,
+								compiledFeatures,
 							});
 						}
 					}
@@ -333,7 +337,7 @@ function programCoverageProbe(reports: unknown[]) {
 async function collectCoreSelections(
 	mode: 'development' | 'production',
 	entry: Record<string, string>,
-	field: 'application' | 'componentFeatures' | 'core' = 'core',
+	field: 'application' | 'compiledFeatures' | 'componentFeatures' | 'core' = 'core',
 ): Promise<unknown[]> {
 	const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-core-selection-'));
 	const reports: unknown[] = [];
@@ -681,6 +685,11 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						},
 					],
 				},
+				compiledFeatures: {
+					version: 1,
+					selected: 'no-thread-functions',
+					reasons: [],
+				},
 			});
 			const retained = retainedModuleIdentifiers.map((identifier) =>
 				identifier
@@ -727,6 +736,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				'core/client-driver.ts',
 				'core/compact-host-refs.ts',
 				'core/compiled-program-worklets.ts',
+				'core/worklets.ts',
 				'main-worklets.ts',
 				'main-renderer.ts',
 				'core/main-thread-application-selection.ts',
@@ -1312,6 +1322,16 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						selected: 'full',
 						reasons: [
 							{ code: 'feature-specialization-requires-block-core' },
+							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
+						],
+					},
+					compiledFeatures: {
+						version: 1,
+						selected: 'full',
+						reasons: [
+							{
+								code: 'compiled-feature-specialization-requires-compiled-application',
+							},
 							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
 						],
 					},

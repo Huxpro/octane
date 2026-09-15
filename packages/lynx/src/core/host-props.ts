@@ -1,5 +1,3 @@
-declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
-
 import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref.js';
 import { hasCrossRealmPlainPrototype } from './plain-object.js';
 import {
@@ -7,14 +5,12 @@ import {
 	parseLynxNativeEventProp,
 	type LynxMainThreadEventBinding,
 } from './native-events.js';
+import type { LynxMainThreadRefDescriptor, LynxMainThreadWorkletDescriptor } from './worklets.js';
 import {
-	assertLynxWorkletValue,
-	isLynxMainThreadRefDescriptor,
-	isLynxMainThreadWorkletDescriptor,
-	unwrapThreadFunctionDescriptor,
-	type LynxMainThreadRefDescriptor,
-	type LynxMainThreadWorkletDescriptor,
-} from './worklets.js';
+	decodeLynxMainThreadRef,
+	decodeLynxMainThreadWorklet,
+} from './host-props-main-thread-feature.js';
+import { LYNX_HOST_PROPS_DEVELOPMENT, lynxHostPropError as propError } from './host-prop-error.js';
 import { normalizeLynxClass } from './host-prop-value.js';
 
 export type { LynxMainThreadRefDescriptor, LynxMainThreadWorkletDescriptor } from './worklets.js';
@@ -116,17 +112,6 @@ const LENGTH_PROPERTY =
 
 const hasOwn = (value: Readonly<Record<string, unknown>>, name: string): boolean =>
 	Object.prototype.hasOwnProperty.call(value, name);
-
-// `propError` cannot suppress JavaScript's eager argument evaluation. Each
-// caller guards its diagnostic so production neither constructs nor retains it.
-const LYNX_HOST_PROPS_DEVELOPMENT =
-	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
-
-function propError(message: string | false): Error {
-	return new TypeError(
-		LYNX_HOST_PROPS_DEVELOPMENT ? `Octane Lynx host prop: ${message}` : 'Octane Lynx OL100',
-	);
-}
 
 /** True for one literal Lynx `<length>` token; `calc()`/`var()` are not literals. */
 export function isSupportedLynxLengthLiteral(value: unknown): boolean {
@@ -301,50 +286,6 @@ export function classifyLynxHostPropName(name: string): LynxHostPropRoute {
 	return 'attribute';
 }
 
-function decodeMainThreadWorklet(
-	value: unknown,
-	name: string,
-): LynxMainThreadWorkletDescriptor | null {
-	if (value === null || value === undefined) return null;
-	let descriptor = value;
-	if (typeof value === 'function') {
-		try {
-			descriptor = unwrapThreadFunctionDescriptor(value);
-		} catch {
-			throw propError(
-				LYNX_HOST_PROPS_DEVELOPMENT &&
-					`${JSON.stringify(name)} must be a main-thread worklet descriptor with a non-empty _wkltId.`,
-			);
-		}
-	}
-	assertLynxWorkletValue(descriptor, JSON.stringify(name));
-	if (!isLynxMainThreadWorkletDescriptor(descriptor)) {
-		throw propError(
-			LYNX_HOST_PROPS_DEVELOPMENT &&
-				`${JSON.stringify(name)} must be a main-thread worklet descriptor with a non-empty _wkltId.`,
-		);
-	}
-	if (descriptor._owlt !== undefined) {
-		throw propError(
-			LYNX_HOST_PROPS_DEVELOPMENT &&
-				`${JSON.stringify(name)} cannot contain a main-local _owlt activation.`,
-		);
-	}
-	return descriptor;
-}
-
-function decodeMainThreadRef(value: unknown): LynxMainThreadRefDescriptor | null {
-	if (value === null || value === undefined) return null;
-	assertLynxWorkletValue(value, '"main-thread:ref"');
-	if (!isLynxMainThreadRefDescriptor(value)) {
-		throw propError(
-			LYNX_HOST_PROPS_DEVELOPMENT &&
-				'"main-thread:ref" must be a main-thread ref descriptor with a non-empty _wvid.',
-		);
-	}
-	return value;
-}
-
 interface StructuredValuePairs {
 	readonly firstToSecond: WeakMap<object, object>;
 	readonly secondToFirst: WeakMap<object, object>;
@@ -421,10 +362,10 @@ export function sameLynxMainThreadPropValue(
 ): boolean {
 	if (Object.is(previous, next)) return true;
 	return name === 'main-thread:ref'
-		? sameStructuredValue(decodeMainThreadRef(previous), decodeMainThreadRef(next))
+		? sameStructuredValue(decodeLynxMainThreadRef(previous), decodeLynxMainThreadRef(next))
 		: sameStructuredValue(
-				decodeMainThreadWorklet(previous, name),
-				decodeMainThreadWorklet(next, name),
+				decodeLynxMainThreadWorklet(previous, name),
+				decodeLynxMainThreadWorklet(next, name),
 			);
 }
 
@@ -800,8 +741,8 @@ function planHostPropPatch(
 
 	for (const name of mainThreadEventPropNames(previousNames, nextNames)) {
 		const binding = parseLynxMainThreadEventProp(name)!;
-		const previousValue = decodeMainThreadWorklet(previous[name], name);
-		const nextValue = decodeMainThreadWorklet(next[name], name);
+		const previousValue = decodeLynxMainThreadWorklet(previous[name], name);
+		const nextValue = decodeLynxMainThreadWorklet(next[name], name);
 		const ordinaryName = `${binding.prefix}${binding.name}`;
 		if (nextValue !== null && next[ordinaryName] !== null && next[ordinaryName] !== undefined) {
 			throw propError(
@@ -815,8 +756,8 @@ function planHostPropPatch(
 	}
 
 	const previousMainThreadRef =
-		side === null ? decodeMainThreadRef(previous['main-thread:ref']) : side.mainThreadRef;
-	const nextMainThreadRef = decodeMainThreadRef(next['main-thread:ref']);
+		side === null ? decodeLynxMainThreadRef(previous['main-thread:ref']) : side.mainThreadRef;
+	const nextMainThreadRef = decodeLynxMainThreadRef(next['main-thread:ref']);
 	if (!sameStructuredValue(previousMainThreadRef, nextMainThreadRef)) {
 		patch.mainThreadRef = Object.freeze({ value: nextMainThreadRef });
 	}
@@ -972,8 +913,8 @@ export function classifyLynxHostPropUpdate(
 	}
 	for (const name of mainThreadEventPropNames(previousNames, nextNames)) {
 		const binding = parseLynxMainThreadEventProp(name)!;
-		decodeMainThreadWorklet(previous[name], name);
-		const nextValue = decodeMainThreadWorklet(next[name], name);
+		decodeLynxMainThreadWorklet(previous[name], name);
+		const nextValue = decodeLynxMainThreadWorklet(next[name], name);
 		const ordinaryName = `${binding.prefix}${binding.name}`;
 		if (nextValue !== null && next[ordinaryName] !== null && next[ordinaryName] !== undefined) {
 			throw propError(
@@ -982,8 +923,8 @@ export function classifyLynxHostPropUpdate(
 			);
 		}
 	}
-	decodeMainThreadRef(previous['main-thread:ref']);
-	decodeMainThreadRef(next['main-thread:ref']);
+	decodeLynxMainThreadRef(previous['main-thread:ref']);
+	decodeLynxMainThreadRef(next['main-thread:ref']);
 	// These four run for their rejections, and for the property reads that go
 	// with them; their results feed only the patch. `String` is how the planner
 	// coerces an `id`, and inline styles are the one normalizer that rejects.
