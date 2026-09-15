@@ -29,6 +29,7 @@ import {
 	useEffect,
 	useEffectEvent,
 	useId,
+	useImperativeHandle,
 	useInsertionEffect,
 	useLayoutEffect,
 	useLinkedState,
@@ -65,6 +66,50 @@ function scopeWithLog() {
 }
 
 describe('universal hook scope', () => {
+	it('publishes imperative handles only from accepted visible hook-scope drafts', () => {
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleLayoutEffectCommit(task) {
+				task();
+			},
+		});
+		const history: Array<string | null> = [];
+		let current: string | null = null;
+		const ref = (value: { readonly label: string } | null) => {
+			current = value?.label ?? null;
+			history.push(current);
+		};
+		const render = (label: string): void =>
+			scope.render(() => useImperativeHandle(ref, () => ({ label }), [label], 'handle'));
+
+		render('alpha');
+		expect(current).toBeNull();
+		expect(history).toEqual([]);
+		scope.commit();
+		expect(current).toBe('alpha');
+
+		render('beta');
+		expect(current).toBe('alpha');
+		scope.abort();
+		expect(history).toEqual(['alpha']);
+
+		render('beta');
+		scope.commit(false);
+		expect(current).toBeNull();
+		expect(history).toEqual(['alpha', null]);
+
+		render('gamma');
+		scope.commit(false);
+		expect(history).toEqual(['alpha', null]);
+		scope.commit(true);
+		expect(current).toBe('gamma');
+
+		scope.dispose();
+		expect(current).toBeNull();
+		expect(history).toEqual(['alpha', null, 'gamma', null]);
+	});
+
 	it('activates effect events only from the latest accepted hook-scope draft', () => {
 		const scope = createUniversalHookScope({ renderer: 'test', scheduleRender() {} });
 		const render = (value: string): (() => string) =>

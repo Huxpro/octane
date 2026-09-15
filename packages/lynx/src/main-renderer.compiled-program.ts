@@ -953,6 +953,15 @@ export function useTransition(_slot?: unknown): [boolean, typeof startTransition
 	return [false, startTransition];
 }
 
+export function useImperativeHandle<T>(
+	_ref: { current: T | null } | ((value: T | null) => void) | null,
+	_create: () => T,
+	_deps?: readonly unknown[] | null,
+	_slot?: unknown,
+): void {
+	requireRender();
+}
+
 export function useEffectEvent<T extends (...args: any[]) => any>(_fn: T, _slot?: unknown): T {
 	requireRender();
 	return NOOP_UPDATE as T;

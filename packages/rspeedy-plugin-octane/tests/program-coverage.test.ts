@@ -288,7 +288,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 24,
+				version: 25,
 				runtimeNames: [
 					'Activity',
 					'createContext',
@@ -303,6 +303,7 @@ describe('Lynx application Block eligibility', () => {
 					'useEffect',
 					'useEffectEvent',
 					'useId',
+					'useImperativeHandle',
 					'useInsertionEffect',
 					'useLayoutEffect',
 					'useLinkedState',
@@ -462,6 +463,23 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.eligible).toBe(true);
 		expect(report.reasons).toEqual([]);
 		expect(report.matrix.runtimeNames).toContain('useEffectEvent');
+	});
+
+	it('admits paired useImperativeHandle semantics', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const handles = semanticRequirements({ runtimeUses: [site('useImperativeHandle', 4, 2)] });
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: handles, mainThread: handles }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toContain('useImperativeHandle');
 	});
 
 	it('admits paired nested keyed-range ownership', () => {
@@ -1222,7 +1240,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 24 },
+				matrix: { version: 25 },
 				eligible: true,
 				reasons: [],
 			},

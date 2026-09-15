@@ -36,6 +36,7 @@ import {
 	useDeferredValue,
 	useEffectEvent,
 	useId,
+	useImperativeHandle,
 	useInsertionEffect,
 	useLayoutEffect,
 	useLinkedState,
@@ -151,6 +152,23 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 
 		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual(['function', '0', '0']);
 		expect(calls).toBe(0);
+	});
+
+	it('does not publish imperative handles from the compact first screen', () => {
+		const plan = universalPlan('lynx', PLAN);
+		const ref: { current: string | null } = { current: null };
+		let creates = 0;
+		const App = defineUniversalComponent('lynx', () => {
+			useImperativeHandle(ref, () => {
+				creates++;
+				return 'main-thread-handle';
+			}, []);
+			return universalValue(plan, [String(ref.current), creates, String(creates)]);
+		});
+
+		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual(['null', '0', '0']);
+		expect(ref.current).toBeNull();
+		expect(creates).toBe(0);
 	});
 
 	it('normalizes every resident value exactly once before the scalar transport', () => {

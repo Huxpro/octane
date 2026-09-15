@@ -2846,7 +2846,12 @@ export function warmChild(component: any, props: any): void {
 	if (typeof plan === 'function') warmFirstScreenPlan(() => plan(props));
 }
 
-export function useImperativeHandle(): void {
+export function useImperativeHandle<T>(
+	_ref: { current: T | null } | ((value: T | null) => void) | null,
+	_create: () => T,
+	_deps?: readonly unknown[] | null,
+	_slot?: unknown,
+): void {
 	currentOwner();
 }
 

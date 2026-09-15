@@ -57,6 +57,7 @@ import {
 	useDeferredValue,
 	useEffect,
 	useEffectEvent,
+	useImperativeHandle,
 	useLayoutEffect,
 	useMemo,
 	useReducer,
@@ -4550,6 +4551,59 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		await block.render(EventCard as never, { ...LADDER[4]!, onTap: noop });
 		deliverTo(block, boundListener(block.main.commits));
 		expect(taps.at(-1)).toBe('gamma');
+	});
+
+	it('publishes imperative handles only after ACK and retains the accepted handle on rejection', async () => {
+		const history: Array<string | null> = [];
+		let current: string | null = null;
+		const ref = (value: string | null) => {
+			current = value;
+			history.push(value);
+		};
+		const ImperativeCard = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function ImperativeCard({ label, detail, active, onTap }: CardProps) {
+				useImperativeHandle(ref, () => label, [label], 'imperative-handle');
+				return universalValue(CARD_PLAN, [
+					active ? 'card active' : 'card',
+					label,
+					active ? 'card-meta on' : 'card-meta',
+					onTap,
+					detail,
+				]);
+			},
+		);
+		const block = blockColumn<CardProps>();
+
+		const mounting = block.background.renderAsync(ImperativeCard as never, LADDER[0]!);
+		await flushMicrotasks();
+		expect(current).toBeNull();
+		expect(history).toEqual([]);
+		block.main.acknowledge(block.main.commits[0]!);
+		block.markPendingHandled();
+		await mounting;
+		await flushMicrotasks();
+		expect(current).toBe('alpha');
+
+		const rejected = block.background.renderAsync(ImperativeCard as never, LADDER[1]!);
+		await flushMicrotasks();
+		expect(current).toBe('alpha');
+		block.main.reject(block.main.commits[1]!, 'injected imperative-handle rejection');
+		block.markPendingHandled();
+		await expect(rejected).rejects.toThrow('injected imperative-handle rejection');
+		await flushMicrotasks();
+		expect(current).toBe('alpha');
+		expect(history).toEqual(['alpha']);
+
+		await block.render(ImperativeCard as never, LADDER[4]!);
+		await flushMicrotasks();
+		expect(current).toBe('gamma');
+		expect(history).toEqual(['alpha', null, 'gamma']);
+
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(current).toBeNull();
+		expect(history).toEqual(['alpha', null, 'gamma', null]);
 	});
 
 	it('keeps an ACKed update published when main reports a later host fault', async () => {

@@ -6,11 +6,13 @@ import {
 	useContext,
 	useEffectEvent,
 	useId,
+	useImperativeHandle,
 	useInsertionEffect,
 	useLayoutEffect,
 	useLinkedState,
 	useMemo,
 	useReducer,
+	useRef,
 } from 'octane';
 import type { OctaneNode } from 'octane';
 import type { UniversalRenderable } from 'octane/universal/native';
@@ -41,7 +43,12 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 	useInsertionEffect(() => undefined, [theme]);
 	useLayoutEffect(() => undefined, [theme]);
 	const item = props.item;
-	const select = useEffectEvent(() => props.onSelect(item.label));
+	const handle = useRef<{ select(): void } | null>(null);
+	useImperativeHandle(handle, () => ({ select: () => props.onSelect(item.label) }), [
+		props.onSelect,
+		item.label,
+	]);
+	const select = useEffectEvent(() => handle.current?.select());
 	const onTap = () => {
 		select();
 		incrementTaps(1);
