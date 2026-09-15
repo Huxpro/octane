@@ -5819,7 +5819,7 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 						undefined,
 						undefined,
 						true,
-						[props.selected, [props.onSelect], 'row', true],
+						[props.selected, [props.onSelect], 'row', true, 'id'],
 					),
 				]);
 			},
@@ -5828,6 +5828,15 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 			id: index + 1,
 			label: `row ${index + 1}`,
 		}));
+		let keyGetterCalls = 0;
+		Object.defineProperty(rows[49]!, 'id', {
+			configurable: true,
+			enumerable: true,
+			get() {
+				keyGetterCalls++;
+				return 50;
+			},
+		});
 		const onSelect = (): void => {};
 		const core = createLynxBlockCore();
 		const block = blockColumn<TableProps>(core);
@@ -5890,6 +5899,8 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 		// A new collection identity alone does not invalidate a compiler-proven
 		// row. The changed-item rung then proves the shortcut still reaches the
 		// one row whose direct item prop actually changed.
+		const beforeCloneKeys = keyCalls;
+		const beforeCloneGetter = keyGetterCalls;
 		expect(await step(25, rows.slice())).toEqual({
 			rangeCalls: 0,
 			rowCalls: 0,
@@ -5897,8 +5908,12 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 			commands: 0,
 			visited: [],
 		});
+		expect(keyCalls - beforeCloneKeys).toBe(0);
+		expect(keyGetterCalls - beforeCloneGetter).toBe(1);
 		const edited = rows.slice();
 		edited[9] = { ...edited[9]!, label: 'row 10 edited' };
+		const beforeEditedKeys = keyCalls;
+		const beforeEditedGetter = keyGetterCalls;
 		expect(await step(25, edited)).toEqual({
 			rangeCalls: 1,
 			rowCalls: 1,
@@ -5906,14 +5921,26 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 			commands: 1,
 			visited: [10_009],
 		});
+		// The compiler supplied the direct `id` key proof. An identity-aligned
+		// replacement array therefore visits only the edited row and does not build
+		// a second full key/descriptor snapshot merely to prove the same order.
+		expect(keyCalls - beforeEditedKeys).toBe(0);
+		expect(keyGetterCalls - beforeEditedGetter).toBe(1);
 		const swapped = edited.slice();
 		[swapped[1], swapped[98]] = [swapped[98]!, swapped[1]!];
+		const beforeSwappedKeys = keyCalls;
+		const beforeSwappedGetter = keyGetterCalls;
 		const swappedStep = await step(25, swapped);
 		expect(swappedStep.rangeCalls).toBe(0);
 		// The compiler proved this Row does not receive the index, so even the
 		// shifted descriptors survive without rebuilding their identical props.
 		expect(swappedStep.rowCalls).toBe(0);
 		expect(swappedStep.visited).toEqual([]);
+		// A key move fails the alignment preflight before any row is called. The
+		// compiler-certified direct-property reads are retained for the ordinary
+		// reconciler, so neither the authored keys nor any accessor are read twice.
+		expect(keyCalls - beforeSwappedKeys).toBe(0);
+		expect(keyGetterCalls - beforeSwappedGetter).toBe(1);
 
 		// Deletion-only retention reuses the committed descriptor Map. Rejecting the
 		// structural frame must leave that Map intact: key 50 still has to be

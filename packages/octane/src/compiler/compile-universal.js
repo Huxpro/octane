@@ -3469,7 +3469,7 @@ function keyedSelectionForComponent(node, component, state, itemBinding, indexBi
 		}
 		deps.push(capture.nodes[0]);
 	}
-	return { selected, deps, itemProp, indexIndependent };
+	return { selected, deps, itemProp, indexIndependent, keyProp: keyProperty };
 }
 
 /**
@@ -4923,6 +4923,7 @@ function compileForAst(node, context, state) {
 						),
 						b.literal(keyedSelection.itemProp),
 						b.literal(keyedSelection.indexIndependent),
+						b.literal(keyedSelection.keyProp),
 					]),
 					templateComponent,
 				),
