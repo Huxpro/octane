@@ -7,6 +7,7 @@ import { lynxBlockRspeedyBackgroundRenderers } from '@octanejs/lynx/config';
 import { installLynxBackgroundCoreReplacement } from './background-core.js';
 import { installLynxBlockComponentFeatureReplacement } from './block-component-features.js';
 import { installLynxCompiledProgramFeatureReplacement } from './compiled-program-features.js';
+import { installLynxCompiledProgramNativeListFeatureReplacement } from './compiled-program-native-list-feature.js';
 import { installLynxApplicationSelectionReplacement } from './application-selection.js';
 
 export const LYNX_PROGRAM_COVERAGE_ASSET_INFO = 'octane:lynx-program-coverage';
@@ -28,6 +29,9 @@ export const LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_VERSION = 1;
 export const LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO =
 	'octane:lynx-compiled-program-feature-selection';
 export const LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_VERSION = 1;
+export const LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO =
+	'octane:lynx-compiled-program-native-list-feature-selection';
+export const LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_VERSION = 1;
 export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 20;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
@@ -147,6 +151,53 @@ function isLynxCompiledProgramFeatureOwner(module) {
 			resource.endsWith('/packages/lynx/src/core/compiled-program-transport.ts') ||
 			resource.includes('/node_modules/@octanejs/lynx/src/core/compiled-program-transport.ts'))
 	);
+}
+
+function isLynxCompiledProgramNativeListFeatureOwner(module) {
+	const resource = moduleResource(module);
+	return (
+		resource !== null &&
+		(resource.endsWith('/packages/lynx/src/core/compiled-program-first-screen.ts') ||
+			resource.includes('/node_modules/@octanejs/lynx/src/core/compiled-program-first-screen.ts') ||
+			resource.endsWith('/packages/lynx/src/core/compiled-program-store.ts') ||
+			resource.includes('/node_modules/@octanejs/lynx/src/core/compiled-program-store.ts') ||
+			resource.endsWith('/packages/lynx/src/core/papi.ts') ||
+			resource.includes('/node_modules/@octanejs/lynx/src/core/papi.ts'))
+	);
+}
+
+function isLynxCompiledProgramNativeListFeature(module, selected) {
+	const resource = moduleResource(module);
+	if (resource === null) return false;
+	return selected === 'no-native-list'
+		? resource.endsWith('/compiled-program-native-list-feature.no-native-list.ts')
+		: resource.endsWith('/compiled-program-native-list-feature.ts');
+}
+
+function verifyCompiledProgramNativeListFeatureSelection(compilation, owners, selected) {
+	if (selected === 'no-native-list' && owners.length === 0) {
+		throw new Error(
+			'@octanejs/rspeedy-plugin: compiled-program store disappeared during native-list specialization.',
+		);
+	}
+	for (const owner of owners) {
+		const featureConnections = [...compilation.moduleGraph.getOutgoingConnections(owner)].filter(
+			(connection) =>
+				activeConnection(connection) &&
+				connection.module != null &&
+				(isLynxCompiledProgramNativeListFeature(connection.module, 'full') ||
+					isLynxCompiledProgramNativeListFeature(connection.module, 'no-native-list')),
+		);
+		if (featureConnections.length === 0) continue;
+		const resolved = featureConnections.some((connection) =>
+			isLynxCompiledProgramNativeListFeature(connection.module, selected),
+		);
+		if (!resolved) {
+			throw new Error(
+				`@octanejs/rspeedy-plugin: compiled-program store did not resolve the selected ${selected} native-list feature module.`,
+			);
+		}
+	}
 }
 
 function isLynxCompiledProgramFeatures(module, selected) {
@@ -1501,6 +1552,61 @@ export function decideLynxCompiledProgramFeatures(compiler, entries, reports, ap
 	});
 }
 
+function reportRequiresNativeList(report) {
+	if (report?.featureRequirements?.paired !== true) return true;
+	for (const module of report.featureRequirements.modules) {
+		for (const requirements of [module.background, module.mainThread]) {
+			for (const feature of requirements.templateFeatures) {
+				if (feature.kind === 'native-list') return true;
+			}
+		}
+	}
+	return false;
+}
+
+/**
+ * Remove resident native-list support only when every paired compiler ledger
+ * proves that neither thread can author a list. Unknown, non-production, and
+ * general application graphs retain the source-safe full implementation.
+ */
+export function decideLynxCompiledProgramNativeListFeature(
+	compiler,
+	entries,
+	reports,
+	applicationDecision,
+) {
+	const reasons = [];
+	if (!oneShotProduction(compiler)) {
+		reasons.push(reason('native-list-specialization-requires-one-shot-production'));
+	}
+	if (
+		applicationDecision?.selected !== 'compiled-program' &&
+		applicationDecision?.selected !== 'compiled-program-element-template'
+	) {
+		reasons.push(reason('native-list-specialization-requires-compiled-application'));
+	}
+	for (const entry of entries) {
+		const report = reports.get(entry.mainThreadEntry);
+		if (report === undefined) {
+			reasons.push(reason('selection-report-missing', { entry: entry.mainThreadEntry }));
+			continue;
+		}
+		if (report.compiledProgramSelection?.eligible !== true) {
+			reasons.push(reason('entry-ineligible', { entry: entry.mainThreadEntry }));
+			continue;
+		}
+		if (reportRequiresNativeList(report)) {
+			reasons.push(reason('entry-requires-native-list', { entry: entry.mainThreadEntry }));
+		}
+	}
+	if (entries.length === 0) reasons.push(reason('no-authored-entries'));
+	return Object.freeze({
+		version: LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_VERSION,
+		selected: reasons.length === 0 ? 'no-native-list' : 'full',
+		reasons: Object.freeze(reasons),
+	});
+}
+
 /** Attach versioned proofs and specialize the one-core production graph. */
 export class LynxProgramCoveragePlugin {
 	constructor(
@@ -1536,6 +1642,10 @@ export class LynxProgramCoveragePlugin {
 			compiler,
 			() => activeState?.compiledProgramFeatures.selected ?? 'full',
 		);
+		installLynxCompiledProgramNativeListFeatureReplacement(
+			compiler,
+			() => activeState?.compiledProgramNativeListFeature.selected ?? 'full',
+		);
 		installLynxApplicationSelectionReplacement(
 			compiler,
 			() => activeState?.applicationDecision.selected ?? 'general',
@@ -1566,6 +1676,11 @@ export class LynxProgramCoveragePlugin {
 					selected: 'full',
 					reasons: Object.freeze([reason('application-graph-not-collected')]),
 				}),
+				compiledProgramNativeListFeature: Object.freeze({
+					version: LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_VERSION,
+					selected: 'full',
+					reasons: Object.freeze([reason('application-graph-not-collected')]),
+				}),
 			};
 			states.set(compilation, state);
 			activeState = state;
@@ -1593,6 +1708,8 @@ export class LynxProgramCoveragePlugin {
 									[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO]: state.blockComponentFeatures,
 									[LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO]:
 										state.compiledProgramFeatures,
+									[LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO]:
+										state.compiledProgramNativeListFeature,
 								});
 							}
 						}
@@ -1635,6 +1752,12 @@ export class LynxProgramCoveragePlugin {
 				state.reports,
 				state.applicationDecision,
 			);
+			state.compiledProgramNativeListFeature = decideLynxCompiledProgramNativeListFeature(
+				compiler,
+				this.entries,
+				state.reports,
+				state.applicationDecision,
+			);
 			activeState = state;
 			const rebuild = new Set();
 			if (this.configuredCore === undefined && state.decision.selected === 'block') {
@@ -1663,6 +1786,13 @@ export class LynxProgramCoveragePlugin {
 			}
 			if (state.compiledProgramFeatures.selected !== 'full') {
 				for (const owner of [...compilation.modules].filter(isLynxCompiledProgramFeatureOwner)) {
+					rebuild.add(owner);
+				}
+			}
+			if (state.compiledProgramNativeListFeature.selected !== 'full') {
+				for (const owner of [...compilation.modules].filter(
+					isLynxCompiledProgramNativeListFeatureOwner,
+				)) {
 					rebuild.add(owner);
 				}
 			}
@@ -1702,6 +1832,11 @@ export class LynxProgramCoveragePlugin {
 				compilation,
 				[...compilation.modules].filter(isLynxCompiledProgramFeatureOwner),
 				state.compiledProgramFeatures.selected,
+			);
+			verifyCompiledProgramNativeListFeatureSelection(
+				compilation,
+				[...compilation.modules].filter(isLynxCompiledProgramNativeListFeatureOwner),
+				state.compiledProgramNativeListFeature.selected,
 			);
 		});
 	}
