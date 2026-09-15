@@ -27,6 +27,11 @@ const producerFiles = [
 	'benchmarks/lynx-table/stages/issue291-m0-native-probe.mjs',
 	'benchmarks/lynx-table/stages/issue291-native-memory-analyze.mjs',
 ];
+const bundleProbeMarkers = [
+	'__NATIVE_BENCH_RESULT__',
+	'lynx-native-bench-v2',
+	'octane-root.flushTransport',
+];
 
 function sha256(value) {
 	return crypto.createHash('sha256').update(value).digest('hex');
@@ -54,8 +59,13 @@ function git(directory, args) {
 function version(directory, command, args) {
 	const result = spawnSync(command, args, { cwd: directory, encoding: 'utf8' });
 	const output = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
-	if (result.error !== undefined || output === '') {
-		throw result.error ?? new Error(`could not identify ${command}`);
+	if (result.error !== undefined || result.status !== 0 || output === '') {
+		throw (
+			result.error ??
+			new Error(
+				`could not identify ${command}: exit ${String(result.status)}${output && `\n${output}`}`,
+			)
+		);
 	}
 	return output;
 }
@@ -160,6 +170,11 @@ const restored = git(checkout, [
 	...sourceFiles,
 ]);
 if (restored !== '') throw new Error(`${label} source restoration failed:\n${restored}`);
+for (const marker of bundleProbeMarkers) {
+	if (!bundle.includes(Buffer.from(marker))) {
+		throw new Error(`${label} bundle is missing the Native receipt marker ${marker}`);
+	}
+}
 
 fs.mkdirSync(output, { recursive: false });
 fs.writeFileSync(path.join(output, 'main.lynx.bundle'), bundle);
@@ -207,6 +222,7 @@ const receipt = {
 		file: 'main.lynx.bundle',
 		sha256: sha256(bundle),
 		bytes: bundle.length,
+		probeMarkers: bundleProbeMarkers,
 	},
 };
 fs.writeFileSync(path.join(output, 'receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`);
