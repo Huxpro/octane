@@ -34,6 +34,7 @@ import {
 	useBatch,
 	useContext,
 	useDeferredValue,
+	useInsertionEffect,
 	useLayoutEffect,
 	useMemo,
 	useReducer,
@@ -104,6 +105,9 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 				memoCalls++;
 				return `count:${getCount()}`;
 			}, [count]);
+			useInsertionEffect(() => {
+				throw new Error('the compact first screen must not publish insertion effects');
+			}, [label]);
 			useLayoutEffect(() => {
 				throw new Error('the compact first screen must not publish layout effects');
 			}, [label]);

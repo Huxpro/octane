@@ -178,6 +178,8 @@ export function createLynxBlockBackgroundCore(
 		core,
 	});
 	let afterCommitTasks: (() => void)[] = [];
+	let afterInsertionCommitTasks: (() => void)[] = [];
+	let afterLayoutCommitTasks: (() => void)[] = [];
 	let afterPassiveCommitTasks: (() => void)[] = [];
 	let afterAbortTasks: (() => void)[] = [];
 	let passiveTasks: (() => void)[] = [];
@@ -219,9 +221,10 @@ export function createLynxBlockBackgroundCore(
 		let hasError = false;
 		let firstError: unknown;
 		try {
-			// A scope publication may enqueue its layout phase while this drain is
-			// running. Keep draining until every accepted synchronous task has had
-			// its turn rather than leaving the nested phase for a later render.
+			// A scope publication may enqueue insertion/layout phases while this
+			// drain is running. Publish every semantic scope first, then cross the
+			// root-wide insertion and layout boundaries below; otherwise keyed child
+			// scopes could interleave insertion(row A), layout(row A), insertion(row B).
 			while (afterCommitTasks.length !== 0) {
 				const tasks = afterCommitTasks;
 				afterCommitTasks = [];
@@ -235,6 +238,26 @@ export function createLynxBlockBackgroundCore(
 				}
 			}
 		} finally {
+			const insertion = afterInsertionCommitTasks;
+			afterInsertionCommitTasks = [];
+			const layout = afterLayoutCommitTasks;
+			afterLayoutCommitTasks = [];
+			try {
+				runTasks(insertion);
+			} catch (error) {
+				if (!hasError) {
+					hasError = true;
+					firstError = error;
+				}
+			}
+			try {
+				runTasks(layout);
+			} catch (error) {
+				if (!hasError) {
+					hasError = true;
+					firstError = error;
+				}
+			}
 			const passive = afterPassiveCommitTasks;
 			afterPassiveCommitTasks = [];
 			// Match the universal root: accepted passive work is not stranded by
@@ -255,6 +278,8 @@ export function createLynxBlockBackgroundCore(
 		const tasks = afterAbortTasks;
 		afterAbortTasks = [];
 		afterCommitTasks = [];
+		afterInsertionCommitTasks = [];
+		afterLayoutCommitTasks = [];
 		afterPassiveCommitTasks = [];
 		runTasks(tasks);
 		return true;
@@ -311,6 +336,12 @@ export function createLynxBlockBackgroundCore(
 		},
 		afterCommit(task: () => void): void {
 			afterCommitTasks.push(task);
+		},
+		afterInsertionCommit(task: () => void): void {
+			afterInsertionCommitTasks.push(task);
+		},
+		afterLayoutCommit(task: () => void): void {
+			afterLayoutCommitTasks.push(task);
 		},
 		afterPassiveCommit(task: () => void): void {
 			afterPassiveCommitTasks.push(task);

@@ -24,8 +24,8 @@
 // events over the same nodes in the same order.
 //
 // What this does not cover is refused by name rather than half-rendered, and
-// the refusals are asserted here too. Insertion-effect timing remains a later
-// composition layer; compiler-slot identities now cover overlapping ranges.
+// the refusals are asserted here too. Accepted insertion/layout/passive phases
+// and compiler-slot identities now cover overlapping component ranges.
 import { describe, expect, it, vi } from 'vitest';
 
 vi.hoisted(() => {
@@ -99,6 +99,8 @@ import {
 	type BlockContextProps,
 	BlockDynamicComponentFixture,
 	type BlockDynamicComponentProps,
+	BlockInsertionFixture,
+	type BlockInsertionProps,
 	BlockCompositionFixture,
 	type BlockCompositionProps,
 	BlockScopedRow,
@@ -4495,24 +4497,117 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		);
 	});
 
-	it('still refuses a page insertion effect because the Block core has no pre-mutation phase', async () => {
-		const block = blockColumn();
-		const Inserting = defineUniversalComponent(
+	it('publishes insertion effects only after acceptance and before layout and passive work', async () => {
+		const block = blockColumn<BlockInsertionProps>();
+		const lifecycle: string[] = [];
+		const props = { label: 'alpha', log: (entry: string) => lifecycle.push(entry) };
+		const component = BlockInsertionFixture as never as LynxComponent<BlockInsertionProps>;
+		const rejected = block.background.renderAsync(component as never, props);
+		rejected.catch(() => undefined);
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([]);
+		block.main.reject(block.main.commits[0]!, 'injected insertion rejection');
+		await expect(rejected).rejects.toThrow('injected insertion rejection');
+		expect(lifecycle).toEqual([]);
+
+		const accepted = block.background.renderAsync(component as never, props);
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits[1]!);
+		await accepted;
+		expect(lifecycle.slice(0, 2)).toEqual(['insertion:create:alpha', 'layout:create:alpha']);
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([
+			'insertion:create:alpha',
+			'layout:create:alpha',
+			'passive:create:alpha',
+		]);
+	});
+
+	it('drains every keyed-row insertion phase before any layout phase', async () => {
+		const lifecycle: string[] = [];
+		const Row = defineUniversalComponent(
 			LYNX_TRANSPORT_RENDERER,
-			function Inserting({ label, detail, active, onTap }: CardProps) {
-				useInsertionEffect(() => undefined, [], 'insert');
-				return universalValue(CARD_PLAN, [
-					active ? 'card active' : 'card',
-					label,
-					active ? 'card-meta on' : 'card-meta',
-					onTap,
-					detail,
-				]);
+			function Row({ id }: { readonly id: number }) {
+				useInsertionEffect(() => void lifecycle.push(`insertion:${id}`), [], 'insertion');
+				useLayoutEffect(() => void lifecycle.push(`layout:${id}`), [], 'layout');
+				return universalValue(ROW_PLAN, ['row', String(id), noop, `row ${id}`]);
 			},
 		);
-		await expect(
-			block.settle(block.background.renderAsync(Inserting as never, LADDER[0]!)),
-		).rejects.toThrow(/Inserting.*insertion effect/s);
+		const Page = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			() =>
+				universalValue(TABLE_PLAN, [
+					universalFor(
+						[1, 2],
+						(id) => id,
+						(id) => universalComponent(LYNX_TRANSPORT_RENDERER, Row, { id }),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const block = blockColumn<Record<string, never>>();
+
+		await block.render(Page as never, {});
+		expect(lifecycle).toHaveLength(4);
+		expect(lifecycle.slice(0, 2).every((entry) => entry.startsWith('insertion:'))).toBe(true);
+		expect(lifecycle.slice(2).every((entry) => entry.startsWith('layout:'))).toBe(true);
+	});
+
+	it('keeps an Activity insertion effect connected while hidden and current across hidden updates', async () => {
+		const lifecycle: string[] = [];
+		const Child = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Child({ label }: { readonly label: string }) {
+				useInsertionEffect(
+					() => {
+						lifecycle.push(`insertion:create:${label}`);
+						return () => lifecycle.push(`insertion:cleanup:${label}`);
+					},
+					[label],
+					'insertion',
+				);
+				useLayoutEffect(
+					() => {
+						lifecycle.push(`layout:create:${label}`);
+						return () => lifecycle.push(`layout:cleanup:${label}`);
+					},
+					[label],
+					'layout',
+				);
+				return lynxProgramValue(CARD_COMPILER_PROGRAM, [
+					'activity',
+					label,
+					'meta',
+					noop,
+					label,
+				]) as never;
+			},
+		);
+		const Page = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			({ mode, label }: { readonly mode: 'visible' | 'hidden'; readonly label: string }) =>
+				universalValue(TABLE_PLAN, [
+					universalActivity(mode, () =>
+						universalComponent(LYNX_TRANSPORT_RENDERER, Child, { label }),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const block = blockColumn<{ readonly mode: 'visible' | 'hidden'; readonly label: string }>();
+
+		await block.render(Page as never, { mode: 'hidden', label: 'alpha' });
+		expect(lifecycle).toEqual(['insertion:create:alpha']);
+
+		await block.render(Page as never, { mode: 'hidden', label: 'beta' });
+		expect(lifecycle.slice(-2)).toEqual(['insertion:cleanup:alpha', 'insertion:create:beta']);
+
+		await block.render(Page as never, { mode: 'visible', label: 'beta' });
+		expect(lifecycle.at(-1)).toBe('layout:create:beta');
+		await block.render(Page as never, { mode: 'hidden', label: 'beta' });
+		expect(lifecycle.at(-1)).toBe('layout:cleanup:beta');
+
+		await block.settle(block.background.unmountAsync());
+		expect(lifecycle.at(-1)).toBe('insertion:cleanup:beta');
 	});
 
 	it('answers a context default when no provider overrides it', async () => {

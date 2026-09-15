@@ -288,7 +288,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 20,
+				version: 21,
 				runtimeNames: [
 					'Activity',
 					'createContext',
@@ -301,6 +301,7 @@ describe('Lynx application Block eligibility', () => {
 					'useContext',
 					'useDeferredValue',
 					'useEffect',
+					'useInsertionEffect',
 					'useLayoutEffect',
 					'useMemo',
 					'useReducer',
@@ -358,11 +359,16 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.matrix.runtimeNames).toContain('Activity');
 	});
 
-	it('admits the retained reducer, memo, and layout-effect hook set only when paired', () => {
+	it('admits the retained reducer, memo, insertion, and layout-effect hook set only when paired', () => {
 		const proofs = completeProofs();
 		const semanticModule = proofs.semanticRequirements.modules[0]!;
 		const hooks = semanticRequirements({
-			runtimeUses: [site('useLayoutEffect', 4, 2), site('useMemo', 5, 2), site('useReducer', 6, 2)],
+			runtimeUses: [
+				site('useInsertionEffect', 4, 2),
+				site('useLayoutEffect', 5, 2),
+				site('useMemo', 6, 2),
+				site('useReducer', 7, 2),
+			],
 		});
 		const report = evaluateLynxBlockEligibility({
 			...proofs,
@@ -375,7 +381,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.eligible).toBe(true);
 		expect(report.reasons).toEqual([]);
 		expect(report.matrix.runtimeNames).toEqual(
-			expect.arrayContaining(['useLayoutEffect', 'useMemo', 'useReducer']),
+			expect.arrayContaining(['useInsertionEffect', 'useLayoutEffect', 'useMemo', 'useReducer']),
 		);
 	});
 
@@ -1162,7 +1168,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 20 },
+				matrix: { version: 21 },
 				eligible: true,
 				reasons: [],
 			},

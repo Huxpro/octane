@@ -4,6 +4,7 @@ import {
 	createContext,
 	memo,
 	useContext,
+	useInsertionEffect,
 	useLayoutEffect,
 	useMemo,
 	useReducer,
@@ -29,6 +30,7 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 	const [taps, incrementTaps] = useReducer((value: number, amount: number) => value + amount, 0);
 	const theme = useContext(BlockTheme);
 	const rowClass = useMemo(() => ['row', theme, 'taps-' + taps], [theme, taps]);
+	useInsertionEffect(() => undefined, [theme]);
 	useLayoutEffect(() => undefined, [theme]);
 	const item = props.item;
 	const onTap = () => {

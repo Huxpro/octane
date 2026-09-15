@@ -5,12 +5,39 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useInsertionEffect,
+	useLayoutEffect,
 	useState,
 } from 'octane';
 
 export interface BlockScopedRowValue {
 	readonly id: number;
 	readonly label: string;
+}
+
+export interface BlockInsertionProps {
+	readonly label: string;
+	readonly log: (entry: string) => void;
+}
+
+export function BlockInsertionFixture(props: BlockInsertionProps) @{
+	const label = props.label;
+	const log = props.log;
+	useInsertionEffect(() => {
+		log('insertion:create:' + label);
+		return () => log('insertion:cleanup:' + label);
+	}, [label]);
+	useLayoutEffect(() => {
+		log('layout:create:' + label);
+		return () => log('layout:cleanup:' + label);
+	}, [label]);
+	useEffect(() => {
+		log('passive:create:' + label);
+		return () => log('passive:cleanup:' + label);
+	}, [label]);
+	<view class="insertion-fixture">
+		<text>{label as string}</text>
+	</view>
 }
 
 export interface BlockScopedRowsProps {

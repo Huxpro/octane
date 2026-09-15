@@ -807,6 +807,9 @@ export function useReducer<S, A, I = S>(
 
 export const __useReducerWithGetter = useReducer;
 
+export function useInsertionEffect(): void {
+	requireRender();
+}
 export function useLayoutEffect(): void {
 	requireRender();
 }

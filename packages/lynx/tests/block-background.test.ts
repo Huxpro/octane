@@ -275,6 +275,31 @@ describe('Lynx block background core', () => {
 		expect(lifecycle).toEqual(['passive', 'update']);
 	});
 
+	it('finishes accepted layout and passive phases when an insertion callback throws', async () => {
+		const microtasks: (() => void)[] = [];
+		const harness = scene((task) => microtasks.push(task));
+		const lifecycle: string[] = [];
+		const component = withLynxBlockProgram((() => null) as unknown as LynxComponent<ProgramProps>, {
+			mount(context) {
+				context.core.mount(null, null, PAGE_TEMPLATE, []);
+				context.afterInsertionCommit(() => {
+					lifecycle.push('insertion');
+					throw new Error('insertion failed');
+				});
+				context.afterLayoutCommit(() => lifecycle.push('layout'));
+				context.afterPassiveCommit(() => lifecycle.push('passive'));
+			},
+		});
+
+		await expect(
+			settle(harness, harness.background.renderAsync(component as never, { labels: [] })),
+		).rejects.toThrow('insertion failed');
+		expect(lifecycle).toEqual(['insertion', 'layout']);
+		expect(microtasks).toHaveLength(1);
+		microtasks.shift()!();
+		expect(lifecycle).toEqual(['insertion', 'layout', 'passive']);
+	});
+
 	it('orders an accepted layout update behind its publishing commit', async () => {
 		const harness = scene();
 		const lifecycle: string[] = [];

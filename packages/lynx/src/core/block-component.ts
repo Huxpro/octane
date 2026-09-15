@@ -42,10 +42,11 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
  *
  * ## What this deliberately does not cover, and why the refusals are loud
  *
- * Page and child layout effects run after host acknowledgement; passive effects
- * run on the root's following microtask, before its next render. Insertion
- * effects are refused because this core has no pre-mutation phase. Context
- * values follow providers into retained keyed and branch scopes.
+ * Page and child insertion/layout effects run in separate ordered phases after
+ * host acknowledgement; passive effects run on the root's following microtask,
+ * before its next render. This is the documented Lynx cross-thread divergence:
+ * background effects cannot synchronously block native paint. Context values
+ * follow providers into retained keyed and branch scopes.
  *
  * Nested and sibling ranges retain compiler-slot ownership recursively. Native
  * lists still refuse ranged rows until physical cell recycling can carry that
@@ -87,12 +88,12 @@ import type {
 import {
 	createUniversalHookScope,
 	defineUniversalComponent,
-	UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED,
 	universalComponent,
 	universalSuspensionThenable,
 	type UniversalHookScope,
 	type UniversalHookScopePrepared,
 	useEffect,
+	useInsertionEffect,
 	useLayoutEffect,
 } from 'octane/universal/native';
 import {
@@ -202,9 +203,6 @@ const LYNX_BLOCK_COMPONENT_DEVELOPMENT =
 const HOOKS_WITHOUT_ATTEMPT =
 	'Universal hooks may only run while a universal component is rendering.';
 
-/** Why the one phase the page scope cannot publish is refused, said once. */
-const INSERTION_EFFECTS_UNSUPPORTED =
-	'its setup declares an insertion effect, whose pre-mutation phase the Block core does not have (issue #290).';
 /** Compiler proof that a component needs semantic hook ownership. */
 function componentMayNeedHookScope(component: LynxComponent<never>): boolean {
 	const metadata = (component as unknown as Record<PropertyKey, unknown>)[UNIVERSAL_COMPONENT] as
@@ -824,19 +822,17 @@ export function lynxBlockProgramForComponent<Props>(
 	/**
 	 * The second argument a compiled component is called with.
 	 *
-	 * The page's scope stands up cells and the background core gives layout work
-	 * an accepted-host boundary and passive work an explicit microtask phase. It
-	 * still has neither insertion effects nor an owner chain. Passing `undefined`
-	 * would refuse those capabilities
-	 * too, with a TypeError naming a property rather than the layer.
+	 * The page's scope stands up cells and the background core gives insertion
+	 * and layout work ordered accepted-host phases, followed by an explicit
+	 * passive microtask phase. It still has no owner chain.
 	 */
 	const renderContext: UniversalRenderContext = Object.freeze({
 		renderer: LYNX_TRANSPORT_RENDERER,
 		readContext<T>(context: UniversalContext<T>): T {
 			return readSemanticContext(renderingContexts, context);
 		},
-		insertionEffect(): never {
-			refuse(rendering, LYNX_BLOCK_COMPONENT_DEVELOPMENT && INSERTION_EFFECTS_UNSUPPORTED);
+		insertionEffect(create: () => void | (() => void), deps?: readonly unknown[]): void {
+			useInsertionEffect(create, deps);
 		},
 		layoutEffect(create: () => void | (() => void), deps?: readonly unknown[]): void {
 			useLayoutEffect(create, deps);
@@ -1114,8 +1110,11 @@ export function lynxBlockProgramForComponent<Props>(
 			readContext(context) {
 				return readSemanticContext(renderingContexts, context);
 			},
+			scheduleInsertionEffectCommit(task): void {
+				liveContext!.afterInsertionCommit(task);
+			},
 			scheduleLayoutEffectCommit(task): void {
-				liveContext!.afterCommit(task);
+				liveContext!.afterLayoutCommit(task);
 			},
 			schedulePassiveEffectCommit(task): void {
 				liveContext!.afterPassiveCommit(task);
@@ -1128,12 +1127,6 @@ export function lynxBlockProgramForComponent<Props>(
 			cells.abort();
 			liveContext = previousContext;
 			liveProps = previousProps;
-			// The scope refuses capabilities it does not implement with stable
-			// messages; rename insertion effects here to the layer the application
-			// can see.
-			if (error instanceof Error && error.message === UNIVERSAL_HOOK_SCOPE_EFFECTS_REFUSED) {
-				refuse(subject, LYNX_BLOCK_COMPONENT_DEVELOPMENT && INSERTION_EFFECTS_UNSUPPORTED);
-			}
 			throw error;
 		}
 		const transitionAttempt = LYNX_BLOCK_TRANSITIONS ? activeTransitionAttempt : null;
@@ -1575,8 +1568,11 @@ export function lynxBlockProgramForComponent<Props>(
 					readContext(context) {
 						return readSemanticContext(renderingContexts, context);
 					},
+					scheduleInsertionEffectCommit(task): void {
+						liveContext!.afterInsertionCommit(task);
+					},
 					scheduleLayoutEffectCommit(task): void {
-						liveContext!.afterCommit(task);
+						liveContext!.afterLayoutCommit(task);
 					},
 					schedulePassiveEffectCommit(task): void {
 						liveContext!.afterPassiveCommit(task);

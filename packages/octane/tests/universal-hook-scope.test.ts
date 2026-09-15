@@ -712,6 +712,64 @@ describe('universal hook scope', () => {
 		scope.dispose();
 	});
 
+	it('publishes insertion effects in their own phase and keeps them connected while hidden', () => {
+		const insertion: (() => void)[] = [];
+		const layout: (() => void)[] = [];
+		const lifecycle: string[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleInsertionEffectCommit: (task) => insertion.push(task),
+			scheduleLayoutEffectCommit: (task) => layout.push(task),
+		});
+		const render = (version: number, visible: boolean): void => {
+			scope.render(() => {
+				useInsertionEffect(
+					() => {
+						lifecycle.push(`insertion:create:${version}`);
+						return () => lifecycle.push(`insertion:cleanup:${version}`);
+					},
+					[version],
+					'insertion',
+				);
+				useLayoutEffect(
+					() => {
+						lifecycle.push(`layout:create:${version}`);
+						return () => lifecycle.push(`layout:cleanup:${version}`);
+					},
+					[version],
+					'layout',
+				);
+			});
+			scope.commit(visible);
+		};
+
+		render(0, false);
+		expect(insertion).toHaveLength(1);
+		expect(layout).toEqual([]);
+		insertion.shift()!();
+		expect(lifecycle).toEqual(['insertion:create:0']);
+
+		render(1, false);
+		expect(insertion).toHaveLength(1);
+		expect(layout).toEqual([]);
+		insertion.shift()!();
+		expect(lifecycle.slice(-2)).toEqual(['insertion:cleanup:0', 'insertion:create:1']);
+
+		render(1, true);
+		expect(insertion).toEqual([]);
+		expect(layout).toHaveLength(1);
+		layout.shift()!();
+		expect(lifecycle.at(-1)).toBe('layout:create:1');
+
+		scope.dispose();
+		expect(insertion).toHaveLength(1);
+		expect(layout).toHaveLength(1);
+		insertion.shift()!();
+		layout.shift()!();
+		expect(lifecycle.slice(-2)).toEqual(['insertion:cleanup:1', 'layout:cleanup:1']);
+	});
+
 	it('refuses a context read instead of silently answering the default value', () => {
 		const { scope } = scopeWithLog();
 		const Theme = createContext('light');
