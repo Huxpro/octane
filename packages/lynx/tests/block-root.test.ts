@@ -88,13 +88,22 @@ function rowValues(row: Row, selected: number | null): readonly (string | number
 	return [row.id === selected ? 'row danger' : 'row', row.label];
 }
 
-function scene(compact = false) {
+function scene(
+	compact = false,
+	eventScope?: Parameters<typeof createLynxBlockRoot>[0]['eventScope'],
+) {
 	const context = new FakeContextProxy();
 	const main = installMainSide(context, compact);
 	const container = createLynxClientContainer();
 	const transport = createLynxBackgroundTransport(context, container);
 	const core = createLynxBlockCore();
-	const root = createLynxBlockRoot({ container, transport, transportRoot: 1, core });
+	const root = createLynxBlockRoot({
+		container,
+		transport,
+		transportRoot: 1,
+		core,
+		...(eventScope === undefined ? {} : { eventScope }),
+	});
 	transport.bindRoot(root);
 	const page = core.mount(null, null, PAGE_TEMPLATE, []);
 	const slot = core.openForSlot(page, 1);
@@ -550,7 +559,18 @@ describe('Lynx block root — event identity and batch completeness', () => {
 	});
 
 	it('runs every pre-validated delivery even when an earlier handler throws', async () => {
-		const { main, root, core, slot } = scene();
+		let scopeCalls = 0;
+		let insideScope = false;
+		const { main, root, core, slot } = scene(false, (priority, run) => {
+			expect(priority).toBe('discrete');
+			scopeCalls++;
+			insideScope = true;
+			try {
+				return run();
+			} finally {
+				insideScope = false;
+			}
+		});
 		core.fillForSlot(
 			slot,
 			ROW_TEMPLATE,
@@ -563,11 +583,18 @@ describe('Lynx block root — event identity and batch completeness', () => {
 		const taps: string[] = [];
 		root.bindListeners(first, [
 			() => {
+				expect(insideScope).toBe(true);
 				throw new Error('handler one failed');
 			},
 			null,
 		]);
-		root.bindListeners(second, [() => taps.push('second ran'), null]);
+		root.bindListeners(second, [
+			() => {
+				expect(insideScope).toBe(true);
+				taps.push('second ran');
+			},
+			null,
+		]);
 		await commitAndAck(root, main);
 
 		expect(() =>
@@ -586,5 +613,7 @@ describe('Lynx block root — event identity and batch completeness', () => {
 		).toThrowError('handler one failed');
 		// The throw is reported, but the valid batch was dispatched completely.
 		expect(taps).toEqual(['second ran']);
+		expect(scopeCalls).toBe(1);
+		expect(insideScope).toBe(false);
 	});
 });

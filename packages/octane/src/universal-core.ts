@@ -1789,6 +1789,19 @@ const PENDING_UNIVERSAL_PASSIVE_ROOTS = new Set<UniversalRootImpl<any, any>>();
 let UNIVERSAL_SYNC_DEPTH = 0;
 let UNIVERSAL_COMMIT_TASK_DEPTH = 0;
 let UNIVERSAL_DISCRETE_EVENT_DEPTH = 0;
+
+/** Enter the update-priority scope owned by a renderer-specific event bridge. */
+export function runUniversalEventScope<T>(priority: UniversalEventPriority, run: () => T): T {
+	if (priority !== 'discrete' && priority !== 'continuous' && priority !== 'default') {
+		throw new TypeError(`Unknown universal event priority ${JSON.stringify(priority)}.`);
+	}
+	if (priority === 'discrete') UNIVERSAL_DISCRETE_EVENT_DEPTH++;
+	try {
+		return run();
+	} finally {
+		if (priority === 'discrete') UNIVERSAL_DISCRETE_EVENT_DEPTH--;
+	}
+}
 const UNIVERSAL_SYNC_DRAIN_LIMIT = 100;
 let NEXT_HOOK_SLOT = 0;
 let NEXT_OWNER_ID = 1;
@@ -5867,6 +5880,20 @@ function universalTransitionBatchForRecordUpdate(
 	return universalTransitionBatchForUpdate();
 }
 
+function scheduleUniversalOwnerMicrotask(record: UniversalOwnerRecord, callback: () => void): void {
+	const scopeRoot = record.root as {
+		hookScopeStandIn?: boolean;
+		hookScopeTransitions?: boolean;
+	};
+	if (scopeRoot.hookScopeStandIn !== true || scopeRoot.hookScopeTransitions === true) {
+		record.root.__scheduleMicrotask(callback);
+		return;
+	}
+	const scheduler = readGlobalMicrotaskScheduler();
+	if (scheduler !== undefined) scheduler.call(globalThis, callback);
+	else void Promise.resolve().then(callback);
+}
+
 function stageUniversalTransitionUpdate(
 	batch: UniversalTransitionBatch,
 	owner: UniversalOwnerRecord,
@@ -7659,6 +7686,24 @@ export function useFormStatus(): FormStatus {
 	return UNIVERSAL_FORM_STATUS;
 }
 
+interface UniversalOptimisticEntry<Action> {
+	action: Action;
+	batch: UniversalTransitionBatch | null;
+	expired: boolean;
+}
+
+interface UniversalOptimisticController<Action> {
+	entries: UniversalOptimisticEntry<Action>[];
+	add(action: Action): void;
+}
+
+const UNIVERSAL_OPTIMISTIC_DEFAULT_REDUCER = <State, Action>(
+	_state: State,
+	action: Action,
+): State => action as unknown as State;
+const BUMP_UNIVERSAL_OPTIMISTIC_VERSION = (version: unknown): number =>
+	(typeof version === 'number' ? version : 0) + 1;
+
 export function useOptimistic<State>(passthrough: State): [State, (action: State) => void];
 export function useOptimistic<State, Action = State>(
 	passthrough: State,
@@ -7673,8 +7718,7 @@ export function useOptimistic<State, Action = State>(
 	passthrough: State,
 	...reducerAndSlot: unknown[]
 ): [State, (action: Action) => void] {
-	const defaultReducer = (_state: State, action: Action) => action as unknown as State;
-	let reducer: (state: State, action: Action) => State = defaultReducer;
+	let reducer = UNIVERSAL_OPTIMISTIC_DEFAULT_REDUCER as (state: State, action: Action) => State;
 	let slot: unknown;
 	if (reducerAndSlot.length === 1) {
 		if (typeof reducerAndSlot[0] === 'function') {
@@ -7688,8 +7732,98 @@ export function useOptimistic<State, Action = State>(
 		}
 		slot = reducerAndSlot[reducerAndSlot.length - 1];
 	}
-	const [optimistic, dispatch] = useReducer(reducer, passthrough, slot);
-	return [Object.is(optimistic, passthrough) ? passthrough : optimistic, dispatch];
+	const base = resolveHookSlot(slot);
+	const owner = currentDraftOwner();
+	const record = owner.record;
+	return withSlot(base, () => {
+		// Optimistic publication deliberately bypasses the active transition lane.
+		// Its paired batch marker is what reverts the value atomically when that
+		// transition is accepted; a rejected draft leaves the marker queued.
+		const versionSlot = resolveHookSlot('version');
+		useState(0, 'version');
+		const controller = useMemo<UniversalOptimisticController<Action>>(
+			() => {
+				const entries: UniversalOptimisticEntry<Action>[] = [];
+				const enqueueUrgentMarker = (): void => {
+					enqueueUniversalHookUpdate(
+						record,
+						versionSlot,
+						'state',
+						BUMP_UNIVERSAL_OPTIMISTIC_VERSION,
+						null,
+					);
+				};
+				const bump = (): void => {
+					enqueueUrgentMarker();
+					scheduleOwner(record, versionSlot);
+				};
+				return {
+					entries,
+					add(action: Action): void {
+						if (record.disposed) return;
+						const renderingOwner = findDraftOwner(record);
+						const batch =
+							renderingOwner === null ? universalTransitionBatchForRecordUpdate(record) : null;
+						const entry: UniversalOptimisticEntry<Action> = {
+							action,
+							batch,
+							expired: false,
+						};
+						entries.push(entry);
+						if (renderingOwner !== null) {
+							renderingOwner.needsRender = true;
+							scheduleUniversalOwnerMicrotask(record, () => {
+								if (entry.expired || record.disposed) return;
+								entry.expired = true;
+								bump();
+							});
+							return;
+						}
+						enqueueUrgentMarker();
+						if (batch !== null) {
+							stageUniversalTransitionUpdate(
+								batch,
+								record,
+								versionSlot,
+								'state',
+								BUMP_UNIVERSAL_OPTIMISTIC_VERSION,
+							);
+							scheduleOwner(record, versionSlot);
+						} else {
+							scheduleOwner(record, versionSlot);
+							scheduleUniversalOwnerMicrotask(record, () => {
+								if (entry.expired || record.disposed) return;
+								entry.expired = true;
+								bump();
+							});
+						}
+					},
+				};
+			},
+			[],
+			'controller',
+		);
+		const attempt = currentAttempt();
+		const markerBatches = record.updates.get(versionSlot)?.batches;
+		let optimistic = passthrough;
+		let retained = 0;
+		for (const entry of controller.entries) {
+			let visible = !entry.expired;
+			let retain = visible;
+			if (entry.batch !== null) {
+				const queued = markerBatches?.some((batch) => batch === entry.batch) === true;
+				const reverting = attempt.transitionRender && attempt.transitionBatches.has(entry.batch);
+				visible = queued && !reverting;
+				// A transition attempt is speculative until native acceptance. Keep its
+				// payload available so abort can replay the optimistic value.
+				retain = queued || reverting;
+			}
+			if (visible) optimistic = reducer(optimistic, entry.action);
+			if (retain) controller.entries[retained++] = entry;
+		}
+		controller.entries.length = retained;
+		return [optimistic, controller.add];
+	});
 }
 
 export function useContext<T>(context: UniversalContext<T>): T {

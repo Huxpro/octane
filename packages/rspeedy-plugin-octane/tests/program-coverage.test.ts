@@ -288,7 +288,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 26,
+				version: 27,
 				runtimeNames: [
 					'Activity',
 					'createContext',
@@ -297,6 +297,7 @@ describe('Lynx application Block eligibility', () => {
 					'startTransition',
 					'use',
 					'useActionState',
+					'useOptimistic',
 					'useBatch',
 					'useCallback',
 					'useContext',
@@ -500,6 +501,23 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.matrix.runtimeNames).toContain('useActionState');
 	});
 
+	it('admits paired useOptimistic semantics', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const optimistic = semanticRequirements({ runtimeUses: [site('useOptimistic', 4, 2)] });
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: optimistic, mainThread: optimistic }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toContain('useOptimistic');
+	});
+
 	it('admits paired nested keyed-range ownership', () => {
 		const proofs = completeProofs();
 		const featureModule = proofs.featureRequirements.modules[0]!;
@@ -637,7 +655,7 @@ describe('Lynx application Block eligibility', () => {
 					{
 						...semanticModule,
 						background: semanticRequirements({
-							runtimeUses: [site('useOptimistic', 2, 3)],
+							runtimeUses: [site('useFormStatus', 2, 3)],
 							runtimeExports: [site('Suspense', 3, 4)],
 							opaqueRuntimeAccesses: [site('export-all', 4, 5)],
 						}),
@@ -691,7 +709,7 @@ describe('Lynx application Block eligibility', () => {
 					code: 'unsupported-runtime-use',
 					module: '/src/App.tsrx',
 					thread: 'background',
-					name: 'useOptimistic',
+					name: 'useFormStatus',
 					line: 2,
 					column: 3,
 				},
@@ -1258,7 +1276,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 26 },
+				matrix: { version: 27 },
 				eligible: true,
 				reasons: [],
 			},

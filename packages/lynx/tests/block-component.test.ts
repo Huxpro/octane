@@ -61,6 +61,7 @@ import {
 	useImperativeHandle,
 	useLayoutEffect,
 	useMemo,
+	useOptimistic,
 	useReducer,
 	useInsertionEffect,
 	useRef,
@@ -4661,6 +4662,92 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		expect(paint(block.main.commits).tree).toContain('ready');
 
 		await block.settle(block.background.unmountAsync());
+	});
+
+	it('rebases optimistic state urgently and reverts it in the accepted transition', async () => {
+		vi.useFakeTimers();
+		try {
+			const gate = deferred<void>();
+			const actionDone = deferred<void>();
+			let urgentCalls = 0;
+			let begin!: () => void;
+			const OptimisticCard = defineUniversalComponent(
+				LYNX_TRANSPORT_RENDERER,
+				function OptimisticCard() {
+					const [saved, setSaved] = useState<readonly string[]>(['alpha'], 'saved');
+					const [optimistic, addOptimistic] = useOptimistic(
+						saved,
+						(items: readonly string[], item: string) => [...items, `${item}?`],
+						'optimistic',
+					);
+					begin = () =>
+						startTransition(async () => {
+							addOptimistic('beta');
+							await gate.promise;
+							setSaved((items) => [...items, 'beta']);
+							actionDone.resolve();
+						});
+					return universalValue(CARD_PLAN, [
+						'card',
+						optimistic.join('/'),
+						'card-meta',
+						() => {
+							urgentCalls++;
+							setSaved(['alpha', 'gamma']);
+						},
+						saved.join('/'),
+					]);
+				},
+			);
+			const block = blockColumn<Record<string, never>>();
+			const drain = async (): Promise<void> => {
+				for (let index = 0; index < 3; index++) {
+					await flushMicrotasks();
+					await block.settle(block.background.flushTransport());
+				}
+			};
+
+			await block.render(OptimisticCard as never, {});
+			begin();
+			await drain();
+			expect(paint(block.main.commits).tree).toContain('alpha/beta?');
+
+			const urgentListener = boundListener(block.main.commits);
+			deliverTo(block, urgentListener);
+			expect(urgentCalls).toBe(1);
+			await drain();
+			expect(paint(block.main.commits).tree).toContain('alpha/gamma/beta?');
+
+			const acceptedBeforeSettlement = block.main.commits.length;
+			gate.resolve();
+			await actionDone.promise;
+			for (
+				let guard = 0;
+				guard < 20 && block.main.commits.length === acceptedBeforeSettlement;
+				guard++
+			) {
+				await flushMicrotasks();
+			}
+			expect(block.main.commits).toHaveLength(acceptedBeforeSettlement + 1);
+			const rejected = block.main.commits[acceptedBeforeSettlement]!;
+			expect(paint(block.main.commits).tree).toContain('alpha/gamma/beta');
+			expect(paint(block.main.commits).tree).not.toContain('beta?');
+			block.main.reject(rejected, 'injected optimistic revert rejection');
+			block.markPendingHandled();
+			await block.background.flushTransport();
+			expect(() => vi.runOnlyPendingTimers()).toThrow('injected optimistic revert rejection');
+			expect(paint(block.main.commits.slice(0, acceptedBeforeSettlement)).tree).toContain(
+				'alpha/gamma/beta?',
+			);
+
+			await drain();
+			expect(paint(block.main.commits).tree).toContain('alpha/gamma/beta');
+			expect(paint(block.main.commits).tree).not.toContain('beta?');
+
+			await block.settle(block.background.unmountAsync());
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('keeps an ACKed update published when main reports a later host fault', async () => {

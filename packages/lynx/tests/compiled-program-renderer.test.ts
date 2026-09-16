@@ -42,6 +42,7 @@ import {
 	useLayoutEffect,
 	useLinkedState,
 	useMemo,
+	useOptimistic,
 	useReducer,
 	useState,
 	useTransition,
@@ -187,6 +188,26 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual([
 			'initial',
 			'idle',
+			'0',
+		]);
+		expect(calls).toBe(0);
+	});
+
+	it('previews optimistic passthrough without running or scheduling its reducer', () => {
+		const plan = universalPlan('lynx', PLAN);
+		let calls = 0;
+		const App = defineUniversalComponent('lynx', () => {
+			const [state, add] = useOptimistic('initial', (previous: string, payload: string) => {
+				calls++;
+				return `${previous}/${payload}`;
+			});
+			add('main');
+			return universalValue(plan, [state, typeof add, String(calls)]);
+		});
+
+		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual([
+			'initial',
+			'function',
 			'0',
 		]);
 		expect(calls).toBe(0);

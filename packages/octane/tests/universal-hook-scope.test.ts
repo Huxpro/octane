@@ -35,6 +35,7 @@ import {
 	useLayoutEffect,
 	useLinkedState,
 	useMemo,
+	useOptimistic,
 	useRef,
 	useState,
 	useReducer,
@@ -67,6 +68,45 @@ function scopeWithLog() {
 }
 
 describe('universal hook scope', () => {
+	it('shows an out-of-action optimistic value once and then reverts through host scheduling', () => {
+		const renders: unknown[] = [];
+		const microtasks: Array<() => void> = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				renders.push(slot);
+			},
+			scheduleTransitionRender() {},
+			scheduleMicrotask(task) {
+				microtasks.push(task);
+			},
+		});
+		let add!: (value: number) => void;
+		const render = (): number =>
+			scope.render(() => {
+				const [value, update] = useOptimistic(
+					10,
+					(current: number, next: number) => current + next,
+					'optimistic',
+				);
+				add = update;
+				return value;
+			});
+
+		expect(render()).toBe(10);
+		scope.commit();
+		add(5);
+		expect(renders).toHaveLength(1);
+		expect(render()).toBe(15);
+		scope.commit();
+		expect(microtasks).toHaveLength(1);
+		microtasks.shift()!();
+		expect(renders).toHaveLength(2);
+		expect(render()).toBe(10);
+		scope.commit();
+		scope.dispose();
+	});
+
 	it('keeps an action-state queue running after reporting an action error', async () => {
 		const reported: Array<() => void> = [];
 		const scope = createUniversalHookScope({

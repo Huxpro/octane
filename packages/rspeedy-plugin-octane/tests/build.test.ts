@@ -535,6 +535,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'Activity',
 								'createContext',
 								'memo',
+								'startTransition',
 								'useActionState',
 								'useContext',
 								'useEffectEvent',
@@ -544,6 +545,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'useLayoutEffect',
 								'useLinkedState',
 								'useMemo',
+								'useOptimistic',
 								'useReducer',
 								'useRef',
 							],
@@ -553,6 +555,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'Activity',
 								'createContext',
 								'memo',
+								'startTransition',
 								'useActionState',
 								'useContext',
 								'useEffectEvent',
@@ -562,6 +565,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'useLayoutEffect',
 								'useLinkedState',
 								'useMemo',
+								'useOptimistic',
 								'useReducer',
 								'useRef',
 							],
@@ -597,6 +601,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 											name: 'BlockEligibleRow',
 											hooks: [
 												expect.objectContaining({ name: 'useReducer' }),
+												expect.objectContaining({ name: 'useOptimistic' }),
 												expect.objectContaining({ name: 'useActionState' }),
 												expect.objectContaining({ name: 'useId' }),
 												expect.objectContaining({ name: 'useLinkedState' }),
@@ -653,6 +658,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 											name: 'BlockEligibleRow',
 											hooks: [
 												expect.objectContaining({ name: 'useReducer' }),
+												expect.objectContaining({ name: 'useOptimistic' }),
 												expect.objectContaining({ name: 'useActionState' }),
 												expect.objectContaining({ name: 'useId' }),
 												expect.objectContaining({ name: 'useLinkedState' }),
@@ -1260,7 +1266,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 26,
+							version: 27,
 							runtimeNames: [
 								'Activity',
 								'createContext',
@@ -1269,6 +1275,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'startTransition',
 								'use',
 								'useActionState',
+								'useOptimistic',
 								'useBatch',
 								'useCallback',
 								'useContext',

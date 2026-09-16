@@ -55,6 +55,7 @@ import type {
 	UniversalTransaction,
 	UniversalTransportEventMessage,
 } from 'octane/universal/native';
+import { runUniversalEventScope } from 'octane/universal/native';
 import type { LynxComponent } from '../intrinsics.js';
 import type { LynxHostAttachmentChange } from './protocol.js';
 import { lynxClientTemplateRunsNegotiated, type LynxClientContainer } from './client-driver.js';
@@ -176,6 +177,7 @@ export function createLynxBlockBackgroundCore(
 		transport,
 		transportRoot: options.transportRoot ?? NEXT_BLOCK_TRANSPORT_ROOT++,
 		core,
+		eventScope: runUniversalEventScope,
 	});
 	let afterCommitTasks: (() => void)[] = [];
 	let afterInsertionCommitTasks: (() => void)[] = [];

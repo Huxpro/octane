@@ -963,6 +963,15 @@ export function useActionState<State, Payload>(
 	return [initialState, NOOP_UPDATE, false];
 }
 
+export function useOptimistic<State, Action = State>(
+	passthrough: State,
+	_reducerOrSlot?: ((state: State, action: Action) => State) | unknown,
+	_maybeSlot?: unknown,
+): [State, (action: Action) => void] {
+	requireRender();
+	return [passthrough, NOOP_UPDATE];
+}
+
 export function useImperativeHandle<T>(
 	_ref: { current: T | null } | ((value: T | null) => void) | null,
 	_create: () => T,

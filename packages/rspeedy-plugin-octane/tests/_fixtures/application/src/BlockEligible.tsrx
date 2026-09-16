@@ -3,6 +3,7 @@ import {
 	Activity,
 	createContext,
 	memo,
+	startTransition,
 	useActionState,
 	useContext,
 	useEffectEvent,
@@ -12,6 +13,7 @@ import {
 	useLayoutEffect,
 	useLinkedState,
 	useMemo,
+	useOptimistic,
 	useReducer,
 	useRef,
 } from 'octane';
@@ -34,6 +36,10 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 	readonly onSelect: (label: string) => void;
 }) @{
 	const [taps, incrementTaps] = useReducer((value: number, amount: number) => value + amount, 0);
+	const [optimisticTaps, addOptimisticTap] = useOptimistic(
+		taps,
+		(value: number, amount: number) => value + amount,
+	);
 	const [actionLabel, commitLabel, actionPending] = useActionState(
 		(_previous: string, next: string) => next,
 		props.item.label,
@@ -57,14 +63,17 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 	const onTap = () => {
 		commitLabel(item.label);
 		select();
-		incrementTaps(1);
+		startTransition(() => {
+			addOptimisticTap(1);
+			incrementTaps(1);
+		});
 	};
 	<view id={'row-' + item.id + '-' + hookId} class={rowClass}>
 		<image id={'image-' + item.id} src={item.image} mode="aspectFill" />
 		<text bindtap={onTap}>{linkedLabel + ':' + getLinkedLabel() + ':' + actionLabel + ':' +
 			(actionPending ? 'pending' : 'idle') +
 			':' +
-			taps as string}</text>
+			optimisticTaps as string}</text>
 	</view>
 });
 

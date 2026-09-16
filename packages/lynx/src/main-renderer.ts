@@ -2763,7 +2763,8 @@ export function useFormStatus(): FormStatus {
 
 export function useOptimistic<State, Action = State>(
 	passthrough: State,
-	_reducer?: (state: State, action: Action) => State,
+	_reducerOrSlot?: ((state: State, action: Action) => State) | unknown,
+	_maybeSlot?: unknown,
 ): [State, (action: Action) => void] {
 	currentOwner();
 	return [passthrough, NOOP_UPDATE];
