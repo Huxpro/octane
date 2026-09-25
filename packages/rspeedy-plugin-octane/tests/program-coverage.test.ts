@@ -288,7 +288,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 27,
+				version: 28,
 				runtimeNames: [
 					'Activity',
 					'createContext',
@@ -302,6 +302,7 @@ describe('Lynx application Block eligibility', () => {
 					'useCallback',
 					'useContext',
 					'useDeferredValue',
+					'useDebugValue',
 					'useEffect',
 					'useEffectEvent',
 					'useId',
@@ -465,6 +466,23 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.eligible).toBe(true);
 		expect(report.reasons).toEqual([]);
 		expect(report.matrix.runtimeNames).toContain('useEffectEvent');
+	});
+
+	it('admits paired useDebugValue semantics', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const debugValues = semanticRequirements({ runtimeUses: [site('useDebugValue', 4, 2)] });
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: debugValues, mainThread: debugValues }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toContain('useDebugValue');
 	});
 
 	it('admits paired useImperativeHandle semantics', () => {
@@ -1276,7 +1294,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 27 },
+				matrix: { version: 28 },
 				eligible: true,
 				reasons: [],
 			},

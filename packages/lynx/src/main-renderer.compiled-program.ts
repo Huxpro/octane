@@ -985,3 +985,7 @@ export function useEffectEvent<T extends (...args: any[]) => any>(_fn: T, _slot?
 	requireRender();
 	return NOOP_UPDATE as T;
 }
+
+export function useDebugValue(_value?: unknown, _format?: unknown, _slot?: unknown): void {
+	requireRender();
+}

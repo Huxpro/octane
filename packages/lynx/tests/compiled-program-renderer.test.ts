@@ -35,6 +35,7 @@ import {
 	useBatch,
 	useContext,
 	useDeferredValue,
+	useDebugValue,
 	useEffectEvent,
 	useId,
 	useImperativeHandle,
@@ -154,6 +155,26 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 
 		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual(['function', '0', '0']);
 		expect(calls).toBe(0);
+	});
+
+	it('accepts debug values without formatting or changing the first screen', () => {
+		const plan = universalPlan('lynx', PLAN);
+		let formats = 0;
+		const App = defineUniversalComponent('lynx', () => {
+			useDebugValue({ label: 'row', count: 1 }, (value: { label: string; count: number }) => {
+				formats++;
+				return `${value.label}:${value.count}`;
+			});
+			return universalValue(plan, ['stable', 'debug', 'stable:debug']);
+		});
+
+		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual([
+			'stable',
+			'debug',
+			'stable:debug',
+		]);
+		expect(formats).toBe(0);
+		expect(() => useDebugValue('outside render')).toThrow('hook ran outside render');
 	});
 
 	it('does not publish imperative handles from the compact first screen', () => {

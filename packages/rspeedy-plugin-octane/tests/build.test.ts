@@ -538,6 +538,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'startTransition',
 								'useActionState',
 								'useContext',
+								'useDebugValue',
 								'useEffectEvent',
 								'useId',
 								'useImperativeHandle',
@@ -558,6 +559,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'startTransition',
 								'useActionState',
 								'useContext',
+								'useDebugValue',
 								'useEffectEvent',
 								'useId',
 								'useImperativeHandle',
@@ -606,6 +608,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 												expect.objectContaining({ name: 'useId' }),
 												expect.objectContaining({ name: 'useLinkedState' }),
 												expect.objectContaining({ name: 'useContext' }),
+												expect.objectContaining({ name: 'useDebugValue' }),
 												expect.objectContaining({ name: 'useMemo' }),
 												expect.objectContaining({ name: 'useInsertionEffect' }),
 												expect.objectContaining({ name: 'useLayoutEffect' }),
@@ -663,6 +666,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 												expect.objectContaining({ name: 'useId' }),
 												expect.objectContaining({ name: 'useLinkedState' }),
 												expect.objectContaining({ name: 'useContext' }),
+												expect.objectContaining({ name: 'useDebugValue' }),
 												expect.objectContaining({ name: 'useMemo' }),
 												expect.objectContaining({ name: 'useInsertionEffect' }),
 												expect.objectContaining({ name: 'useLayoutEffect' }),
@@ -1266,7 +1270,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 27,
+							version: 28,
 							runtimeNames: [
 								'Activity',
 								'createContext',
@@ -1280,6 +1284,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'useCallback',
 								'useContext',
 								'useDeferredValue',
+								'useDebugValue',
 								'useEffect',
 								'useEffectEvent',
 								'useId',

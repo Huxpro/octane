@@ -6,6 +6,7 @@ import {
 	startTransition,
 	useActionState,
 	useContext,
+	useDebugValue,
 	useEffectEvent,
 	useId,
 	useImperativeHandle,
@@ -50,6 +51,10 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 		(label) => 'linked-' + label,
 	);
 	const theme = useContext(BlockTheme);
+	useDebugValue(
+		{ label: props.item.label, taps },
+		(value: { readonly label: string; readonly taps: number }) => value.label + ':' + value.taps,
+	);
 	const rowClass = useMemo(() => ['row', theme, 'taps-' + taps], [theme, taps]);
 	useInsertionEffect(() => undefined, [theme]);
 	useLayoutEffect(() => undefined, [theme]);
