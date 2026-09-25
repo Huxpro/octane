@@ -98,6 +98,24 @@ semantic/owner gate for those operations at `n=5`; it is one serialized
 single-cell cohort, not a powered AB/BA comparison or 100 independent inputs,
 and it does not close append, list, process-memory/GC, or platform coverage.
 
+The next five-sample cold-launch cohort exercised the missing 10k append cell.
+All five 10,000-row creates passed on their first attempt with the populated
+10,001-handle / 40,028-retained-host-ref census. None of the following
+append-1,000 operations reached 11,000 rows. Each deterministically raised
+`RangeError: Octane Lynx OL512` because the projected 44,028 resident plan nodes
+exceed the registered 40,960 structural Element Template live limit. The
+runner's normal growth oracle therefore fails this cell on
+correctness/reachability; it is not an unmeasured performance comparison.
+
+The rejection itself was atomic in all five launches: there was no accepted
+main commit, all sampled row identity/label/selection fields remained at the
+10,000-row pre-state, and the Native receipt still carried its ACK and two
+frames. The rejection-receipt latency was 844–887 ms (875 ms median), but that
+is failure-path timing, not successful append latency. This closes the
+question of what happens at 10k append for the structural owner: it fails
+safely and confirms that >10k table work must move to the virtualized
+native-list architecture. It does not close the native-list gate.
+
 ## Frozen cohort
 
 The cohort was last checked against the live remotes at 2026-09-14 02:55:01
@@ -225,7 +243,7 @@ fixture/observer and stable DevTool lifecycle are prerequisites for a rerun.
 
 | Gate inherited from #290/#291/#383 | Result | Evidence or gap |
 | --- | --- | --- |
-| Android output, identity, events/effects, real input | **Partial / fail** | Current-product structural create cells at 1k, 3k, and 5k passed their paired semantic samples and native taps. Fresh ET-only 10k create and create-clear-recreate cohorts each passed 5/5 cold starts; a separate 5/5 10k sequence passed update-every-tenth, select, swap, 50/30-tick storms, and remove with exact state, ACK, two frames, and strict ownership census. The ordinary owner still crashes at the JNI global-reference ceiling, while append, higher-scale startup, and all list cells remain failed or unqualified. |
+| Android output, identity, events/effects, real input | **Partial / fail** | Current-product structural create cells at 1k, 3k, and 5k passed their paired semantic samples and native taps. Fresh ET-only 10k create and create-clear-recreate cohorts each passed 5/5 cold starts; a separate 5/5 10k sequence passed update-every-tenth, select, swap, 50/30-tick storms, and remove with exact state, ACK, two frames, and strict ownership census. The 10k→11k append cell failed 5/5 at the explicit OL512 live-capacity boundary while atomically preserving its 10k pre-state. The ordinary owner still crashes at the JNI global-reference ceiling, and higher-scale startup plus all list cells remain failed or unqualified. |
 | Latest upstream strict win, weighted geometric mean, CI upper bound `< 1.0` | **Inconclusive / fail** | Upstream lacks the Native producer; no valid full scorecard exists. |
 | Peer strict win and per-cell non-inferiority CI upper bound `<= 1.05` | **Fail** | Candidate creation is materially slower and becomes DNF at 10k while every peer completes. |
 | At least 10 independent AB/BA pairs | **Partial** | The current-product ordinary/structural Element Template 1k, 3k, and 5k create cells each completed 10 pairs; the 10k mutation sequence is a single-cell `n=5` correctness cohort, and the 10k+ performance, memory, list, upstream, and peer matrix has not completed. |
@@ -275,6 +293,10 @@ them as final qualification. They are not counted as R11 passes.
   is the sanitized five-sample 10k registered mutation-sequence cohort;
   SHA-256
   `a33d81f9bb1c8ef666a6aa189f84febc0dee1ad878ce5a239fbdd70bfe1b193c`.
+- [`android-current-head-structural-element-template-10000-append-capacity.json`](evidence/android-current-head-structural-element-template-10000-append-capacity.json)
+  is the sanitized five-sample 10k→11k append capacity-rejection cohort;
+  SHA-256
+  `e8cca3ebe642e183edc98605662bbf5f2a907d01a53d60aa19f3d841193e2502`.
 - [`../lynx-issue382-release-candidate/README.md`](../lynx-issue382-release-candidate/README.md)
   records the source/build, external-consumer, semantic, graph-retention, and
   bundle inventory qualification inherited from R10.
