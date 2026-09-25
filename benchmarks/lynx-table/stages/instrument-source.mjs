@@ -174,8 +174,8 @@ export function instrumentLynxStageSources(repositoryRoot) {
 			// is the one every other main-thread counter would have inherited.
 			let next = replaceOnce(
 				source,
-				"import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref.js';\n",
-				`import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref.js';
+				"import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref-attribute.js';\n",
+				`import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref-attribute.js';
 import { lynxWireProfile } from './profiling.js';
 `,
 				file,
@@ -194,32 +194,32 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 			);
 			next = replaceOnce(
 				next,
-				`\t\t\t\t\t) {
-\t\t\t\t\t\treturn createListValue!.call(
-\t\t\t\t\t\t\ttarget,
-\t\t\t\t\t\t\tparentComponentUniqueId,
-\t\t\t\t\t\t\tcomponentAtIndex,
-\t\t\t\t\t\t\tenqueueComponent,
-\t\t\t\t\t\t\t{},
-\t\t\t\t\t\t\tcomponentAtIndexes,
-\t\t\t\t\t\t);
-\t\t\t\t\t},
+				`\t\t\t\t\t\t\t) {
+\t\t\t\t\t\t\t\treturn createListValue!.call(
+\t\t\t\t\t\t\t\t\ttarget,
+\t\t\t\t\t\t\t\t\tparentComponentUniqueId,
+\t\t\t\t\t\t\t\t\tcomponentAtIndex,
+\t\t\t\t\t\t\t\t\tenqueueComponent,
+\t\t\t\t\t\t\t\t\t{},
+\t\t\t\t\t\t\t\t\tcomponentAtIndexes,
+\t\t\t\t\t\t\t\t);
+\t\t\t\t\t\t\t},
 `,
-				`\t\t\t\t\t) {
-\t\t\t\t\t\tconst started = performance.now();
-\t\t\t\t\t\ttry {
-\t\t\t\t\t\t\treturn createListValue!.call(
-\t\t\t\t\t\t\t\ttarget,
-\t\t\t\t\t\t\t\tparentComponentUniqueId,
-\t\t\t\t\t\t\t\tcomponentAtIndex,
-\t\t\t\t\t\t\t\tenqueueComponent,
-\t\t\t\t\t\t\t\t{},
-\t\t\t\t\t\t\t\tcomponentAtIndexes,
-\t\t\t\t\t\t\t);
-\t\t\t\t\t\t} finally {
-\t\t\t\t\t\t\tprofilePapiCreate(started);
-\t\t\t\t\t\t}
-\t\t\t\t\t},
+				`\t\t\t\t\t\t\t) {
+\t\t\t\t\t\t\t\tconst started = performance.now();
+\t\t\t\t\t\t\t\ttry {
+\t\t\t\t\t\t\t\t\treturn createListValue!.call(
+\t\t\t\t\t\t\t\t\t\ttarget,
+\t\t\t\t\t\t\t\t\t\tparentComponentUniqueId,
+\t\t\t\t\t\t\t\t\t\tcomponentAtIndex,
+\t\t\t\t\t\t\t\t\t\tenqueueComponent,
+\t\t\t\t\t\t\t\t\t\t{},
+\t\t\t\t\t\t\t\t\t\tcomponentAtIndexes,
+\t\t\t\t\t\t\t\t\t);
+\t\t\t\t\t\t\t\t} finally {
+\t\t\t\t\t\t\t\t\tprofilePapiCreate(started);
+\t\t\t\t\t\t\t\t}
+\t\t\t\t\t\t\t},
 `,
 				file,
 			);

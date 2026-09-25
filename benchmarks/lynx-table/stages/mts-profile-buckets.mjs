@@ -130,10 +130,13 @@ export const BUCKETS = Object.freeze([
 		// A dense component-scoped range enters the other program painter. Its
 		// emitted `run` has no diagnostic, just like the single-instance create,
 		// so this frame also serves as the caller identity used by the fallback
-		// below. It follows the visitor probe because that caller's window reaches
-		// this nested function; reversing them would steal the walk's own frame.
+		// below. The minifier can rename every local when an unrelated module
+		// changes, so the identity is the ordered run of plan fields rather than
+		// the temporary names between them. It follows the visitor probe because
+		// that caller's window reaches this nested function; reversing them would
+		// steal the walk's own frame.
 		bucket: 'program mount',
-		probe: 'var u=r.count;var c=r.programs',
+		probe: Object.freeze(['.plan;', '.count;', '.programs;', '.firstId;', '.stride;']),
 		where: 'core/host-driver.ts mountDenseSpan',
 	},
 	{
@@ -704,11 +707,28 @@ export const PROBE_WINDOW = 160;
 
 /**
  * The probe-table entry that names one frame, or `null` for a frame the table
- * does not name. `text` is the source at the frame's position.
+ * does not name. `text` is the source at the frame's position. Most probes are
+ * one exact string. A probe may instead be an ordered list of stable fragments
+ * when the only text near a frame is separated by minifier-owned local names;
+ * every fragment must occur in order inside the same frozen window.
  */
 export function probeOf(text) {
 	for (const entry of BUCKETS) {
-		if (text.includes(entry.probe)) return entry;
+		if (typeof entry.probe === 'string') {
+			if (text.includes(entry.probe)) return entry;
+			continue;
+		}
+		let cursor = 0;
+		let matched = true;
+		for (const fragment of entry.probe) {
+			const at = text.indexOf(fragment, cursor);
+			if (at < 0) {
+				matched = false;
+				break;
+			}
+			cursor = at + fragment.length;
+		}
+		if (matched) return entry;
 	}
 	return null;
 }

@@ -16,6 +16,7 @@ import type {
 	PreparedUniversalTemplateProgramValue,
 	UniversalTemplateProgramRange,
 } from 'octane/universal/template-program';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './compiled-program-host-ref-feature.js';
 import { LYNX_PROGRAM_ABI_VERSION } from './program-abi.js';
 
 const LYNX_COMPILER_PROGRAM: symbol = Symbol.for('octane.lynx.compiler-program');
@@ -149,21 +150,26 @@ export function lynxProgram(
 	) {
 		fail('definition requires value, event, and range maps');
 	}
-	if (
-		definition.refs !== undefined &&
-		(!Array.isArray(definition.refs) ||
-			definition.refs.some(
-				(ref) =>
-					ref === null ||
-					typeof ref !== 'object' ||
-					!Number.isSafeInteger(ref.node) ||
-					ref.node < 0 ||
-					ref.node >= definition.wire.nodes.length ||
-					!Number.isSafeInteger(ref.slot) ||
-					ref.slot < 0,
-			))
-	) {
-		fail('definition contains an invalid host-ref site');
+	if (definition.refs !== undefined) {
+		if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+			if (
+				!Array.isArray(definition.refs) ||
+				definition.refs.some(
+					(ref) =>
+						ref === null ||
+						typeof ref !== 'object' ||
+						!Number.isSafeInteger(ref.node) ||
+						ref.node < 0 ||
+						ref.node >= definition.wire.nodes.length ||
+						!Number.isSafeInteger(ref.slot) ||
+						ref.slot < 0,
+				)
+			) {
+				fail('definition contains an invalid host-ref site');
+			}
+		} else {
+			fail('definition reached a bundle compiled without host-ref support');
+		}
 	}
 	const program = {
 		$$kind: LYNX_COMPILER_PROGRAM,
@@ -174,7 +180,9 @@ export function lynxProgram(
 		values: definition.values,
 		events: definition.events,
 		ranges: definition.ranges,
-		...(definition.refs === undefined ? null : { refs: definition.refs }),
+		...(LYNX_COMPILED_PROGRAM_HOST_REFS && definition.refs !== undefined
+			? { refs: definition.refs }
+			: null),
 	} satisfies LynxCompilerProgram;
 	deepFreeze(program);
 	return program;
@@ -189,7 +197,7 @@ export function lynxProgramValue(
 	if (!isLynxCompilerProgram(program)) fail('lynxProgramValue expected a compiler program');
 	if (!Array.isArray(values)) fail('lynxProgramValue expected an array of slot values');
 	if (!Array.isArray(computations)) fail('lynxProgramValue expected an array of computations');
-	if (program.refs?.some((ref) => ref.slot >= values.length)) {
+	if (LYNX_COMPILED_PROGRAM_HOST_REFS && program.refs?.some((ref) => ref.slot >= values.length)) {
 		fail('lynxProgramValue received a host-ref slot outside its value array');
 	}
 	if (DEVELOPMENT) {

@@ -1,6 +1,7 @@
 declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
-import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref.js';
+import { LYNX_NODES_REF_ATTRIBUTE } from './nodes-ref-attribute.js';
+import { LYNX_COMPILED_PROGRAM_NATIVE_LIST } from './compiled-program-native-list-feature.js';
 import type { LynxMainThreadWorkletDescriptor } from './worklets.js';
 
 /** Opaque Element PAPI reference owned by the Lynx main thread. */
@@ -165,53 +166,56 @@ export function createLynxElementPAPI<Node extends LynxElementRef = LynxElementR
 	const createText = requireFunction<Node, '__CreateText'>(target, '__CreateText');
 	const createRawText = requireFunction<Node, '__CreateRawText'>(target, '__CreateRawText');
 	const createImage = requireFunction<Node, '__CreateImage'>(target, '__CreateImage');
-	const listGlobals = target as LynxElementPAPIGlobals<Node>;
-	const createListValue = listGlobals.__CreateList;
-	const updateListCallbacksValue = listGlobals.__UpdateListCallbacks;
-	const listFunctionCount = [createListValue, updateListCallbacksValue].filter(
-		(value) => typeof value === 'function',
-	).length;
-	if (listFunctionCount === 1) {
-		throw new Error(
-			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
-				? 'Octane Lynx requires __CreateList and __UpdateListCallbacks together.'
-				: 'Octane Lynx OL168',
-		);
-	}
-	const list =
-		listFunctionCount === 2
-			? Object.freeze({
-					create(
-						parentComponentUniqueId: number,
-						componentAtIndex: LynxListComponentAtIndex<Node>,
-						enqueueComponent: LynxListEnqueueComponent<Node>,
-						componentAtIndexes: LynxListComponentAtIndexes<Node>,
-					) {
-						return createListValue!.call(
-							target,
-							parentComponentUniqueId,
-							componentAtIndex,
-							enqueueComponent,
-							{},
-							componentAtIndexes,
-						);
-					},
-					updateCallbacks(
-						listNode: Node,
-						componentAtIndex: LynxListComponentAtIndex<Node>,
-						enqueueComponent: LynxListEnqueueComponent<Node>,
-						componentAtIndexes: LynxListComponentAtIndexes<Node>,
-					) {
-						updateListCallbacksValue!.call(
-							target,
-							listNode,
-							componentAtIndex,
-							enqueueComponent,
-							componentAtIndexes,
-						);
-					},
-				})
-			: undefined;
+	const list = LYNX_COMPILED_PROGRAM_NATIVE_LIST
+		? (() => {
+				const listGlobals = target as LynxElementPAPIGlobals<Node>;
+				const createListValue = listGlobals.__CreateList;
+				const updateListCallbacksValue = listGlobals.__UpdateListCallbacks;
+				const listFunctionCount = [createListValue, updateListCallbacksValue].filter(
+					(value) => typeof value === 'function',
+				).length;
+				if (listFunctionCount === 1) {
+					throw new Error(
+						typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
+							? 'Octane Lynx requires __CreateList and __UpdateListCallbacks together.'
+							: 'Octane Lynx OL168',
+					);
+				}
+				return listFunctionCount === 2
+					? Object.freeze({
+							create(
+								parentComponentUniqueId: number,
+								componentAtIndex: LynxListComponentAtIndex<Node>,
+								enqueueComponent: LynxListEnqueueComponent<Node>,
+								componentAtIndexes: LynxListComponentAtIndexes<Node>,
+							) {
+								return createListValue!.call(
+									target,
+									parentComponentUniqueId,
+									componentAtIndex,
+									enqueueComponent,
+									{},
+									componentAtIndexes,
+								);
+							},
+							updateCallbacks(
+								listNode: Node,
+								componentAtIndex: LynxListComponentAtIndex<Node>,
+								enqueueComponent: LynxListEnqueueComponent<Node>,
+								componentAtIndexes: LynxListComponentAtIndexes<Node>,
+							) {
+								updateListCallbacksValue!.call(
+									target,
+									listNode,
+									componentAtIndex,
+									enqueueComponent,
+									componentAtIndexes,
+								);
+							},
+						})
+					: undefined;
+			})()
+		: undefined;
 	const getUniqueId = requireFunction<Node, '__GetElementUniqueID'>(target, '__GetElementUniqueID');
 	const getParentValue = (target as LynxElementPAPIGlobals<Node>).__GetParent;
 	const elementIsEqualValue = (target as LynxElementPAPIGlobals<Node>).__ElementIsEqual;

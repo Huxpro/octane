@@ -8,6 +8,7 @@ import {
 	LYNX_DELTA_PROTOCOL_VERSION,
 } from './delta-protocol.js';
 import type { LynxCompiledProgramStore } from './compiled-program-store.js';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './compiled-program-host-ref-feature.js';
 import type { LynxCompiledProgramRangeIdentity } from './compiled-program-store.js';
 import type { LynxElementRef } from './papi.js';
 
@@ -254,12 +255,19 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 					break;
 				}
 				case Opcode.RefRun: {
-					if (arity !== 3)
-						fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'REF-RUN requires three fields');
-					store.refs(
-						input[cursor] as number,
-						input[cursor + 1] as number,
-						input[cursor + 2] as number,
+					if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+						if (arity !== 3)
+							fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'REF-RUN requires three fields');
+						store.refs(
+							input[cursor] as number,
+							input[cursor + 1] as number,
+							input[cursor + 2] as number,
+						);
+						break;
+					}
+					fail(
+						LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT &&
+							'REF-RUN reached a bundle compiled without host-ref support',
 					);
 					break;
 				}

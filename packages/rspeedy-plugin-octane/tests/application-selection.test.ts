@@ -8,6 +8,18 @@ import {
 	installLynxBlockComponentFeatureReplacement,
 	selectedLynxBlockComponentFeatures,
 } from '../src/block-component-features.js';
+import {
+	installLynxCompiledProgramFeatureReplacement,
+	selectedLynxCompiledProgramFeatures,
+} from '../src/compiled-program-features.js';
+import {
+	installLynxCompiledProgramHostRefFeatureReplacement,
+	selectedLynxCompiledProgramHostRefFeature,
+} from '../src/compiled-program-host-ref-feature.js';
+import {
+	installLynxCompiledProgramNativeListFeatureReplacement,
+	selectedLynxCompiledProgramNativeListFeature,
+} from '../src/compiled-program-native-list-feature.js';
 
 describe('Lynx application source specialization', () => {
 	it('publishes the paired feature decision to encoder metadata', () => {
@@ -22,6 +34,84 @@ describe('Lynx application source specialization', () => {
 		expect(selectedLynxBlockComponentFeatures(compiler)).toBe('full');
 		installLynxBlockComponentFeatureReplacement(compiler, () => 'structural');
 		expect(selectedLynxBlockComponentFeatures(compiler)).toBe('structural');
+	});
+
+	it('replaces compact thread-function support only after a proved selection', () => {
+		const replacements: Array<{
+			test: RegExp;
+			callback: (resource: { request: string }) => void;
+		}> = [];
+		const compiler = {
+			webpack: {
+				NormalModuleReplacementPlugin: class {
+					constructor(test: RegExp, callback: (resource: { request: string }) => void) {
+						replacements.push({ test, callback });
+					}
+					apply() {}
+				},
+			},
+		};
+		expect(selectedLynxCompiledProgramFeatures(compiler)).toBe('full');
+		installLynxCompiledProgramFeatureReplacement(compiler, () => 'no-thread-functions');
+		expect(selectedLynxCompiledProgramFeatures(compiler)).toBe('no-thread-functions');
+
+		const resource = { request: './core/compiled-program-features.js' };
+		for (const replacement of replacements) {
+			if (replacement.test.test(resource.request)) replacement.callback(resource);
+		}
+		expect(resource.request).toBe('./core/compiled-program-features.no-thread-functions.js');
+	});
+
+	it('replaces native-list support only after a proved selection', () => {
+		const replacements: Array<{
+			test: RegExp;
+			callback: (resource: { request: string }) => void;
+		}> = [];
+		const compiler = {
+			webpack: {
+				NormalModuleReplacementPlugin: class {
+					constructor(test: RegExp, callback: (resource: { request: string }) => void) {
+						replacements.push({ test, callback });
+					}
+					apply() {}
+				},
+			},
+		};
+		expect(selectedLynxCompiledProgramNativeListFeature(compiler)).toBe('full');
+		installLynxCompiledProgramNativeListFeatureReplacement(compiler, () => 'no-native-list');
+		expect(selectedLynxCompiledProgramNativeListFeature(compiler)).toBe('no-native-list');
+
+		const resource = { request: './core/compiled-program-native-list-feature.js' };
+		for (const replacement of replacements) {
+			if (replacement.test.test(resource.request)) replacement.callback(resource);
+		}
+		expect(resource.request).toBe('./core/compiled-program-native-list-feature.no-native-list.js');
+	});
+
+	it('replaces host-ref support only after a proved selection', () => {
+		const replacements: Array<{
+			test: RegExp;
+			callback: (resource: { request: string }) => void;
+		}> = [];
+		const compiler = {
+			webpack: {
+				NormalModuleReplacementPlugin: class {
+					constructor(test: RegExp, callback: (resource: { request: string }) => void) {
+						replacements.push({ test, callback });
+					}
+					apply() {}
+				},
+			},
+		};
+		expect(selectedLynxCompiledProgramHostRefFeature(compiler)).toBe('full');
+		installLynxCompiledProgramHostRefFeatureReplacement(compiler, () => 'no-host-refs');
+		expect(selectedLynxCompiledProgramHostRefFeature(compiler)).toBe('no-host-refs');
+
+		const resource = { request: './core/compiled-program-host-ref-feature.js' };
+		for (const replacement of replacements) {
+			if (replacement.test.test(resource.request)) replacement.callback(resource);
+		}
+		expect(resource.request).toBe('./core/compiled-program-host-ref-feature.no-host-refs.js');
 	});
 
 	it('uses the Element Template owner while retaining the proved compiled background seams', () => {

@@ -11,6 +11,8 @@ import {
 	LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT,
 	LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT,
 } from './compiled-program-wire.js';
+import { LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS } from './compiled-program-features.js';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './compiled-program-host-ref-feature.js';
 import type { LynxDataLifecycleMessage } from './lifecycle-types.js';
 import type {
 	LynxBackgroundFunctionWireDescriptor,
@@ -207,6 +209,7 @@ export function createLynxCompiledProgramTransport(
 	};
 
 	const cancelCalls = (error: Error, notifyMain: boolean): void => {
+		if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) return;
 		for (const [call, entry] of pendingMainCalls) {
 			if (notifyMain) {
 				try {
@@ -305,6 +308,10 @@ export function createLynxCompiledProgramTransport(
 			return;
 		}
 		if (message.type === 'call-main-result' || message.type === 'call-main-error') {
+			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
+				report(new Error(TRANSPORT_ERROR));
+				return;
+			}
 			const entry = pendingMainCalls.get(message.call);
 			if (
 				entry === undefined ||
@@ -326,6 +333,10 @@ export function createLynxCompiledProgramTransport(
 			return;
 		}
 		if (message.type === 'cancel-background') {
+			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
+				report(new Error(TRANSPORT_ERROR));
+				return;
+			}
 			const entry = runningBackgroundCalls.get(message.call);
 			if (
 				entry !== undefined &&
@@ -338,6 +349,10 @@ export function createLynxCompiledProgramTransport(
 			return;
 		}
 		if (message.type === 'call-background') {
+			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
+				report(new Error(TRANSPORT_ERROR));
+				return;
+			}
 			const callIdentity = acknowledged ?? accepted;
 			if (
 				callIdentity === null ||
@@ -435,28 +450,40 @@ export function createLynxCompiledProgramTransport(
 			return;
 		}
 		if (message.type === 'host-attachment') {
-			const entry = pending.get(message.version);
-			const matchesPending =
-				entry !== undefined &&
-				entry.state === 'acknowledged' &&
-				message.root === entry.identity.root;
-			const matchesAccepted =
-				accepted !== null && message.root === accepted.root && message.version === accepted.version;
-			if (!matchesPending && !matchesAccepted) {
-				report(
-					new Error(
-						TRANSPORT_DEVELOPMENT
-							? 'Octane Lynx compact transport received a host attachment for an unaccepted frame.'
-							: TRANSPORT_ERROR,
-					),
-				);
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+				const entry = pending.get(message.version);
+				const matchesPending =
+					entry !== undefined &&
+					entry.state === 'acknowledged' &&
+					message.root === entry.identity.root;
+				const matchesAccepted =
+					accepted !== null &&
+					message.root === accepted.root &&
+					message.version === accepted.version;
+				if (!matchesPending && !matchesAccepted) {
+					report(
+						new Error(
+							TRANSPORT_DEVELOPMENT
+								? 'Octane Lynx compact transport received a host attachment for an unaccepted frame.'
+								: TRANSPORT_ERROR,
+						),
+					);
+					return;
+				}
+				try {
+					options.onHostAttachments?.(message.changes);
+				} catch (error) {
+					fault(error);
+				}
 				return;
 			}
-			try {
-				options.onHostAttachments?.(message.changes);
-			} catch (error) {
-				fault(error);
-			}
+			fault(
+				new Error(
+					TRANSPORT_DEVELOPMENT
+						? 'Octane Lynx compact transport received a host attachment in a bundle compiled without host-ref support.'
+						: TRANSPORT_ERROR,
+				),
+			);
 			return;
 		}
 		if (message.type === 'dispose-ack' || message.type === 'dispose-retry') {
@@ -573,6 +600,15 @@ export function createLynxCompiledProgramTransport(
 			worklet: LynxMainThreadWorkletWireDescriptor,
 			args: readonly LynxWorkletValue[],
 		) {
+			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
+				const promise = Promise.reject(
+					new Error(
+						TRANSPORT_DEVELOPMENT ? 'Compact main call support is unavailable.' : TRANSPORT_ERROR,
+					),
+				) as Promise<Result>;
+				void promise.catch(() => {});
+				return { promise, cancel() {} };
+			}
 			const deferred = createDeferred<unknown>();
 			void deferred.promise.catch(() => {});
 			const identity = acknowledged ?? accepted;

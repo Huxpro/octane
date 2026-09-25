@@ -3,6 +3,7 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 import type { UniversalTransportIdentity } from 'octane/universal/native';
 
 import { applyLynxCompiledProgramFrame } from './compiled-program-frame.js';
+import { LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS } from './compiled-program-features.js';
 import {
 	decodeLynxCompiledProgramBackgroundMessage,
 	encodeLynxCompiledProgramMainMessage,
@@ -20,6 +21,7 @@ import {
 	createUnavailableLynxMainThreadWorkletRegistry,
 	subscribeLynxMainThreadWorkletFeature,
 	type LynxMainThreadWorkletFeature,
+	type LynxReplaceableMainThreadWorkletRegistry,
 } from './main-thread-worklet-feature.js';
 import type {
 	LynxActivatedMainThreadWorklet,
@@ -110,7 +112,9 @@ export function installLynxCompiledProgramProductReceiver<Node extends object>(
 	let pendingAdoption = options.adoption;
 	let workletFeature: LynxMainThreadWorkletFeature | null = null;
 	let worklets: LynxMainThreadWorkletRegistry = createUnavailableLynxMainThreadWorkletRegistry();
-	const hostWorklets = createReplaceableLynxMainThreadWorkletRegistry(worklets);
+	const hostWorklets = LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS
+		? createReplaceableLynxMainThreadWorkletRegistry(worklets)
+		: worklets;
 	let uninstallWorkletRegistry: (() => void) | null = null;
 	let uninstallCallBridge: (() => void) | null = null;
 	let unsubscribeWorkletFeature: (() => void) | null = null;
@@ -254,7 +258,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends object>(
 			uninstallBridge = feature.installCallBridge({ callBackground });
 			workletFeature = feature;
 			worklets = registry;
-			hostWorklets.replace(registry);
+			(hostWorklets as LynxReplaceableMainThreadWorkletRegistry).replace(registry);
 			uninstallWorkletRegistry = uninstall;
 			uninstallCallBridge = uninstallBridge;
 		} catch (error) {
@@ -277,6 +281,10 @@ export function installLynxCompiledProgramProductReceiver<Node extends object>(
 		runningMainCalls.clear();
 	};
 	const closeWorklets = (): void => {
+		if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
+			worklets.close();
+			return;
+		}
 		unsubscribeWorkletFeature?.();
 		unsubscribeWorkletFeature = null;
 		cancelCalls(new Error(DEVELOPMENT ? 'Compact worklet receiver closed.' : CODE), false);
@@ -315,6 +323,10 @@ export function installLynxCompiledProgramProductReceiver<Node extends object>(
 			return;
 		}
 		if (message.type === 'call-background-result' || message.type === 'call-background-error') {
+			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
+				report(CODE);
+				return;
+			}
 			const entry = pendingBackgroundCalls.get(message.call);
 			if (
 				entry === undefined ||
@@ -334,6 +346,10 @@ export function installLynxCompiledProgramProductReceiver<Node extends object>(
 			return;
 		}
 		if (message.type === 'cancel-main') {
+			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
+				report(CODE);
+				return;
+			}
 			const running = runningMainCalls.get(message.call);
 			if (
 				running !== undefined &&
@@ -347,6 +363,10 @@ export function installLynxCompiledProgramProductReceiver<Node extends object>(
 			return;
 		}
 		if (message.type === 'call-main') {
+			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
+				report(CODE);
+				return;
+			}
 			if (active === null || !same(active, message) || runningMainCalls.has(message.call)) {
 				report(
 					DEVELOPMENT
@@ -491,7 +511,9 @@ export function installLynxCompiledProgramProductReceiver<Node extends object>(
 				return;
 			}
 			busy = false;
-			cancelCalls(new Error(DEVELOPMENT ? 'Compact root was disposed.' : CODE), true);
+			if (LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
+				cancelCalls(new Error(DEVELOPMENT ? 'Compact root was disposed.' : CODE), true);
+			}
 			store = null;
 			active = null;
 			aborted = null;
@@ -605,12 +627,14 @@ export function installLynxCompiledProgramProductReceiver<Node extends object>(
 			publishReady();
 		}
 	};
-	try {
-		unsubscribeWorkletFeature = subscribeLynxMainThreadWorkletFeature(installWorkletFeature);
-		hostGlobals.runWorklet = installedRunWorklet;
-	} catch (error) {
-		closeWorklets();
-		throw error;
+	if (LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
+		try {
+			unsubscribeWorkletFeature = subscribeLynxMainThreadWorkletFeature(installWorkletFeature);
+			hostGlobals.runWorklet = installedRunWorklet;
+		} catch (error) {
+			closeWorklets();
+			throw error;
+		}
 	}
 	context.addEventListener(LYNX_COMPILED_PROGRAM_BACKGROUND_TO_MAIN_EVENT, onMessage);
 	return {

@@ -4,10 +4,16 @@ import {
 	LYNX_APPLICATION_SELECTION_ASSET_INFO,
 	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO,
+	LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO,
+	LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_ASSET_INFO,
+	LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO,
 	collectLynxBlockFeatureRequirements,
 	collectLynxBlockSemanticRequirements,
 	collectLynxProgramCoverage,
 	decideLynxBlockComponentFeatures,
+	decideLynxCompiledProgramFeatures,
+	decideLynxCompiledProgramHostRefFeature,
+	decideLynxCompiledProgramNativeListFeature,
 	evaluateLynxBlockEligibility,
 	evaluateLynxCompiledProgramEligibility,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
@@ -278,6 +284,409 @@ describe('Lynx Block component feature selection', () => {
 				reasons: [{ code: 'entry-requires-optional-block-semantics' }],
 			});
 		}
+	});
+});
+
+function compiledProgramFeatureDecision(
+	background: ReturnType<typeof featureRequirements>,
+	mainThread: ReturnType<typeof featureRequirements> = background,
+	mode = 'production',
+) {
+	const report = {
+		compiledProgramSelection: { eligible: true },
+		semanticRequirements: {
+			paired: true,
+			modules: [
+				{
+					background: semanticRequirements(),
+					mainThread: semanticRequirements(),
+				},
+			],
+		},
+		featureRequirements: {
+			paired: true,
+			modules: [{ background, mainThread }],
+		},
+	};
+	return decideLynxCompiledProgramFeatures(
+		{ options: { mode }, watchMode: false },
+		[{ mainThreadEntry: 'app__octane_main_thread' }],
+		new Map([['app__octane_main_thread', report]]),
+		{ selected: 'compiled-program' },
+	);
+}
+
+function compiledProgramNativeListFeatureDecision(
+	background: ReturnType<typeof featureRequirements>,
+	mainThread: ReturnType<typeof featureRequirements> = background,
+	mode = 'production',
+) {
+	const report = {
+		compiledProgramSelection: { eligible: true },
+		featureRequirements: {
+			paired: true,
+			modules: [{ background, mainThread }],
+		},
+	};
+	return decideLynxCompiledProgramNativeListFeature(
+		{ options: { mode }, watchMode: false },
+		[{ mainThreadEntry: 'app__octane_main_thread' }],
+		new Map([['app__octane_main_thread', report]]),
+		{ selected: 'compiled-program' },
+	);
+}
+
+function compiledProgramHostRefFeatureDecision(
+	background: ReturnType<typeof featureRequirements>,
+	mainThread: ReturnType<typeof featureRequirements> = background,
+	mode = 'production',
+	watchMode = false,
+) {
+	const report = {
+		compiledProgramSelection: { eligible: true },
+		featureRequirements: {
+			paired: true,
+			modules: [{ background, mainThread }],
+		},
+	};
+	return decideLynxCompiledProgramHostRefFeature(
+		{ options: { mode }, watchMode },
+		[{ mainThreadEntry: 'app__octane_main_thread' }],
+		new Map([['app__octane_main_thread', report]]),
+		{ selected: 'compiled-program' },
+	);
+}
+
+describe('Lynx compiled-program feature selection', () => {
+	it('removes thread-function support only from a paired production graph that proves it unused', () => {
+		expect(compiledProgramFeatureDecision(featureRequirements())).toEqual({
+			version: 1,
+			selected: 'no-thread-functions',
+			reasons: [],
+		});
+
+		const threadFunction = featureRequirements({
+			threadFunctions: [
+				{
+					kind: 'main-thread',
+					id: 'tf_tap',
+					line: 2,
+					column: 3,
+					captures: [],
+				},
+			],
+		});
+		expect(compiledProgramFeatureDecision(featureRequirements(), threadFunction)).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-thread-functions' }],
+		});
+
+		const mainThreadProp = featureRequirements({
+			mainThreadProps: [site('main-thread:ref', 4, 5)],
+		});
+		expect(compiledProgramFeatureDecision(mainThreadProp)).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-thread-functions' }],
+		});
+
+		const hookReport = {
+			compiledProgramSelection: { eligible: true },
+			semanticRequirements: {
+				paired: true,
+				modules: [
+					{
+						background: semanticRequirements({
+							components: [
+								{
+									name: 'App',
+									exportKind: 'named',
+									line: 1,
+									column: 0,
+									hooks: [site('useMainThreadRef')],
+								},
+							],
+						}),
+						mainThread: semanticRequirements(),
+					},
+				],
+			},
+			featureRequirements: {
+				paired: true,
+				modules: [
+					{
+						background: featureRequirements(),
+						mainThread: featureRequirements(),
+					},
+				],
+			},
+		};
+		expect(
+			decideLynxCompiledProgramFeatures(
+				{ options: { mode: 'production' }, watchMode: false },
+				[{ mainThreadEntry: 'app__octane_main_thread' }],
+				new Map([['app__octane_main_thread', hookReport]]),
+				{ selected: 'compiled-program' },
+			),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-thread-functions' }],
+		});
+
+		expect(
+			compiledProgramFeatureDecision(featureRequirements(), undefined, 'development'),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'compiled-feature-specialization-requires-one-shot-production' }],
+		});
+	});
+
+	it('fails closed when application, entry, or paired proof facts are incomplete', () => {
+		const compiler = { options: { mode: 'production' }, watchMode: false };
+		const entries = [{ mainThreadEntry: 'app__octane_main_thread' }];
+		const report = {
+			compiledProgramSelection: { eligible: true },
+			semanticRequirements: {
+				paired: true,
+				modules: [
+					{
+						background: semanticRequirements(),
+						mainThread: semanticRequirements(),
+					},
+				],
+			},
+			featureRequirements: {
+				version: 2,
+				paired: true,
+				modules: [
+					{
+						background: featureRequirements(),
+						mainThread: featureRequirements(),
+					},
+				],
+			},
+		};
+		const decide = (
+			reports = new Map([['app__octane_main_thread', report]]),
+			applicationDecision = { selected: 'compiled-program' },
+			selectedEntries = entries,
+		) => decideLynxCompiledProgramFeatures(compiler, selectedEntries, reports, applicationDecision);
+
+		expect(decide(new Map())).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'selection-report-missing' }],
+		});
+		expect(decide(undefined, { selected: 'general' })).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'compiled-feature-specialization-requires-compiled-application' }],
+		});
+		expect(decide(undefined, undefined, [])).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'no-authored-entries' }],
+		});
+		expect(
+			decide(
+				new Map([
+					[
+						'app__octane_main_thread',
+						{
+							...report,
+							featureRequirements: { ...report.featureRequirements, paired: false },
+						},
+					],
+				]),
+			),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-thread-functions' }],
+		});
+		expect(
+			decide(
+				new Map([
+					[
+						'app__octane_main_thread',
+						{
+							...report,
+							semanticRequirements: { ...report.semanticRequirements, paired: false },
+						},
+					],
+				]),
+			),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-thread-functions' }],
+		});
+	});
+});
+
+describe('Lynx compiled-program native-list feature selection', () => {
+	it('removes native-list support only from a paired production graph that proves it unused', () => {
+		expect(compiledProgramNativeListFeatureDecision(featureRequirements())).toEqual({
+			version: 1,
+			selected: 'no-native-list',
+			reasons: [],
+		});
+
+		const nativeList = featureRequirements({
+			templateFeatures: [{ kind: 'native-list', name: 'list', line: 2, column: 3 }],
+		});
+		expect(
+			compiledProgramNativeListFeatureDecision(featureRequirements(), nativeList),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-native-list' }],
+		});
+
+		expect(
+			compiledProgramNativeListFeatureDecision(featureRequirements(), undefined, 'development'),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'native-list-specialization-requires-one-shot-production' }],
+		});
+	});
+
+	it('fails closed when application, entry, or paired proof facts are incomplete', () => {
+		const compiler = { options: { mode: 'production' }, watchMode: false };
+		const entries = [{ mainThreadEntry: 'app__octane_main_thread' }];
+		const report = {
+			compiledProgramSelection: { eligible: true },
+			featureRequirements: {
+				paired: true,
+				modules: [
+					{
+						background: featureRequirements(),
+						mainThread: featureRequirements(),
+					},
+				],
+			},
+		};
+		const decide = (
+			reports = new Map([['app__octane_main_thread', report]]),
+			applicationDecision = { selected: 'compiled-program' },
+			selectedEntries = entries,
+		) =>
+			decideLynxCompiledProgramNativeListFeature(
+				compiler,
+				selectedEntries,
+				reports,
+				applicationDecision,
+			);
+
+		expect(decide(new Map())).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'selection-report-missing' }],
+		});
+		expect(decide(undefined, { selected: 'general' })).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'native-list-specialization-requires-compiled-application' }],
+		});
+		expect(decide(undefined, undefined, [])).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'no-authored-entries' }],
+		});
+		expect(
+			decide(
+				new Map([
+					[
+						'app__octane_main_thread',
+						{
+							...report,
+							featureRequirements: { ...report.featureRequirements, paired: false },
+						},
+					],
+				]),
+			),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-native-list' }],
+		});
+	});
+});
+
+describe('Lynx compiled-program host-ref feature selection', () => {
+	it('removes host-ref support only from a paired production graph that proves it unused', () => {
+		expect(compiledProgramHostRefFeatureDecision(featureRequirements())).toEqual({
+			version: 1,
+			selected: 'no-host-refs',
+			reasons: [],
+		});
+
+		const hostRef = featureRequirements({
+			templateFeatures: [{ kind: 'host-ref', name: 'view', line: 2, column: 3 }],
+		});
+		expect(compiledProgramHostRefFeatureDecision(featureRequirements(), hostRef)).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-host-refs' }],
+		});
+
+		expect(
+			compiledProgramHostRefFeatureDecision(featureRequirements(), undefined, 'development'),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'host-ref-specialization-requires-one-shot-production' }],
+		});
+		expect(
+			compiledProgramHostRefFeatureDecision(featureRequirements(), undefined, 'production', true),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'host-ref-specialization-requires-one-shot-production' }],
+		});
+	});
+
+	it('fails closed when application, entry, or paired proof facts are incomplete', () => {
+		const compiler = { options: { mode: 'production' }, watchMode: false };
+		const entries = [{ mainThreadEntry: 'app__octane_main_thread' }];
+		const report = {
+			compiledProgramSelection: { eligible: true },
+			featureRequirements: {
+				paired: true,
+				modules: [
+					{
+						background: featureRequirements(),
+						mainThread: featureRequirements(),
+					},
+				],
+			},
+		};
+		const decide = (
+			reports = new Map([['app__octane_main_thread', report]]),
+			applicationDecision = { selected: 'compiled-program' },
+			selectedEntries = entries,
+		) =>
+			decideLynxCompiledProgramHostRefFeature(
+				compiler,
+				selectedEntries,
+				reports,
+				applicationDecision,
+			);
+
+		expect(decide(new Map())).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'selection-report-missing' }],
+		});
+		expect(decide(undefined, { selected: 'general' })).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'host-ref-specialization-requires-compiled-application' }],
+		});
+		expect(decide(undefined, undefined, [])).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'no-authored-entries' }],
+		});
+		expect(
+			decide(
+				new Map([
+					[
+						'app__octane_main_thread',
+						{
+							...report,
+							featureRequirements: { ...report.featureRequirements, paired: false },
+						},
+					],
+				]),
+			),
+		).toMatchObject({
+			selected: 'full',
+			reasons: [{ code: 'entry-requires-host-refs' }],
+		});
 	});
 });
 
@@ -1146,7 +1555,28 @@ describe('Lynx application resident-program coverage', () => {
 				},
 			],
 		};
-		graph.modules = new Set([root, blockComponent, staleRenderer]);
+		const compiledProgramStore = {
+			nameForCondition: () =>
+				'/repo/node_modules/@octanejs/lynx/src/core/compiled-program-store.ts',
+			connections: [] as { module: unknown }[],
+		};
+		const compiledProgramFirstScreen = {
+			nameForCondition: () =>
+				'/repo/node_modules/@octanejs/lynx/src/core/compiled-program-first-screen.ts',
+			connections: [] as { module: unknown }[],
+		};
+		const papi = {
+			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/core/papi.ts',
+			connections: [] as { module: unknown }[],
+		};
+		graph.modules = new Set([
+			root,
+			blockComponent,
+			compiledProgramStore,
+			compiledProgramFirstScreen,
+			papi,
+			staleRenderer,
+		]);
 		const replacements: Array<{
 			test: RegExp;
 			callback: (resource: { request: string }) => void;
@@ -1180,24 +1610,50 @@ describe('Lynx application resident-program coverage', () => {
 				callback(null);
 				return;
 			}
+			if (
+				module === compiledProgramStore ||
+				module === compiledProgramFirstScreen ||
+				module === papi
+			) {
+				const owner =
+					module === compiledProgramStore
+						? compiledProgramStore
+						: module === compiledProgramFirstScreen
+							? compiledProgramFirstScreen
+							: papi;
+				const resource = { request: './compiled-program-native-list-feature.js' };
+				for (const replacement of replacements) {
+					if (replacement.test.test(resource.request)) replacement.callback(resource);
+				}
+				rebuiltRequests.push(resource.request);
+				owner.connections = [
+					{
+						module: {
+							nameForCondition: () =>
+								'/repo/node_modules/@octanejs/lynx/src/core/compiled-program-native-list-feature.no-native-list.ts',
+						},
+					},
+				];
+				callback(null);
+				return;
+			}
 			const connections = [];
 			for (const request of [
 				'./core/background-core-selection.js',
 				'./core/application-selection.js',
+				'./core/compiled-program-features.js',
 			]) {
 				const resource = { request };
 				for (const replacement of replacements) {
 					if (replacement.test.test(resource.request)) replacement.callback(resource);
 				}
 				rebuiltRequests.push(resource.request);
-				connections.push({
-					module: {
-						nameForCondition: () =>
-							resource.request.endsWith('background-core-selection.block.js')
-								? '/repo/node_modules/@octanejs/lynx/src/core/background-core-selection.block.ts'
-								: '/repo/node_modules/@octanejs/lynx/src/core/application-selection.compiled-program.ts',
-					},
-				});
+				const selectedResource = resource.request.endsWith('background-core-selection.block.js')
+					? '/repo/node_modules/@octanejs/lynx/src/core/background-core-selection.block.ts'
+					: resource.request.endsWith('compiled-program-features.no-thread-functions.js')
+						? '/repo/node_modules/@octanejs/lynx/src/core/compiled-program-features.no-thread-functions.ts'
+						: '/repo/node_modules/@octanejs/lynx/src/core/application-selection.compiled-program.ts';
+				connections.push({ module: { nameForCondition: () => selectedResource } });
 			}
 			root.connections = connections;
 			callback(null);
@@ -1245,14 +1701,27 @@ describe('Lynx application resident-program coverage', () => {
 
 		// The proof passes, compiler-program module selection, owner discovery /
 		// verification, and dependency-first rebuild ordering all inspect the graph.
-		expect(graphVisits).toBe(17);
-		expect(rebuiltModules).toEqual([background, mainThread, blockComponent, root]);
+		expect(graphVisits).toBe(40);
+		expect(rebuiltModules).toEqual([
+			background,
+			mainThread,
+			blockComponent,
+			compiledProgramFirstScreen,
+			compiledProgramStore,
+			papi,
+			root,
+		]);
 		expect(rebuiltRequests).toEqual([
 			'./core/background-core-selection.block.js',
 			'./core/application-selection.compiled-program.js',
+			'./core/compiled-program-features.no-thread-functions.js',
 			'./block-component-features.structural.js',
+			'./compiled-program-native-list-feature.no-native-list.js',
+			'./compiled-program-native-list-feature.no-native-list.js',
+			'./compiled-program-native-list-feature.no-native-list.js',
 			'./core/background-core-selection.block.js',
 			'./core/application-selection.compiled-program.js',
+			'./core/compiled-program-features.no-thread-functions.js',
 		]);
 		expect(assets.get('.rspeedy/app/main-thread.js')?.info).toMatchObject({
 			existing: true,
@@ -1313,6 +1782,21 @@ describe('Lynx application resident-program coverage', () => {
 			[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO]: {
 				version: 1,
 				selected: 'structural',
+				reasons: [],
+			},
+			[LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO]: {
+				version: 1,
+				selected: 'no-thread-functions',
+				reasons: [],
+			},
+			[LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_ASSET_INFO]: {
+				version: 1,
+				selected: 'no-host-refs',
+				reasons: [],
+			},
+			[LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO]: {
+				version: 1,
+				selected: 'no-native-list',
 				reasons: [],
 			},
 		});

@@ -134,6 +134,7 @@ import {
 	LYNX_BLOCK_TRANSITIONS,
 	LYNX_BLOCK_TRY_BOUNDARIES,
 } from './block-component-features.js';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './compiled-program-host-ref-feature.js';
 import { encodeLynxProgramPropValue } from './host-prop-value.js';
 import { LYNX_TRANSPORT_RENDERER } from './transport-identity.js';
 import type { LynxBlockListener } from './block-root.js';
@@ -1649,7 +1650,7 @@ export function lynxBlockProgramForComponent<Props>(
 				templateState.template = compileLynxBlockTemplate(
 					rendered.plan.wire,
 					rendered.plan.address,
-					rendered.plan.refs?.map((ref) => ref.node),
+					LYNX_COMPILED_PROGRAM_HOST_REFS ? rendered.plan.refs?.map((ref) => ref.node) : undefined,
 				);
 			} else {
 				const root = rendered.plan.root;
@@ -1748,7 +1749,9 @@ export function lynxBlockProgramForComponent<Props>(
 			values,
 			listeners: listenersAt(sites, rendered.values),
 			refs:
-				isLynxCompilerProgram(rendered.plan) && rendered.plan.refs !== undefined
+				LYNX_COMPILED_PROGRAM_HOST_REFS &&
+				isLynxCompilerProgram(rendered.plan) &&
+				rendered.plan.refs !== undefined
 					? rendered.plan.refs.map((ref) => rendered.values[ref.slot])
 					: EMPTY_REF_VALUES,
 			visible: parentVisible && rendered.visible,
@@ -1896,7 +1899,7 @@ export function lynxBlockProgramForComponent<Props>(
 			}
 			if (rendered.visible) context.root.bindListeners(member, rendered.listeners);
 		}
-		if (owner.templateState.template!.refs !== undefined) {
+		if (LYNX_COMPILED_PROGRAM_HOST_REFS && owner.templateState.template!.refs !== undefined) {
 			if (rendered.visible) context.root.bindRefs(member, rendered.refs);
 			else context.root.releaseRefs(member);
 		}
@@ -2457,7 +2460,9 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 		const rows: (readonly UniversalHostTemplateProgramValue[])[] = new Array(items.length);
 		const handlers: (readonly (LynxBlockListener | null)[])[] = new Array(items.length);
-		const refs: (readonly unknown[])[] = new Array(items.length);
+		const refs: (readonly unknown[])[] | null = LYNX_COMPILED_PROGRAM_HOST_REFS
+			? new Array(items.length)
+			: null;
 		let visibilities: boolean[] | null = null;
 		const keys: unknown[] = new Array(items.length);
 		const selectionRowsStable =
@@ -2514,7 +2519,7 @@ export function lynxBlockProgramForComponent<Props>(
 				// shallow comparison reach the same conclusion.
 				rows[index] = prior.values;
 				handlers[index] = prior.listeners;
-				refs[index] = prior.refs;
+				if (LYNX_COMPILED_PROGRAM_HOST_REFS) refs![index] = prior.refs;
 				if (prior.visible !== parentVisible) {
 					(visibilities ??= new Array(items.length).fill(parentVisible))[index] = prior.visible;
 				}
@@ -2548,7 +2553,7 @@ export function lynxBlockProgramForComponent<Props>(
 					// functions and the same item as fresh ones would.
 					rows[index] = prior.values;
 					handlers[index] = prior.listeners;
-					refs[index] = prior.refs;
+					if (LYNX_COMPILED_PROGRAM_HOST_REFS) refs![index] = prior.refs;
 					if (prior.visible !== parentVisible) {
 						(visibilities ??= new Array(items.length).fill(parentVisible))[index] = prior.visible;
 					}
@@ -2580,7 +2585,7 @@ export function lynxBlockProgramForComponent<Props>(
 			if (row.scope !== null) hasScopedRows = true;
 			rows[index] = row.values;
 			handlers[index] = row.listeners;
-			refs[index] = row.refs;
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS) refs![index] = row.refs;
 			if (row.visible !== parentVisible) {
 				(visibilities ??= new Array(items.length).fill(parentVisible))[index] = row.visible;
 			}
@@ -2614,7 +2619,7 @@ export function lynxBlockProgramForComponent<Props>(
 			items,
 			rows,
 			handlers,
-			refs,
+			refs: refs ?? EMPTY_REF_ROWS,
 			visibilities,
 			keys,
 			retained,
@@ -3297,7 +3302,7 @@ export function lynxBlockProgramForComponent<Props>(
 					const child = children?.get(member.key);
 					if (child !== undefined) clearNestedRanges(context, child, false);
 					context.root.releaseListeners(member);
-					context.root.releaseRefs(member);
+					if (LYNX_COMPILED_PROGRAM_HOST_REFS) context.root.releaseRefs(member);
 				},
 				children !== null,
 			);
@@ -3312,7 +3317,7 @@ export function lynxBlockProgramForComponent<Props>(
 			for (const [key, member] of site.items) {
 				context.core.setVisibility(member, false);
 				context.root.releaseListeners(member);
-				context.root.releaseRefs(member);
+				if (LYNX_COMPILED_PROGRAM_HOST_REFS) context.root.releaseRefs(member);
 				const prior = range.retained?.get(key) ?? null;
 				if (prior !== null && prior.visible) {
 					const hidden = { ...prior, visible: false };
@@ -3373,7 +3378,7 @@ export function lynxBlockProgramForComponent<Props>(
 			const nested = state.nested?.get(member.key);
 			if (nested !== undefined) clearNestedRanges(context, nested);
 			context.root.releaseListeners(member);
-			context.root.releaseRefs(member);
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS) context.root.releaseRefs(member);
 		};
 		const applyNested = (): void => {
 			for (const [key, nested] of render.nested) {
@@ -3399,7 +3404,7 @@ export function lynxBlockProgramForComponent<Props>(
 				if (!visible || handlers.includes(null)) context.root.releaseListeners(member);
 				if (visible) context.root.bindListeners(member, handlers);
 			}
-			if (memberTemplate.template!.refs !== undefined) {
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS && memberTemplate.template!.refs !== undefined) {
 				if (visible) context.root.bindRefs(member, refs);
 				else context.root.releaseRefs(member);
 			}
@@ -3423,7 +3428,7 @@ export function lynxBlockProgramForComponent<Props>(
 					}
 					if (row.retained.visible) context.root.bindListeners(member, row.retained.listeners);
 				}
-				if (templateState.template!.refs !== undefined) {
+				if (LYNX_COMPILED_PROGRAM_HOST_REFS && templateState.template!.refs !== undefined) {
 					if (row.retained.visible) context.root.bindRefs(member, row.retained.refs);
 					else context.root.releaseRefs(member);
 				}
@@ -3913,7 +3918,11 @@ export function lynxBlockProgramForComponent<Props>(
 			// holds is what the core itself compares against.
 			const held = block!.values;
 			const worklets = block!.template.mainThreadValues;
-			if (isLynxCompilerProgram(rendered.plan) && rendered.plan.refs !== undefined) {
+			if (
+				LYNX_COMPILED_PROGRAM_HOST_REFS &&
+				isLynxCompilerProgram(rendered.plan) &&
+				rendered.plan.refs !== undefined
+			) {
 				if (rendered.visible) {
 					context.root.bindRefs(
 						block!,
@@ -4068,13 +4077,15 @@ export function lynxBlockProgramForComponent<Props>(
 				valueIndexesBySlot = indexProgramSites(wire.values);
 				eventIndexesBySlot = indexProgramSites(wire.events);
 				refSlots =
-					isLynxCompilerProgram(rendered.plan) && rendered.plan.refs !== undefined
+					LYNX_COMPILED_PROGRAM_HOST_REFS &&
+					isLynxCompilerProgram(rendered.plan) &&
+					rendered.plan.refs !== undefined
 						? new Set(rendered.plan.refs.map((ref) => ref.slot))
 						: null;
 				const template: LynxBlockTemplate = compileLynxBlockTemplate(
 					wire.wire,
 					rendered.plan.address,
-					isLynxCompilerProgram(rendered.plan)
+					LYNX_COMPILED_PROGRAM_HOST_REFS && isLynxCompilerProgram(rendered.plan)
 						? rendered.plan.refs?.map((ref) => ref.node)
 						: undefined,
 				);
@@ -4089,7 +4100,11 @@ export function lynxBlockProgramForComponent<Props>(
 				// refuses. What can still throw below is a duplicate key, which the core
 				// is the authority on and rejects the same way for every caller.
 				block = context.core.mount(null, null, template, values);
-				if (isLynxCompilerProgram(rendered.plan) && rendered.plan.refs !== undefined) {
+				if (
+					LYNX_COMPILED_PROGRAM_HOST_REFS &&
+					isLynxCompilerProgram(rendered.plan) &&
+					rendered.plan.refs !== undefined
+				) {
 					if (rendered.visible) {
 						context.root.bindRefs(
 							block,
@@ -4145,7 +4160,7 @@ export function lynxBlockProgramForComponent<Props>(
 						const nested = range.nested?.get(member.key);
 						if (nested !== undefined) clearNestedRanges(context, nested);
 						context.root.releaseListeners(member);
-						context.root.releaseRefs(member);
+						if (LYNX_COMPILED_PROGRAM_HOST_REFS) context.root.releaseRefs(member);
 					},
 					range.nested !== null,
 				);
@@ -4153,7 +4168,9 @@ export function lynxBlockProgramForComponent<Props>(
 			if (block !== null && prepared !== null && prepared.events.length !== 0) {
 				context.root.releaseListeners(block);
 			}
-			if (block !== null && block.template.refs !== undefined) context.root.releaseRefs(block);
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS && block !== null && block.template.refs !== undefined) {
+				context.root.releaseRefs(block);
+			}
 			if (block !== null) context.core.destroyRoot(block);
 			context.afterCommit(() => {
 				for (const range of ranges) {

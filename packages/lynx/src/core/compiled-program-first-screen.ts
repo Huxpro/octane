@@ -10,6 +10,7 @@ import type {
 	LynxCompiledProgramAdoptionSource,
 	LynxCompiledProgramMount,
 } from './compiled-program-store.js';
+import { LYNX_COMPILED_PROGRAM_NATIVE_LIST } from './compiled-program-native-list-feature.js';
 
 const DEVELOPMENT =
 	typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__;
@@ -81,7 +82,10 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 	papi: LynxElementPAPI<Node>,
 	page: Node,
 ): LynxCompiledProgramAdoptionSource<Node> {
-	if (containsNativeList(result.nodes as readonly CompiledFirstScreenResultNode[])) {
+	if (
+		LYNX_COMPILED_PROGRAM_NATIVE_LIST &&
+		containsNativeList(result.nodes as readonly CompiledFirstScreenResultNode[])
+	) {
 		return deferredNativeListFirstScreen();
 	}
 	const pageId = papi.getUniqueId(page);

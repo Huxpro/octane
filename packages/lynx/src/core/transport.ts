@@ -78,8 +78,8 @@ import type { LynxBackgroundNativeEventDelivery } from './native-event-receiver.
 import {
 	isLynxMainThreadWorkletDescriptor,
 	isolateLynxWorkletValue,
-	type LynxWorkletValue,
-} from './worklets.js';
+} from './transport-thread-function-feature.js';
+import type { LynxWorkletValue } from './worklets.js';
 
 export interface LynxBackgroundTransportOptions {
 	readonly onDiagnostic?: (error: Error) => void;

@@ -4,9 +4,12 @@ import type { UniversalProgramCreate, UniversalProgramPlan } from 'octane/univer
 
 import { encodePrevalidatedLynxNativeEventToken } from './native-events.js';
 import type { LynxHostAttachmentChange } from './protocol.js';
+import { LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS } from './compiled-program-features.js';
 import { requireLynxMainThreadWorkletFeature } from './main-thread-worklet-feature.js';
 import type { LynxCompiledProgramWorkletStore } from './compiled-program-worklets.js';
 import type { LynxMainThreadWorkletRegistry } from './worklets.js';
+import { LYNX_COMPILED_PROGRAM_NATIVE_LIST } from './compiled-program-native-list-feature.js';
+import { LYNX_COMPILED_PROGRAM_HOST_REFS } from './compiled-program-host-ref-feature.js';
 import { LYNX_PROFILE, lynxWireProfile } from './profiling.js';
 import {
 	createLynxListItemDescriptorFromMetadata,
@@ -41,8 +44,8 @@ interface CompiledProgramRun<Node extends LynxElementRef> {
 	readonly stride: number;
 	readonly values: unknown[];
 	readonly count: number;
-	refFirstId: number | null;
-	refStride: number;
+	refFirstId?: number | null;
+	refStride?: number;
 }
 
 interface CompiledProgramInstance<Node extends LynxElementRef> {
@@ -348,7 +351,10 @@ function isSlotValue<Node extends LynxElementRef>(
 	const kind = plan.slots[plan.values[slot]!];
 	if (kind === 'c') return typeof value === 'string';
 	if (kind?.startsWith('p:') !== true) return false;
-	return isScalar(value) || worklets?.validValue(plan, slot, value) === true;
+	return (
+		isScalar(value) ||
+		(LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS && worklets?.validValue(plan, slot, value) === true)
+	);
 }
 
 function validateResidentNodes(plan: UniversalProgramPlan): void {
@@ -375,7 +381,13 @@ function validateResidentNodes(plan: UniversalProgramPlan): void {
 		if (range.before !== undefined && range.before !== null)
 			requireNode(range.before, 'range-anchor');
 	}
-	for (const node of plan.refs ?? []) requireNode(node, 'ref');
+	if (plan.refs !== undefined) {
+		if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+			for (const node of plan.refs) requireNode(node, 'ref');
+		} else {
+			fail('host refs reached a bundle compiled without host-ref support');
+		}
+	}
 	for (let index = 0; index < (plan.wire?.nodes.length ?? 0); index++) {
 		const wire = plan.wire!.nodes[index]!;
 		if ((wire.bindings?.length ?? 0) !== 0 || wire.type === 'list') requireNode(index, 'bound');
@@ -522,6 +534,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	const workletsFor = (
 		plan: UniversalProgramPlan,
 	): LynxCompiledProgramWorkletStore<Node> | null => {
+		if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) return null;
 		if (noWorkletPlans.has(plan)) return null;
 		if (workletStore !== null) {
 			if (workletStore.hasSites(plan)) return workletStore;
@@ -567,26 +580,24 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		if (rootNode === undefined) fail(StoreFailure.Detached);
 		return rootNode;
 	};
-	const refId = (run: CompiledProgramRun<Node>, index: number, node: number): number => {
-		if (run.refFirstId === null)
-			fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'ref run is not linked');
-		return run.refFirstId + index * run.refStride + node;
-	};
-	const updateCellRefs = (instance: CompiledProgramInstance<Node>, attached: boolean): void => {
-		const refs = instance.run.plan.refs;
-		if (refs === undefined || instance.run.refFirstId === null) return;
-		const changes: LynxHostAttachmentChange[] = [];
-		const offset = instance.index * instance.run.stride;
-		for (const node of refs) {
-			const physical = instance.run.nodes[offset + node];
-			if (physical === undefined)
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'lost a ref-bearing list node');
-			const id = refId(instance.run, instance.index, node);
-			papi.setRefSelector(physical, attached ? 'r' + String(root) + '-h' + id + '-g1' : '');
-			changes.push(Object.freeze({ id, generation: 1, attached }));
-		}
-		if (changes.length !== 0) onAttachments?.(Object.freeze(changes));
-	};
+	const updateCellRefs: (instance: CompiledProgramInstance<Node>, attached: boolean) => void =
+		LYNX_COMPILED_PROGRAM_HOST_REFS
+			? (instance, attached) => {
+					const refs = instance.run.plan.refs;
+					if (refs === undefined || instance.run.refFirstId === null) return;
+					const changes: LynxHostAttachmentChange[] = [];
+					const offset = instance.index * instance.run.stride;
+					for (const node of refs) {
+						const physical = instance.run.nodes[offset + node];
+						if (physical === undefined)
+							fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'lost a ref-bearing list node');
+						const id = instance.run.refFirstId! + instance.index * instance.run.refStride! + node;
+						papi.setRefSelector(physical, attached ? 'r' + String(root) + '-h' + id + '-g1' : '');
+						changes.push(Object.freeze({ id, generation: 1, attached }));
+					}
+					if (changes.length !== 0) onAttachments?.(Object.freeze(changes));
+				}
+			: () => {};
 	const requireInstance = (handle: number): CompiledProgramInstance<Node> => {
 		requireHandle(handle);
 		const instance = instances.get(handle);
@@ -732,7 +743,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const owner = cell.owner;
 		if (owner === null) return;
 		deactivateInstanceWorklets(owner);
-		if (owner.visible) updateCellRefs(owner, false);
+		if (LYNX_COMPILED_PROGRAM_HOST_REFS && owner.visible) updateCellRefs(owner, false);
 		writeCellEvents(cell.item, false);
 		const run = owner.run;
 		const offset = owner.index * run.stride;
@@ -787,7 +798,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		cell.item = item;
 		cell.owner = item.instance;
 		cell.awaitingEnqueue = false;
-		if (item.instance.visible) updateCellRefs(item.instance, true);
+		if (LYNX_COMPILED_PROGRAM_HOST_REFS && item.instance.visible) {
+			updateCellRefs(item.instance, true);
+		}
 	};
 	const rootOfCell = (cell: CompiledProgramListCell<Node>): Node =>
 		cell.owner === null ? cell.nodes[0]! : rootOf(cell.owner);
@@ -1238,7 +1251,17 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	};
 	let listProgramPAPI: LynxElementPAPI<Node> | null = null;
 	const programHost = (plan: UniversalProgramPlan): LynxElementPAPI<Node> => {
-		if (plan.wire?.nodes.some((node) => node.type === 'list') !== true) return papi;
+		const containsList = plan.wire?.nodes.some((node) => node.type === 'list') === true;
+		if (!LYNX_COMPILED_PROGRAM_NATIVE_LIST) {
+			if (containsList) {
+				fail(
+					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+						'a native-list plan contradicts the compiled no-native-list proof',
+				);
+			}
+			return papi;
+		}
+		if (!containsList) return papi;
 		return (listProgramPAPI ??= {
 			...papi,
 			createElement(type, componentId, text) {
@@ -1359,7 +1382,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		const active = journal;
 		journal = null;
 		const errors: unknown[] = [];
-		rollbackPreparedLists(errors);
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) rollbackPreparedLists(errors);
 		while (active.length !== 0) {
 			try {
 				const opcode = active.pop();
@@ -1372,7 +1395,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 						const instance = instances.get(handle)!;
 						deactivateInstanceWorklets(instance);
 						if (opcode === JournalOpcode.Mount && !instance.run.deferred) {
-							for (const list of listsInInstance(instance)) disposeList(list);
+							if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) {
+								for (const list of listsInInstance(instance)) disposeList(list);
+							}
 							cleanupRoot(papi, rootOf(instance));
 						}
 						unlink(instance, range);
@@ -1393,7 +1418,11 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 						}
 					}
 					run.values[valueIndex] = previous;
-					if (run.deferred && isListDescriptorSlot(run.plan, slot)) {
+					if (
+						LYNX_COMPILED_PROGRAM_NATIVE_LIST &&
+						run.deferred &&
+						isListDescriptorSlot(run.plan, slot)
+					) {
 						instance.listItem = undefined;
 					}
 				} else if (opcode === JournalOpcode.Remove) {
@@ -1404,11 +1433,13 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					const handle = active.pop() as number;
 					publishInstance(handle, instance);
 					relink(handle, instance, range);
-					if (instance.run.deferred) {
+					if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && instance.run.deferred) {
 						markListDirty(parent);
 					} else {
 						const rootNode = rootOf(instance);
-						for (const list of listsInInstance(instance)) pendingListDisposals?.delete(list);
+						if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) {
+							for (const list of listsInInstance(instance)) pendingListDisposals?.delete(list);
+						}
 						// Restore ownership before the host call so a mutate-then-throw
 						// insertion remains reachable by terminal disposal after faulting.
 						papi.insertBefore(parent, rootNode, before);
@@ -1430,7 +1461,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 		}
 		lastHandle = journalFirstHandle;
-		lastRefHost = journalFirstRefHost;
+		if (LYNX_COMPILED_PROGRAM_HOST_REFS) lastRefHost = journalFirstRefHost;
 		nextListener = journalFirstListener;
 		templates.length = journalFirstTemplates;
 		dirtyLists = null;
@@ -1495,7 +1526,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		unlink(instance, range);
 		instance.next = before;
 		instance.previous = before === null ? range.tail : instances.get(before)!.previous;
-		if (instance.run.deferred) markListDirty(instance.parent);
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && instance.run.deferred) {
+			markListDirty(instance.parent);
+		}
 		relink(handle, instance, range);
 	};
 	const applyVisibility = (
@@ -1505,11 +1538,14 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	): void => {
 		const run = instance.run;
 		const offset = instance.index * run.stride;
-		if (run.deferred && run.nodes[offset] === undefined) return;
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && run.deferred && run.nodes[offset] === undefined) {
+			return;
+		}
 		const node = rootOf(instance);
-		const listCell = run.deferred
-			? lists?.get(instance.parent)?.attachedByHandle.get(handle)
-			: undefined;
+		const listCell =
+			LYNX_COMPILED_PROGRAM_NATIVE_LIST && run.deferred
+				? lists?.get(instance.parent)?.attachedByHandle.get(handle)
+				: undefined;
 		const firstId = run.values[run.values.length - 2] as number;
 		const stride = run.values[run.values.length - 1] as number;
 		if (visible) papi.setAttribute(node, 'hidden', false);
@@ -1537,7 +1573,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		if (visible) activateInstanceWorklets(instance);
 		else deactivateInstanceWorklets(instance);
-		if (listCell !== undefined) updateCellRefs(instance, visible);
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && listCell !== undefined) {
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS) updateCellRefs(instance, visible);
+		}
 		if (!visible) papi.setAttribute(node, 'hidden', true);
 	};
 	const writeVisibility = (
@@ -1575,7 +1613,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				);
 			}
 		}
-		if (run.deferred) {
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && run.deferred) {
 			const range = ranges.get(instance.range);
 			if (range === undefined) fail(StoreFailure.RangeOrder);
 			unlink(instance, range);
@@ -1629,7 +1667,9 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			throw error;
 		}
 		unlink(instance, range);
-		for (const list of listsInInstance(instance)) (pendingListDisposals ??= new Set()).add(list);
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) {
+			for (const list of listsInInstance(instance)) (pendingListDisposals ??= new Set()).add(list);
+		}
 		releaseInstance(handle, instance);
 		undo.push(handle, instance, range, parent, before, JournalOpcode.Remove);
 	};
@@ -1673,7 +1713,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			}
 		}
 		run.values[valueIndex] = value;
-		if (run.deferred && isListDescriptorSlot(run.plan, slot)) {
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && run.deferred && isListDescriptorSlot(run.plan, slot)) {
 			instance.listItem = undefined;
 			markListDirty(instance.parent);
 		}
@@ -1727,19 +1767,21 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 				}
 				slots.add(range.slot);
 			}
-			const refNodes = new Set<number>();
-			for (const node of plan.refs ?? []) {
-				if (
-					!Number.isSafeInteger(node) ||
-					node < 0 ||
-					node >= plan.nodes ||
-					plan.wire?.nodes[node]?.type === '#text' ||
-					plan.wire?.nodes[node]?.type === 'raw-text' ||
-					refNodes.has(node)
-				) {
-					fail(`received an invalid ref site ${String(node)}`);
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+				const refNodes = new Set<number>();
+				for (const node of plan.refs ?? []) {
+					if (
+						!Number.isSafeInteger(node) ||
+						node < 0 ||
+						node >= plan.nodes ||
+						plan.wire?.nodes[node]?.type === '#text' ||
+						plan.wire?.nodes[node]?.type === 'raw-text' ||
+						refNodes.has(node)
+					) {
+						fail(`received an invalid ref site ${String(node)}`);
+					}
+					refNodes.add(node);
 				}
-				refNodes.add(node);
 			}
 		}
 		const nodeStride = plan.nodes + plan.ranges.length;
@@ -1829,7 +1871,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			next = input.before;
 		}
 		const previous = next === null ? range.tail : instances.get(next)!.previous;
-		const deferred = lists?.has(input.parent) === true;
+		const deferred = LYNX_COMPILED_PROGRAM_NATIVE_LIST && lists?.has(input.parent) === true;
 		if (deferred) {
 			const list = lists!.get(input.parent)!;
 			if (list.range !== null && list.range !== rangeKey) {
@@ -1959,9 +2001,11 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			plan,
 			stride: nodeStride,
 			values,
-			refFirstId: null,
-			refStride: 0,
 		};
+		if (LYNX_COMPILED_PROGRAM_HOST_REFS) {
+			run.refFirstId = null;
+			run.refStride = 0;
+		}
 		if (!deferred) profileRunOwnership(plan, input.count);
 		let runPrevious = previous;
 		for (let index = 0; index < input.count; index++) {
@@ -1992,7 +2036,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		}
 		lastHandle = finalHandle;
 		nextListener = finalListener;
-		if (deferred) markListDirty(input.parent);
+		if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && deferred) markListDirty(input.parent);
 		if (adoption && adopted.paintedValues !== undefined) {
 			for (let index = 0; index < targetValues.length; index++) {
 				if (Object.is(values[index], targetValues[index])) continue;
@@ -2009,7 +2053,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			if (journal !== null) fail(StoreFailure.NestedFrame);
 			journal = [];
 			journalFirstHandle = lastHandle;
-			journalFirstRefHost = lastRefHost;
+			if (LYNX_COMPILED_PROGRAM_HOST_REFS) journalFirstRefHost = lastRefHost;
 			journalFirstListener = nextListener;
 			journalFirstTemplates = templates.length;
 			preparedLists = null;
@@ -2017,21 +2061,23 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		},
 		prepareCommit() {
 			requireJournal();
-			prepareDirtyLists();
+			if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) prepareDirtyLists();
 		},
 		commit() {
 			requireHealthy();
 			if (journal === null) fail(StoreFailure.Commit);
-			prepareDirtyLists();
-			try {
-				for (const prepared of preparedLists!) finalizePreparedList(prepared);
-				if (pendingListDisposals !== null) {
-					for (const list of pendingListDisposals) disposeList(list);
-					pendingListDisposals = null;
+			if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) {
+				prepareDirtyLists();
+				try {
+					for (const prepared of preparedLists!) finalizePreparedList(prepared);
+					if (pendingListDisposals !== null) {
+						for (const list of pendingListDisposals) disposeList(list);
+						pendingListDisposals = null;
+					}
+				} catch (error) {
+					faulted = true;
+					throw error;
 				}
-			} catch (error) {
-				faulted = true;
-				throw error;
 			}
 			preparedLists = null;
 			listCallbackDuringFrame = false;
@@ -2124,60 +2170,72 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 			const undo = requireJournal();
 			removeInstance(handle, undo);
 		},
-		refs(firstHandle, firstId, stride) {
-			requireJournal();
-			requireHandle(firstHandle);
-			if (firstHandle <= journalFirstHandle) {
-				fail(
-					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
-						'REF-RUN must follow a mount in the same frame',
-				);
-			}
-			const instance = requireInstance(firstHandle);
-			const run = instance.run;
-			const refs = run.plan.refs;
-			if (!Number.isSafeInteger(root) || (root as number) <= 0) {
-				fail(
-					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN requires a positive root identity',
-				);
-			}
-			if (instance.index !== 0 || refs === undefined || refs.length === 0) {
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN requires a ref-bearing run root');
-			}
-			requireHandle(firstId);
-			if (!Number.isSafeInteger(stride) || stride !== run.plan.nodes) {
-				fail(
-					LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN stride disagrees with its program',
-				);
-			}
-			const lastHost = firstId + run.count * stride - 1;
-			if (!Number.isSafeInteger(lastHost)) {
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN exhausts logical host identity');
-			}
-			if (firstId <= lastRefHost) {
-				fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN reuses logical host identity');
-			}
-			if (run.refFirstId !== null) {
-				if (run.refFirstId !== firstId || run.refStride !== stride) {
-					fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN changes an existing link');
+		refs: LYNX_COMPILED_PROGRAM_HOST_REFS
+			? (firstHandle, firstId, stride) => {
+					requireJournal();
+					requireHandle(firstHandle);
+					if (firstHandle <= journalFirstHandle) {
+						fail(
+							LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+								'REF-RUN must follow a mount in the same frame',
+						);
+					}
+					const instance = requireInstance(firstHandle);
+					const run = instance.run;
+					const refs = run.plan.refs;
+					if (!Number.isSafeInteger(root) || (root as number) <= 0) {
+						fail(
+							LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+								'REF-RUN requires a positive root identity',
+						);
+					}
+					if (instance.index !== 0 || refs === undefined || refs.length === 0) {
+						fail(
+							LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN requires a ref-bearing run root',
+						);
+					}
+					requireHandle(firstId);
+					if (!Number.isSafeInteger(stride) || stride !== run.plan.nodes) {
+						fail(
+							LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+								'REF-RUN stride disagrees with its program',
+						);
+					}
+					const lastHost = firstId + run.count * stride - 1;
+					if (!Number.isSafeInteger(lastHost)) {
+						fail(
+							LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN exhausts logical host identity',
+						);
+					}
+					if (firstId <= lastRefHost) {
+						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN reuses logical host identity');
+					}
+					if (run.refFirstId !== null) {
+						if (run.refFirstId !== firstId || run.refStride !== stride) {
+							fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'REF-RUN changes an existing link');
+						}
+						return;
+					}
+					lastRefHost = lastHost;
+					run.refFirstId = firstId;
+					run.refStride = stride;
+					if (run.deferred) return;
+					for (let row = 0; row < run.count; row++) {
+						const offset = row * run.stride;
+						for (const node of refs) {
+							const physical = run.nodes[offset + node];
+							if (physical === undefined)
+								fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'lost a ref-bearing node');
+							const id = firstId + row * stride + node;
+							papi.setRefSelector(physical, 'r' + String(root) + '-h' + id + '-g1');
+						}
+					}
 				}
-				return;
-			}
-			lastRefHost = lastHost;
-			run.refFirstId = firstId;
-			run.refStride = stride;
-			if (run.deferred) return;
-			for (let row = 0; row < run.count; row++) {
-				const offset = row * run.stride;
-				for (const node of refs) {
-					const physical = run.nodes[offset + node];
-					if (physical === undefined)
-						fail(LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT && 'lost a ref-bearing node');
-					const id = refId(run, row, node);
-					papi.setRefSelector(physical, 'r' + String(root) + '-h' + id + '-g1');
-				}
-			}
-		},
+			: () =>
+					fail(
+						LYNX_COMPILED_PROGRAM_STORE_DEVELOPMENT &&
+							'host-ref run reached a bundle compiled without host-ref support',
+					),
 		size() {
 			return instances.size;
 		},
@@ -2194,7 +2252,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 					(errors ??= []).push(error);
 				}
 			}
-			if (lists !== null) {
+			if (LYNX_COMPILED_PROGRAM_NATIVE_LIST && lists !== null) {
 				for (const list of lists.values()) {
 					try {
 						disposeList(list);

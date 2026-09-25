@@ -17,6 +17,9 @@ import {
 	LYNX_APPLICATION_SELECTION_ASSET_INFO,
 	LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO,
+	LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO,
+	LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_ASSET_INFO,
+	LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_FEATURE_REQUIREMENTS_ASSET_INFO,
 	LYNX_BLOCK_SELECTION_ASSET_INFO,
 	LYNX_BLOCK_SEMANTIC_REQUIREMENTS_ASSET_INFO,
@@ -291,6 +294,11 @@ class ProgramCoverageProbePlugin {
 						const core = asset.info[LYNX_BACKGROUND_CORE_SELECTION_ASSET_INFO];
 						const application = asset.info[LYNX_APPLICATION_SELECTION_ASSET_INFO];
 						const componentFeatures = asset.info[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO];
+						const compiledFeatures = asset.info[LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO];
+						const hostRefFeature =
+							asset.info[LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_ASSET_INFO];
+						const nativeListFeature =
+							asset.info[LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO];
 						if (
 							program !== undefined ||
 							semantic !== undefined ||
@@ -298,7 +306,10 @@ class ProgramCoverageProbePlugin {
 							selection !== undefined ||
 							core !== undefined ||
 							application !== undefined ||
-							componentFeatures !== undefined
+							componentFeatures !== undefined ||
+							compiledFeatures !== undefined ||
+							hostRefFeature !== undefined ||
+							nativeListFeature !== undefined
 						) {
 							this.reports.push({
 								program,
@@ -308,6 +319,9 @@ class ProgramCoverageProbePlugin {
 								core,
 								application,
 								componentFeatures,
+								compiledFeatures,
+								hostRefFeature,
+								nativeListFeature,
 							});
 						}
 					}
@@ -333,7 +347,13 @@ function programCoverageProbe(reports: unknown[]) {
 async function collectCoreSelections(
 	mode: 'development' | 'production',
 	entry: Record<string, string>,
-	field: 'application' | 'componentFeatures' | 'core' = 'core',
+	field:
+		| 'application'
+		| 'compiledFeatures'
+		| 'componentFeatures'
+		| 'core'
+		| 'hostRefFeature'
+		| 'nativeListFeature' = 'core',
 ): Promise<unknown[]> {
 	const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-core-selection-'));
 	const reports: unknown[] = [];
@@ -370,6 +390,48 @@ async function collectCoreSelections(
 }
 
 describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
+	it('selects host-ref support from paired authored template facts', async () => {
+		expect(
+			await collectCoreSelections(
+				'production',
+				{ main: './src/block-eligible.ts' },
+				'hostRefFeature',
+			),
+		).toEqual([{ version: 1, selected: 'no-host-refs', reasons: [] }]);
+		expect(
+			await collectCoreSelections('production', { main: './src/block-ref.ts' }, 'hostRefFeature'),
+		).toEqual([
+			{
+				version: 1,
+				selected: 'full',
+				reasons: [{ code: 'entry-requires-host-refs', entry: 'main__octane_main_thread' }],
+			},
+		]);
+	}, 120_000);
+
+	it('selects native-list support from paired authored template facts', async () => {
+		expect(
+			await collectCoreSelections(
+				'production',
+				{ main: './src/block-eligible.ts' },
+				'nativeListFeature',
+			),
+		).toEqual([{ version: 1, selected: 'no-native-list', reasons: [] }]);
+		expect(
+			await collectCoreSelections(
+				'production',
+				{ main: './src/native-list.ts' },
+				'nativeListFeature',
+			),
+		).toEqual([
+			{
+				version: 1,
+				selected: 'full',
+				reasons: [{ code: 'entry-requires-native-list', entry: 'main__octane_main_thread' }],
+			},
+		]);
+	}, 120_000);
+
 	it('specializes a production graph with structural semantics only', async () => {
 		expect(
 			await collectCoreSelections(
@@ -719,6 +781,21 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						},
 					],
 				},
+				compiledFeatures: {
+					version: 1,
+					selected: 'no-thread-functions',
+					reasons: [],
+				},
+				hostRefFeature: {
+					version: 1,
+					selected: 'no-host-refs',
+					reasons: [],
+				},
+				nativeListFeature: {
+					version: 1,
+					selected: 'no-native-list',
+					reasons: [],
+				},
 			});
 			const retained = retainedModuleIdentifiers.map((identifier) =>
 				identifier
@@ -765,6 +842,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				'core/client-driver.ts',
 				'core/compact-host-refs.ts',
 				'core/compiled-program-worklets.ts',
+				'core/worklets.ts',
 				'main-worklets.ts',
 				'main-renderer.ts',
 				'core/main-thread-application-selection.ts',
@@ -774,18 +852,42 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					`${module}\n${retained.join('\n')}`,
 				).toBe(false);
 			}
+			expect(
+				retained.some((identifier) =>
+					identifier.endsWith(
+						'/packages/lynx/src/core/compiled-program-host-ref-feature.no-host-refs.ts',
+					),
+				),
+				retained.join('\n'),
+			).toBe(true);
+			expect(
+				retained.some((identifier) =>
+					identifier.endsWith('/packages/lynx/src/core/compiled-program-host-ref-feature.ts'),
+				),
+			).toBe(false);
+			expect(
+				retained.some((identifier) =>
+					identifier.endsWith(
+						'/packages/lynx/src/core/compiled-program-native-list-feature.no-native-list.ts',
+					),
+				),
+				retained.join('\n'),
+			).toBe(true);
+			expect(
+				retained.some((identifier) =>
+					identifier.endsWith('/packages/lynx/src/core/compiled-program-native-list-feature.ts'),
+				),
+			).toBe(false);
 			const product = readFileSync(join(temporaryRoot, 'dist/main.lynx.bundle'));
 			expect(product.includes('octane-lynx:compiled-program-background-to-main')).toBe(true);
 			expect(product.includes('octane-lynx:compiled-program-main-to-background')).toBe(true);
 			expect(product.includes('octane-lynx:background-to-main')).toBe(false);
 			expect(product.includes('octane-lynx:main-to-background')).toBe(false);
 			expect(
-				moduleSources.some(
-					(module) =>
-						module.layer === 'octane:background' &&
-						module.identifier
-							.replaceAll(String.fromCharCode(92), '/')
-							.endsWith('/packages/lynx/src/core/nodes-ref.ts'),
+				moduleSources.some((module) =>
+					module.identifier
+						.replaceAll(String.fromCharCode(92), '/')
+						.endsWith('/packages/lynx/src/core/nodes-ref.ts'),
 				),
 			).toBe(false);
 			const backgroundProgram = moduleSources.find(
@@ -807,12 +909,19 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 			expect(mainProgram?.code).toContain('"version": 1');
 			expect(mainProgram?.code).toContain('papi.createElement("image", pageId');
 			const decoded = await decodeNativeBundle(product);
-			expect(nativeScriptText(decoded['background-thread-script'])).toContain(
-				'octane-r10-background-selection',
-			);
-			expect(nativeScriptText(decoded['main-thread-script'])).not.toContain(
-				'octane-r10-background-selection',
-			);
+			const backgroundScript = nativeScriptText(decoded['background-thread-script']);
+			const mainThreadScript = nativeScriptText(decoded['main-thread-script']);
+			expect(backgroundScript).toContain('octane-r10-background-selection');
+			expect(mainThreadScript).not.toContain('octane-r10-background-selection');
+			const scripts = `${backgroundScript}\n${mainThreadScript}`;
+			for (const fullHostRefPath of [
+				'REF-RUN first instance',
+				'received the wrong host-attachment field count',
+				'host attachment id',
+			]) {
+				expect(scripts).not.toContain(fullHostRefPath);
+			}
+			expect(scripts).toContain('REF-RUN reached a bundle compiled without host-ref support');
 		} finally {
 			await result?.close();
 			rmSync(temporaryRoot, { recursive: true, force: true });
@@ -1358,6 +1467,36 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						selected: 'full',
 						reasons: [
 							{ code: 'feature-specialization-requires-block-core' },
+							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
+						],
+					},
+					compiledFeatures: {
+						version: 1,
+						selected: 'full',
+						reasons: [
+							{
+								code: 'compiled-feature-specialization-requires-compiled-application',
+							},
+							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
+						],
+					},
+					hostRefFeature: {
+						version: 1,
+						selected: 'full',
+						reasons: [
+							{
+								code: 'host-ref-specialization-requires-compiled-application',
+							},
+							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
+						],
+					},
+					nativeListFeature: {
+						version: 1,
+						selected: 'full',
+						reasons: [
+							{
+								code: 'native-list-specialization-requires-compiled-application',
+							},
 							{ code: 'entry-ineligible', entry: 'main__octane_main_thread' },
 						],
 					},
