@@ -233,6 +233,10 @@ them as final qualification. They are not counted as R11 passes.
   is the sanitized exact-head 10-pair ordinary/structural configuration record;
   SHA-256
   `459f88ef8244499e38733b53e3f89b733c8bbd2853caafb27c366df1bc539df4`.
+- [`android-current-head-structural-element-template-create1000-abba.json`](evidence/android-current-head-structural-element-template-create1000-abba.json)
+  is the sanitized current-head 10-pair cell-gate record on
+  `be7615df441519a99e7478d951a8f494feed6af4`; SHA-256
+  `17d4576f488a30f4fca089c87ecce71a57352ba156748c69bbfbcc2449a143d3`.
 - [`../lynx-issue382-release-candidate/README.md`](../lynx-issue382-release-candidate/README.md)
   records the source/build, external-consumer, semantic, graph-retention, and
   bundle inventory qualification inherited from R10.
@@ -412,6 +416,34 @@ The later exact-head 1,000-row create follow-up adds the 10-pair
 ordinary/structural configuration comparison summarized above. It does not
 broaden the earlier 10,000/30,000 safety qualification, and it does not replace
 the missing fresh-process native-memory or full release matrix evidence.
+
+### 2026-09-25 current-head continuity check
+
+After the background publication and teardown serialization fixes, commit
+`be7615df441519a99e7478d951a8f494feed6af4` was rebuilt from source in both the
+ordinary automatic configuration and the experimental structural Element
+Template configuration. A fresh Android 10 Sandbox lease ran 10 adjacent
+AB/BA pairs with cold Explorer launches, DevTool disabled before each sample,
+native ADB taps, a 35 °C / thermal-status-0 gate, and the existing strict state,
+transport-ACK, and second-native-frame receipt.
+
+All 20 attempts passed on their first try. Ordinary tap-to-second-frame latency
+had a 587 ms median; structural Element Template had a 533 ms median. The
+paired structural-minus-ordinary values ranged from −85 to −40 ms, so
+structural Element Template won all 10 pairs with a −56 ms paired median. Main
+commit wall time moved from a 500 ms ordinary median to 438.5 ms, again winning
+all 10 pairs with a −62 ms paired median. Median frame bytes were effectively
+unchanged at 32,987 versus 32,942.5.
+
+The shipping Element Template bundle remained larger: 243,769 versus 226,542
+raw bytes (+7.60%), 85,628 versus 78,431 gzip bytes (+9.18%), and 73,951 versus
+67,942 Brotli bytes (+8.84%). The run used Lynx SDK 4.2, whereas the earlier
+ten-pair record used SDK 4.1, so the two windows are continuity evidence rather
+than one merged statistical cohort. This current-head 1,000-row create cell
+satisfies the registered 10-pair sample count and semantic checks, but the
+result still preserves the **NO-GO** verdict and does not authorize the default
+switch; memory/GC, broader operations and scales, native list, no-JIT/low-end
+Android, iOS, bytecode, latest-upstream, and peer qualification remain open.
 
 ## Upstream alignment and remaining owner work
 
