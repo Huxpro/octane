@@ -18,7 +18,7 @@ Element Template owner. It does not change the NO-GO decision or the default,
 but it replaces the earlier unbounded ordinary-Element creation path for the
 eligible opt-in slice and adds a narrowly qualified Android safety boundary.
 
-## Current-head status (2026-09-15)
+## Current-head status (2026-09-25)
 
 The frozen campaign below still describes code candidate `b62a642a1`, not the
 newer local product line. The later product head passed complete Lynx and
@@ -76,6 +76,27 @@ gzip bytes (+7.24%), and 5,676 Brotli bytes (+7.13%) larger. The result is
 positive evidence for this admitted app shape, while the engine-version
 difference, bundle cost, missing native memory cohort, and broader matrix remain
 explicit acceptance inputs.
+
+The same immutable structural Element Template product bundle later completed
+five fresh Android 10 cold launches of the registered 10k mutation sequence:
+create, update every tenth row, select the second row, swap rows 2 and 999, a
+50-tick update storm, a 30-tick select storm, and remove the current second row.
+All 35 operations passed on their first attempt. Every operation carried one
+Native ContextProxy ACK, one `complete` message, and two native frames; the
+storms additionally carried all 50/30 tick ACKs and render barriers. Their
+latest main versions were exactly 55 and 85 in every run, proving that the
+runner attributed the final storm commits instead of consuming the next input.
+
+The Native input-to-second-frame medians were 21,717 ms create, 220 ms update,
+43 ms select, 75 ms swap, 8,792 ms for all 50 update ticks, 1,436 ms for all 30
+select ticks, and 145 ms remove. Update-storm first feedback was 177 ms median;
+select-storm first feedback was 19 ms. Pure mutations retained the populated
+owner census exactly. Remove changed it by precisely one live handle, two
+listener slots, and four retained host references, all represented by one
+recycled handle and four recycled host references. This closes the narrow 10k
+semantic/owner gate for those operations at `n=5`; it is one serialized
+single-cell cohort, not a powered AB/BA comparison or 100 independent inputs,
+and it does not close append, list, process-memory/GC, or platform coverage.
 
 ## Frozen cohort
 
@@ -204,11 +225,11 @@ fixture/observer and stable DevTool lifecycle are prerequisites for a rerun.
 
 | Gate inherited from #290/#291/#383 | Result | Evidence or gap |
 | --- | --- | --- |
-| Android output, identity, events/effects, real input | **Partial / fail** | Current-product structural create cells at 1k, 3k, and 5k passed their paired semantic samples and native taps. Fresh ET-only 10k create and create-clear-recreate cohorts each passed 5/5 cold starts with exact state, ACK, two frames, and strict ownership census; the ordinary owner still crashes at the JNI global-reference ceiling, while higher-scale startup and all list cells remain failed or unqualified. |
+| Android output, identity, events/effects, real input | **Partial / fail** | Current-product structural create cells at 1k, 3k, and 5k passed their paired semantic samples and native taps. Fresh ET-only 10k create and create-clear-recreate cohorts each passed 5/5 cold starts; a separate 5/5 10k sequence passed update-every-tenth, select, swap, 50/30-tick storms, and remove with exact state, ACK, two frames, and strict ownership census. The ordinary owner still crashes at the JNI global-reference ceiling, while append, higher-scale startup, and all list cells remain failed or unqualified. |
 | Latest upstream strict win, weighted geometric mean, CI upper bound `< 1.0` | **Inconclusive / fail** | Upstream lacks the Native producer; no valid full scorecard exists. |
 | Peer strict win and per-cell non-inferiority CI upper bound `<= 1.05` | **Fail** | Candidate creation is materially slower and becomes DNF at 10k while every peer completes. |
-| At least 10 independent AB/BA pairs | **Partial** | The current-product ordinary/structural Element Template 1k, 3k, and 5k create cells each completed 10 pairs; the registered non-create, 10k+, memory, list, upstream, and peer matrix has not. |
-| Ready/first-tap/steady p95 from at least 100 valid interactions | **Missing** | No cell has the required 100 valid samples; list has none. |
+| At least 10 independent AB/BA pairs | **Partial** | The current-product ordinary/structural Element Template 1k, 3k, and 5k create cells each completed 10 pairs; the 10k mutation sequence is a single-cell `n=5` correctness cohort, and the 10k+ performance, memory, list, upstream, and peer matrix has not completed. |
+| Ready/first-tap/steady p95 from at least 100 valid interactions | **Missing** | The mutation cohort has five serialized sequences / 35 registered inputs, not 100 independent samples; list has none. |
 | Peak/settled/after-clear heap and 20 create-clear-recreate GC cycles | **Missing** | No current-candidate Native memory campaign was completed. |
 | Native list reuse, recycle, fling, and stable identity | **Fail** | 640/640 Native attempts DNF across the lane. |
 | Android no-JIT and retained low-end device | **Missing** | The Android 10 cohort is recorded, but a no-JIT policy and a separate retained low-end lane were not established. |
@@ -250,6 +271,10 @@ them as final qualification. They are not counted as R11 passes.
   is the sanitized five-sample 10k create-clear-recreate lifecycle cohort;
   SHA-256
   `d99bf205ef6cab2165a900f689d7660119a5e71ff680cdcf3470136c5be9fecd`.
+- [`android-current-head-structural-element-template-10000-mutations.json`](evidence/android-current-head-structural-element-template-10000-mutations.json)
+  is the sanitized five-sample 10k registered mutation-sequence cohort;
+  SHA-256
+  `a33d81f9bb1c8ef666a6aa189f84febc0dee1ad878ce5a239fbdd70bfe1b193c`.
 - [`../lynx-issue382-release-candidate/README.md`](../lynx-issue382-release-candidate/README.md)
   records the source/build, external-consumer, semantic, graph-retention, and
   bundle inventory qualification inherited from R10.
