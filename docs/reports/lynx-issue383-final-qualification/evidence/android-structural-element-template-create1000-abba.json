@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-15T01:38:16.577Z",
+  "scope": "One exact-head Android 4.1 window comparing the automatic ordinary compiled-program owner with the experimental structural Element Template owner for a native-tap 1,000-row create. This is a configuration-level same-device comparison, not a general Android, iOS, memory, list, no-JIT, cross-framework, or default-switch claim.",
+  "candidate": {
+    "commit": "54f2ac806e4aabe57d9a177ccd1ca7d73f99a7f9",
+    "branch": "feat/optimal-lynx-app-adoption",
+    "ordinaryConfiguration": "production automatic core with the ordinary compiled-program native owner",
+    "structuralElementTemplateConfiguration": "production automatic core with compiler-proved structural Element Template ownership"
+  },
+  "explorer": {
+    "release": "4.1.0",
+    "asset": "LynxExplorer-noasan-release.apk",
+    "sha256": "6ae29787a2166974c29c2f23d87f3b20a137abcf9a8c17903ad19f3fb7f00cb6"
+  },
+  "device": {
+    "identity": "sha256:94cc927b21558099ced87e3142336a0a3ada09af1bf8492ac8bacd84cc919d23",
+    "rawIdentityRetained": false,
+    "batteryTemperatureTenthsC": {
+      "min": 350,
+      "max": 350
+    },
+    "thermalStatuses": [0]
+  },
+  "protocol": {
+    "runner": "octane-issue194-device-v1",
+    "nativeReceipt": "lynx-native-bench-v2",
+    "nativeBoundary": "native-input-handler-to-second-native-frame",
+    "mainReceipt": "octane-issue194-compact-main-v1",
+    "mainBoundary": "compact product receiver frame application through ACK and complete dispatch",
+    "ordering": "AB/BA (A,B,B,A repeating)",
+    "coldLaunchPerSample": true,
+    "devtool": "disabled by a background-only preflight before every sample; no CDP connection used",
+    "input": "native ADB tap at the registered create-1,000 control",
+    "targetAcceptedSamplesPerCell": 10,
+    "acceptedSamples": 20,
+    "attempts": 20,
+    "errors": 0
+  },
+  "semanticOracle": {
+    "allSamplesPassed": true,
+    "preRowCount": 0,
+    "postRowCount": 1000,
+    "firstId": 1,
+    "secondId": 2,
+    "thirdId": 3,
+    "row998Id": 999
+  },
+  "instrumentedBundles": {
+    "ordinary": {
+      "engine": "3.9",
+      "bytes": 294445,
+      "sha256": "0cbf5dd60d89dec308221a6a34408c9e79dffbf281d372cd6e1e39d98af805f1"
+    },
+    "structuralElementTemplate": {
+      "engine": "3.2",
+      "bytes": 309583,
+      "sha256": "a00dd744c5218e758fe5e947a0d19ee45fa3b599af399de870276f1d326ed413"
+    },
+    "runtime": "Lynx SDK 4.1 for both cells",
+    "interpretation": "The differing app-bundle engine versions are inherent to the two current encoder configurations, so latency is attributed to the complete configurations rather than to one primitive in isolation."
+  },
+  "shippingBundles": {
+    "ordinary": {
+      "bytes": 263197,
+      "gzipBytes": 92095,
+      "brotliBytes": 79558,
+      "sha256": "ba4e0711f70a72b65bfb06dbf94fc77cd9beb5bba01030fd2d1e303e6a102b06"
+    },
+    "structuralElementTemplate": {
+      "bytes": 279875,
+      "gzipBytes": 98767,
+      "brotliBytes": 85234,
+      "sha256": "daf3508e431654e7250390ec340ecaef0568d659042ff9c9d3f62958cd73665e"
+    },
+    "structuralMinusOrdinary": {
+      "bytes": 16678,
+      "percent": 6.34,
+      "gzipBytes": 6672,
+      "gzipPercent": 7.24,
+      "brotliBytes": 5676,
+      "brotliPercent": 7.13
+    }
+  },
+  "nativeLatencyMs": {
+    "ordinary": {
+      "min": 568,
+      "median": 585.5,
+      "mean": 582.8,
+      "p90": 593,
+      "max": 593
+    },
+    "structuralElementTemplate": {
+      "min": 505,
+      "median": 524.5,
+      "mean": 523.1,
+      "p90": 532.5,
+      "max": 537
+    },
+    "pairedStructuralMinusOrdinary": {
+      "values": [-70, -63, -44, -60, -66, -31, -73, -65, -73, -52],
+      "median": -64,
+      "mean": -59.7,
+      "p90": -42.7,
+      "improvedPairs": 10,
+      "totalPairs": 10
+    }
+  },
+  "mainCommitWallMs": {
+    "ordinary": {
+      "min": 476,
+      "median": 485.5,
+      "mean": 488,
+      "p90": 501.2,
+      "max": 503
+    },
+    "structuralElementTemplate": {
+      "min": 407,
+      "median": 424.5,
+      "mean": 423.7,
+      "p90": 433.5,
+      "max": 438
+    },
+    "pairedStructuralMinusOrdinary": {
+      "values": [-72, -69, -58, -63, -73, -38, -71, -72, -76, -51],
+      "median": -70,
+      "mean": -64.3,
+      "p90": -49.7,
+      "improvedPairs": 10,
+      "totalPairs": 10
+    }
+  },
+  "frameBytes": {
+    "ordinaryMedian": 32861.5,
+    "structuralElementTemplateMedian": 32932,
+    "pairedStructuralMinusOrdinaryMedian": 48.5,
+    "improvedPairs": 3,
+    "totalPairs": 10,
+    "interpretation": "The payload is effectively unchanged and does not explain the latency win."
+  },
+  "sourceReport": {
+    "sha256": "109ce698dba06703781e2a56760d0fff41aaf3b1408f9dfda54549c5e5118b41",
+    "checkedIn": false,
+    "sanitization": "The compact record excludes the raw device endpoint, local paths, timestamps per event, raw log lines, and generated row labels."
+  },
+  "decision": {
+    "semanticGate": "passed for this 1,000-row create cell",
+    "tenPairGate": "passed for this 1,000-row create cell",
+    "comparativeConfigurationResult": "structural Element Template was faster in all 10 pairs at both registered latency boundaries",
+    "defaultSwitch": "not authorized",
+    "remaining": [
+      "fresh-process peak/settled/after-clear native memory and GC cycles",
+      "registered operation, scale, native-list, no-JIT, and low-end Android matrix",
+      "iOS correctness, latency, memory, and bytecode evidence",
+      "cross-framework and latest-upstream comparison with a shared supported receipt"
+    ]
+  }
+}

@@ -319,8 +319,15 @@ globalThis.renderedValue = container.children[0].props.value;
 
 		actionRoot.render(ThrowingAction, undefined);
 		expect(() => dispatch(undefined)).not.toThrow();
+		// Dispatch publishes pending first. The queued action starts on the next
+		// microtask so a second dispatch cannot overtake it.
 		expect(scheduled).toHaveLength(1);
+		expect(scheduled.shift()!).not.toThrow();
+		await Promise.resolve();
+		expect(scheduled).toHaveLength(2);
+		expect(scheduled.shift()!).not.toThrow();
 		expect(scheduled.shift()!).toThrow('action-fault');
+		expect(actionContainer.children[0].props.theme).toBe(0);
 
 		root.unmount();
 		actionRoot.unmount();

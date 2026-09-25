@@ -61,6 +61,7 @@ interface StormEvidence {
 }
 
 type BenchmarkActionResult = void | StormEvidence | Promise<void | StormEvidence>;
+let nativeInteractionOrdinal = 0;
 
 function runStorm(ticks: number, step: (t: number) => void): void | Promise<StormEvidence> {
 	if (_stormChannel === null) {
@@ -157,6 +158,7 @@ function measureNative(name: string, action: () => BenchmarkActionResult): Promi
 		return Promise.reject(new Error('Octane Native benchmark has no pre-state.'));
 	}
 	const pipelineBefore = ackPipelineSnapshot();
+	const interactionOrdinal = ++nativeInteractionOrdinal;
 	const startMs = Date.now();
 	let result: BenchmarkActionResult;
 	try {
@@ -178,6 +180,7 @@ function measureNative(name: string, action: () => BenchmarkActionResult): Promi
 						'__NATIVE_BENCH_RESULT__',
 						JSON.stringify({
 							protocol: 'lynx-native-bench-v2',
+							interactionOrdinal,
 							name,
 							source: 'native-tap',
 							boundary: 'native-input-handler-to-second-native-frame',

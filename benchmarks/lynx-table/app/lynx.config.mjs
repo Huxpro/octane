@@ -9,10 +9,14 @@ import { pluginOctane } from '@octanejs/rspeedy-plugin';
 const autoRows = Number(process.env.BENCH_AUTOROWS ?? '0') || 0;
 const autoSuffix = autoRows > 0 ? `-rows${autoRows}` : '';
 const listRows = Number(process.env.BENCH_LIST_ROWS ?? '0') || 0;
+const listLifecycle = process.env.BENCH_LIST_LIFECYCLE === '1';
 if (autoRows > 0 && listRows > 0) {
 	throw new TypeError('BENCH_AUTOROWS and BENCH_LIST_ROWS are mutually exclusive.');
 }
-const listSuffix = listRows > 0 ? `-list-rows${listRows}` : '';
+if (listLifecycle && listRows === 0) {
+	throw new TypeError('BENCH_LIST_LIFECYCLE=1 requires BENCH_LIST_ROWS.');
+}
+const listSuffix = listRows > 0 ? `-list${listLifecycle ? '-lifecycle' : ''}-rows${listRows}` : '';
 
 // OCTANE_LYNX_PROFILE=1 turns on the wire-cost counters in @octanejs/lynx
 // (globalThis.__OCTANE_LYNX_PROF on both threads). Off by default so the
@@ -136,7 +140,12 @@ export default defineConfig(({ command }) => {
 		},
 		source: {
 			entry: {
-				main: listRows > 0 ? './src/list-index.ts' : './src/index.ts',
+				main:
+					listRows > 0
+						? listLifecycle
+							? './src/list-lifecycle-index.ts'
+							: './src/list-index.ts'
+						: './src/index.ts',
 			},
 			define: {
 				__BENCH_AUTOROWS__: JSON.stringify(autoRows),

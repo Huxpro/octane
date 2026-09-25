@@ -19,8 +19,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'vite';
 
+import { compile } from '../../packages/octane/src/compiler/compile.js';
 import { octane } from '../../packages/octane/src/compiler/vite.js';
-import { lynxRenderers } from '../../packages/lynx/src/config.runtime.js';
+import { lynxMainThreadRenderer, lynxRenderers } from '../../packages/lynx/src/config.runtime.js';
 
 const ROOT = import.meta.dirname;
 const REPO = path.resolve(ROOT, '../..');
@@ -99,8 +100,111 @@ try {
 			rollupOptions: { external: [] },
 		},
 	});
+	// Dirty-computation generation is intentionally disabled in profile builds,
+	// while the table's row counters require that profile mode. Build the small
+	// owner-count control once more without profiling so observing it from the
+	// external wrapper does not change the compiler path under measurement. The
+	// direct Vite plugin has no paired main/background build controller, so make
+	// that one compiler pair explicitly and alias only this fixture to it.
+	await build({
+		configFile: false,
+		root: REPO,
+		logLevel: 'silent',
+		build: {
+			write: true,
+			minify: false,
+			target: 'node22',
+			lib: {
+				entry: path.join(LYNX_SOURCE, 'compiler/index.ts'),
+				formats: ['es'],
+				fileName: 'compiler-backend',
+			},
+			outDir: tempDir,
+			emptyOutDir: false,
+		},
+	});
+	const lynxCompilerBackend = await import(
+		pathToFileURL(path.join(tempDir, 'compiler-backend.js')).href
+	);
+	const branchSourcePath = path.join(ROOT, 'app/src/BranchReplay.lynx.tsrx');
+	const branchSource = fs.readFileSync(branchSourcePath, 'utf8');
+	const branchModule = 'benchmarks/lynx-table/app/src/BranchReplay.lynx.tsrx';
+	const compileBranch = (thread) =>
+		compile(branchSource, branchSourcePath, {
+			hmr: false,
+			profile: false,
+			renderer: {
+				...lynxMainThreadRenderer,
+				target: thread === 'main-thread' ? 'lynx' : 'universal',
+				id: 'lynx',
+				...(thread === 'background'
+					? {
+							module: '@octanejs/lynx/renderer',
+							capabilities: [...lynxMainThreadRenderer.capabilities, 'compiler-program-ir'],
+						}
+					: null),
+			},
+			universalRuntime: { runtime: 'lynx', thread },
+			mainThreadProgramBackend: lynxCompilerBackend,
+			programModuleId: branchModule,
+		}).code;
+	const branchBackgroundPath = path.join(tempDir, 'BranchReplay.background.js');
+	const branchMainPath = path.join(tempDir, 'BranchReplay.main.js');
+	const branchEntryPath = path.join(tempDir, 'BranchReplay.js');
+	fs.writeFileSync(branchBackgroundPath, compileBranch('background'));
+	fs.writeFileSync(branchMainPath, compileBranch('main-thread'));
+	fs.writeFileSync(
+		branchEntryPath,
+		`import './BranchReplay.main.js';\nexport { BranchReplay } from './BranchReplay.background.js';\n`,
+	);
+	await build({
+		configFile: false,
+		root: REPO,
+		logLevel: 'silent',
+		resolve: {
+			alias: [
+				{ find: './app/src/BranchReplay.lynx.tsrx', replacement: branchEntryPath },
+				{
+					find: './core/background-core-selection.js',
+					replacement: path.join(LYNX_SOURCE, 'core/background-core-selection.block.ts'),
+				},
+				{ find: /^@octanejs\/lynx$/, replacement: path.join(LYNX_SOURCE, 'index.ts') },
+				{
+					find: /^@octanejs\/lynx\/intrinsics\/jsx-runtime$/,
+					replacement: path.join(LYNX_SOURCE, 'intrinsics.ts'),
+				},
+				{ find: /^@octanejs\/lynx\/(.*)$/, replacement: `${LYNX_SOURCE}/$1.ts` },
+				{
+					find: /^octane\/universal\/native$/,
+					replacement: path.join(OCTANE_SOURCE, 'universal-native.ts'),
+				},
+				{ find: /^octane\/universal$/, replacement: path.join(OCTANE_SOURCE, 'universal.ts') },
+				{ find: /^octane$/, replacement: path.join(OCTANE_SOURCE, 'index.ts') },
+			],
+		},
+		plugins: [octane({ renderers: lynxRenderers, ssr: false })],
+		define: {
+			'process.env.NODE_ENV': '"production"',
+			__OCTANE_LYNX_PROFILE__: 'false',
+			__BENCH_AUTOROWS__: '0',
+		},
+		build: {
+			write: true,
+			minify: false,
+			target: 'node22',
+			lib: {
+				entry: path.join(ROOT, 'workload.ts'),
+				formats: ['es'],
+				fileName: 'branch-workload',
+			},
+			outDir: tempDir,
+			emptyOutDir: false,
+			rollupOptions: { external: [] },
+		},
+	});
 
 	const workload = await import(pathToFileURL(path.join(tempDir, 'workload.js')).href);
+	const branchWorkload = await import(pathToFileURL(path.join(tempDir, 'branch-workload.js')).href);
 
 	const failures = [];
 	const octaneOps = {};
@@ -110,6 +214,35 @@ try {
 	// could ever query it.
 	const eagerSelectorOps = {};
 	const meta = {};
+	let branchReplay = null;
+	let branchSignature = null;
+	for (let iteration = 0; iteration < iterations; iteration++) {
+		branchReplay = await branchWorkload.runBranchReplay();
+		const nextSignature = JSON.stringify(branchReplay);
+		if (branchSignature === null) branchSignature = nextSignature;
+		else if (branchSignature !== nextSignature) {
+			failures.push(
+				`branch replay counters drifted across iterations (${branchSignature} vs ${nextSignature}).`,
+			);
+			break;
+		}
+	}
+	if (branchReplay !== null) {
+		if (branchReplay.diagnostics.length !== 0) {
+			failures.push(`branch replay: ${branchReplay.diagnostics.join(' | ')}`);
+		}
+		if (branchReplay.ownerRenders !== 1) {
+			failures.push(
+				`branch replay entered its owning component ${branchReplay.ownerRenders} times; expected one mount.`,
+			);
+		}
+		octaneOps.branch_owner_renders = countStat(branchReplay.ownerRenders, iterations);
+		modelOps.branch_owner_renders = countStat(1, iterations);
+		meta.branchReplay = branchReplay;
+		console.log(
+			`branch-replay=${branchReplay.ownerRenders} owner render (${branchReplay.states.join(' -> ')}; ${branchReplay.linkedStates.join(' -> ')})`,
+		);
+	}
 
 	for (const rows of SCALES) {
 		const suffix = scaleLabel(rows);

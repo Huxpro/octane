@@ -55,6 +55,7 @@ import type {
 	UniversalTransaction,
 	UniversalTransportEventMessage,
 } from 'octane/universal/native';
+import { runUniversalEventScope } from 'octane/universal/native';
 import type { LynxComponent } from '../intrinsics.js';
 import type { LynxHostAttachmentChange } from './protocol.js';
 import { lynxClientTemplateRunsNegotiated, type LynxClientContainer } from './client-driver.js';
@@ -176,12 +177,16 @@ export function createLynxBlockBackgroundCore(
 		transport,
 		transportRoot: options.transportRoot ?? NEXT_BLOCK_TRANSPORT_ROOT++,
 		core,
+		eventScope: runUniversalEventScope,
 	});
 	let afterCommitTasks: (() => void)[] = [];
+	let afterInsertionCommitTasks: (() => void)[] = [];
+	let afterLayoutCommitTasks: (() => void)[] = [];
 	let afterPassiveCommitTasks: (() => void)[] = [];
 	let afterAbortTasks: (() => void)[] = [];
 	let passiveTasks: (() => void)[] = [];
 	let passiveScheduled = false;
+	let acceptedPublicationGeneration = 0;
 	let attemptActive = false;
 	let commitsInFlight = 0;
 	let renderQueueDepth = 0;
@@ -215,13 +220,15 @@ export function createLynxBlockBackgroundCore(
 		options.scheduleMicrotask(flushPassiveTasks);
 	};
 	const publishAccepted = (): void => {
+		acceptedPublicationGeneration++;
 		afterAbortTasks = [];
 		let hasError = false;
 		let firstError: unknown;
 		try {
-			// A scope publication may enqueue its layout phase while this drain is
-			// running. Keep draining until every accepted synchronous task has had
-			// its turn rather than leaving the nested phase for a later render.
+			// A scope publication may enqueue insertion/layout phases while this
+			// drain is running. Publish every semantic scope first, then cross the
+			// root-wide insertion and layout boundaries below; otherwise keyed child
+			// scopes could interleave insertion(row A), layout(row A), insertion(row B).
 			while (afterCommitTasks.length !== 0) {
 				const tasks = afterCommitTasks;
 				afterCommitTasks = [];
@@ -235,6 +242,26 @@ export function createLynxBlockBackgroundCore(
 				}
 			}
 		} finally {
+			const insertion = afterInsertionCommitTasks;
+			afterInsertionCommitTasks = [];
+			const layout = afterLayoutCommitTasks;
+			afterLayoutCommitTasks = [];
+			try {
+				runTasks(insertion);
+			} catch (error) {
+				if (!hasError) {
+					hasError = true;
+					firstError = error;
+				}
+			}
+			try {
+				runTasks(layout);
+			} catch (error) {
+				if (!hasError) {
+					hasError = true;
+					firstError = error;
+				}
+			}
 			const passive = afterPassiveCommitTasks;
 			afterPassiveCommitTasks = [];
 			// Match the universal root: accepted passive work is not stranded by
@@ -255,6 +282,8 @@ export function createLynxBlockBackgroundCore(
 		const tasks = afterAbortTasks;
 		afterAbortTasks = [];
 		afterCommitTasks = [];
+		afterInsertionCommitTasks = [];
+		afterLayoutCommitTasks = [];
 		afterPassiveCommitTasks = [];
 		runTasks(tasks);
 		return true;
@@ -311,6 +340,12 @@ export function createLynxBlockBackgroundCore(
 		},
 		afterCommit(task: () => void): void {
 			afterCommitTasks.push(task);
+		},
+		afterInsertionCommit(task: () => void): void {
+			afterInsertionCommitTasks.push(task);
+		},
+		afterLayoutCommit(task: () => void): void {
+			afterLayoutCommitTasks.push(task);
 		},
 		afterPassiveCommit(task: () => void): void {
 			afterPassiveCommitTasks.push(task);
@@ -453,23 +488,43 @@ export function createLynxBlockBackgroundCore(
 		},
 
 		async flushTransport() {
-			await pending;
+			// An accepted lifecycle callback may append another render while the frame
+			// that published it is settling. Follow work across accepted publication
+			// boundaries, but do not absorb a retry queued after rejection: that retry
+			// is a distinct attempt whose failure remains owned by its scheduler path.
+			let publication = acceptedPublicationGeneration;
+			while (true) {
+				const tail = pending;
+				await tail;
+				if (publication === acceptedPublicationGeneration) return;
+				publication = acceptedPublicationGeneration;
+			}
 		},
 
 		async unmountAsync() {
-			await pending;
-			flushPassiveTasks();
-			if (mounted !== null && typeof mounted.unmount === 'function') {
-				try {
-					await mounted.unmount(context);
-					afterCommitTasks.unshift(() => {
-						mounted = null;
-					});
-				} catch (error) {
-					return resumeAfterFailure(error);
+			// Teardown is a render-queue operation, not a snapshot wait on `pending`.
+			// Taking a queue position here is the linearization point: work already
+			// queued drains before teardown, while a state notification arriving after
+			// the request queues behind it and observes the program's accepted disposal.
+			const run = renderQueue.then(async () => {
+				flushPassiveTasks();
+				if (mounted !== null && typeof mounted.unmount === 'function') {
+					try {
+						await mounted.unmount(context);
+						afterCommitTasks.unshift(() => {
+							mounted = null;
+						});
+					} catch (error) {
+						return resumeAfterFailure(error);
+					}
+					await commitAccepted();
 				}
-				await commitAccepted();
-			}
+			});
+			renderQueue = run.then(
+				() => undefined,
+				() => undefined,
+			);
+			return track(run);
 		},
 
 		dispatchTransportEvent(message: UniversalTransportEventMessage): readonly unknown[] {

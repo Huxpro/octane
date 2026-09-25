@@ -3,10 +3,20 @@ import {
 	Activity,
 	createContext,
 	memo,
+	startTransition,
+	useActionState,
 	useContext,
+	useDebugValue,
+	useEffectEvent,
+	useId,
+	useImperativeHandle,
+	useInsertionEffect,
 	useLayoutEffect,
+	useLinkedState,
 	useMemo,
+	useOptimistic,
 	useReducer,
+	useRef,
 } from 'octane';
 import type { OctaneNode } from 'octane';
 import type { UniversalRenderable } from 'octane/universal/native';
@@ -27,17 +37,48 @@ const BlockEligibleRow = memo(function BlockEligibleRow(props: {
 	readonly onSelect: (label: string) => void;
 }) @{
 	const [taps, incrementTaps] = useReducer((value: number, amount: number) => value + amount, 0);
+	const [optimisticTaps, addOptimisticTap] = useOptimistic(
+		taps,
+		(value: number, amount: number) => value + amount,
+	);
+	const [actionLabel, commitLabel, actionPending] = useActionState(
+		(_previous: string, next: string) => next,
+		props.item.label,
+	);
+	const hookId = useId();
+	const [linkedLabel, , getLinkedLabel] = useLinkedState(
+		props.item.label,
+		(label) => 'linked-' + label,
+	);
 	const theme = useContext(BlockTheme);
+	useDebugValue(
+		{ label: props.item.label, taps },
+		(value: { readonly label: string; readonly taps: number }) => value.label + ':' + value.taps,
+	);
 	const rowClass = useMemo(() => ['row', theme, 'taps-' + taps], [theme, taps]);
+	useInsertionEffect(() => undefined, [theme]);
 	useLayoutEffect(() => undefined, [theme]);
 	const item = props.item;
+	const handle = useRef<{ select(): void } | null>(null);
+	useImperativeHandle(handle, () => ({ select: () => props.onSelect(item.label) }), [
+		props.onSelect,
+		item.label,
+	]);
+	const select = useEffectEvent(() => handle.current?.select());
 	const onTap = () => {
-		props.onSelect(item.label);
-		incrementTaps(1);
+		commitLabel(item.label);
+		select();
+		startTransition(() => {
+			addOptimisticTap(1);
+			incrementTaps(1);
+		});
 	};
-	<view id={'row-' + item.id} class={rowClass}>
+	<view id={'row-' + item.id + '-' + hookId} class={rowClass}>
 		<image id={'image-' + item.id} src={item.image} mode="aspectFill" />
-		<text bindtap={onTap}>{item.label + ':' + taps as string}</text>
+		<text bindtap={onTap}>{linkedLabel + ':' + getLinkedLabel() + ':' + actionLabel + ':' +
+			(actionPending ? 'pending' : 'idle') +
+			':' +
+			optimisticTaps as string}</text>
 	</view>
 });
 

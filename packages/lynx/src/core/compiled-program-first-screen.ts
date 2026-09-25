@@ -23,6 +23,7 @@ interface PaintedRun<Node extends LynxElementRef> extends LynxCompiledProgramAdo
 	readonly plan: UniversalProgramPlan;
 	readonly selectedValues: readonly unknown[];
 	readonly count: number;
+	owner: number | null;
 }
 
 interface CompiledFirstScreenResultNode {
@@ -90,6 +91,10 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 	const pageId = papi.getUniqueId(page);
 	const bound = new WeakMap<UniversalProgramPlan, ReturnType<UniversalProgramPlan['bind']>>();
 	const painted: PaintedRun<Node>[] = [];
+	// Main paint is depth-first, while the compact producer coalesces sibling
+	// programs before visiting their nested ranges. Preserve each local sibling
+	// order without requiring those programs to be adjacent in the painted walk.
+	const proofsByPlanAndParent = new Map<UniversalProgramPlan, Map<number, PaintedRun<Node>[]>>();
 	const pageRoots: Node[] = [];
 	const announced = new Set<string>();
 	for (const event of result.envelope.events) announced.add(`${event.id}\u0000${event.type}`);
@@ -171,7 +176,7 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 			}
 			if (node.visibility === 'hidden') papi.setAttribute(created[0], 'hidden', true);
 
-			painted.push({
+			const proof: PaintedRun<Node> = {
 				firstId: ids[0]!,
 				firstListenerId,
 				nodes: created,
@@ -180,7 +185,18 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 				plan,
 				selectedValues,
 				count: 1,
-			});
+				owner: null,
+			};
+			painted.push(proof);
+			let proofsByParent = proofsByPlanAndParent.get(plan);
+			if (proofsByParent === undefined) {
+				proofsByParent = new Map();
+				proofsByPlanAndParent.set(plan, proofsByParent);
+			}
+			const parentId = papi.getUniqueId(parent);
+			const siblingProofs = proofsByParent.get(parentId);
+			if (siblingProofs === undefined) proofsByParent.set(parentId, [proof]);
+			else siblingProofs.push(proof);
 
 			let start = 0;
 			for (let range = 0; range < plan.ranges.length; range++) {
@@ -215,7 +231,7 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 		fail('did not account for every rendered program');
 	}
 
-	let nextProof = 0;
+	let adoptedProofs = 0;
 	let finished = false;
 	let disposed = false;
 	const assigned = new Map<number, LynxCompiledProgramAdoptionSeed<Node>>();
@@ -226,31 +242,46 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 		if (disposed) fail('ownership was already disposed');
 		const prior = assigned.get(input.firstHandle);
 		if (prior !== undefined) return prior;
-		const start = nextProof;
-		let count = 0;
-		let listener: number | null = null;
-		const nodes: (Node | undefined)[] = [];
-		const expectedValues: unknown[] = [];
-		while (count < input.count) {
-			const proof = painted[nextProof++];
-			if (
-				proof === undefined ||
-				proof.plan !== input.plan ||
-				!papi.isEqual(proof.parent, input.parent) ||
-				proof.count !== 1
-			) {
-				fail(`background run ${input.firstHandle} disagrees with painted program ${start}`);
-			}
-			if (count === 0) listener = proof.firstListenerId;
-			nodes.push(...proof.nodes);
-			expectedValues.push(...proof.selectedValues);
-			count++;
-		}
 		if (input.before !== null) {
 			fail(`background run ${input.firstHandle} disagrees with painted order`);
 		}
-		const first = painted[start]!;
-		const stride = input.count > 1 ? painted[start + 1]!.firstId - first.firstId : first.stride;
+		const matches: PaintedRun<Node>[] = [];
+		const nodes: (Node | undefined)[] = [];
+		const expectedValues: unknown[] = [];
+		const candidates = proofsByPlanAndParent.get(input.plan)?.get(papi.getUniqueId(input.parent));
+		for (const proof of candidates ?? []) {
+			if (proof.owner !== null || !papi.isEqual(proof.parent, input.parent) || proof.count !== 1) {
+				continue;
+			}
+			matches.push(proof);
+			if (matches.length === input.count) break;
+		}
+		if (matches.length !== input.count) {
+			fail(`background run ${input.firstHandle} has no matching painted program run`);
+		}
+		const first = matches[0]!;
+		const listener = first.firstListenerId;
+		const stride = input.count > 1 ? matches[1]!.firstId - first.firstId : first.stride;
+		if (input.plan.events.length !== 0) {
+			if (listener === null) fail(`background run ${input.firstHandle} lost its event listener`);
+			for (let index = 1; index < matches.length; index++) {
+				const proof = matches[index]!;
+				if (
+					proof.firstId !== first.firstId + index * stride ||
+					proof.firstListenerId !== listener + index * input.plan.events.length
+				) {
+					fail(
+						`background run ${input.firstHandle} has non-uniform painted host or listener identities`,
+					);
+				}
+			}
+		}
+		for (const proof of matches) {
+			proof.owner = input.firstHandle;
+			nodes.push(...proof.nodes);
+			expectedValues.push(...proof.selectedValues);
+		}
+		adoptedProofs += matches.length;
 		const seed = Object.freeze({
 			firstId: first.firstId,
 			firstListenerId: listener,
@@ -268,7 +299,7 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 		resolveSeed,
 		verify() {
 			if (disposed) fail('ownership was already disposed');
-			if (!finished && nextProof !== painted.length) {
+			if (!finished && adoptedProofs !== painted.length) {
 				fail('background frame did not adopt every program');
 			}
 		},
@@ -277,6 +308,8 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 			finished = true;
 			pageRoots.length = 0;
 			painted.length = 0;
+			adoptedProofs = 0;
+			proofsByPlanAndParent.clear();
 			assigned.clear();
 		},
 		dispose() {
@@ -287,6 +320,8 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 			}
 			pageRoots.length = 0;
 			painted.length = 0;
+			adoptedProofs = 0;
+			proofsByPlanAndParent.clear();
 			assigned.clear();
 		},
 	};

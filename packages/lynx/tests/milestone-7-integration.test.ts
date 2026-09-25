@@ -90,7 +90,7 @@ export function Scene({ prefix }) @{
   const onTap = () => {
     'main thread';
     if (node.current === null) return null;
-    node.current.setAttribute('data-main-hit', prefix);
+		node.current.setStyleProperty('opacity', prefix === 'adopted' ? '0.5' : '1');
     return onBackgroundEvent(prefix);
   };
   <view id="main-target" main-thread:ref={node} main-thread:bindtap={onTap} />
@@ -376,7 +376,7 @@ describe.sequential('Lynx Milestone 7 compiler/runtime integration', () => {
 		inbound.length = 0;
 		globalThis.lynxTestingEnv.switchToMainThread();
 		element!.dispatchEvent(new environment.dom.window.Event('bindEvent:tap', { bubbles: true }));
-		expect(element?.getAttribute('data-main-hit')).toBe('adopted');
+		expect((element as HTMLElement | null)?.style.opacity).toBe('0.5');
 		for (let index = 0; index < 4; index++) await Promise.resolve();
 		expect(environment.backgroundEventRuns).toEqual(['adopted']);
 		expect(inbound.filter(({ type }) => type === 'call-background')).toHaveLength(1);
@@ -416,7 +416,7 @@ describe.sequential('Lynx Milestone 7 compiler/runtime integration', () => {
 		});
 		try {
 			expect(() => runWorklet(reactivated)).not.toThrow();
-			expect(element?.getAttribute('data-main-hit')).toBe('adopted');
+			expect((element as HTMLElement | null)?.style.opacity).toBe('0.5');
 		} finally {
 			releaseLynxMainThreadWorklet(reactivated);
 		}

@@ -21,16 +21,22 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	__useLinkedStateWithGetter,
 	createContext,
 	createUniversalHookScope,
 	startTransition,
+	useActionState,
 	useCallback,
 	useContext,
 	useEffect,
+	useEffectEvent,
 	useId,
+	useImperativeHandle,
 	useInsertionEffect,
 	useLayoutEffect,
+	useLinkedState,
 	useMemo,
+	useOptimistic,
 	useRef,
 	useState,
 	useReducer,
@@ -63,6 +69,263 @@ function scopeWithLog() {
 }
 
 describe('universal hook scope', () => {
+	it('shows an out-of-action optimistic value once and then reverts through host scheduling', () => {
+		const renders: unknown[] = [];
+		const microtasks: Array<() => void> = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				renders.push(slot);
+			},
+			scheduleTransitionRender() {},
+			scheduleMicrotask(task) {
+				microtasks.push(task);
+			},
+		});
+		let add!: (value: number) => void;
+		const render = (): number =>
+			scope.render(() => {
+				const [value, update] = useOptimistic(
+					10,
+					(current: number, next: number) => current + next,
+					'optimistic',
+				);
+				add = update;
+				return value;
+			});
+
+		expect(render()).toBe(10);
+		scope.commit();
+		add(5);
+		expect(renders).toHaveLength(1);
+		expect(render()).toBe(15);
+		scope.commit();
+		expect(microtasks).toHaveLength(1);
+		microtasks.shift()!();
+		expect(renders).toHaveLength(2);
+		expect(render()).toBe(10);
+		scope.commit();
+		scope.dispose();
+	});
+
+	it('keeps an action-state queue running after reporting an action error', async () => {
+		const reported: Array<() => void> = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleMicrotask(task) {
+				reported.push(task);
+			},
+			scheduleTransitionRender() {},
+		});
+		const calls: Array<[number, number]> = [];
+		let dispatch!: (payload: number) => void;
+		const render = (): readonly [number, boolean] =>
+			scope.render(() => {
+				const [state, run, pending] = useActionState(
+					(previous: number, payload: number) => {
+						calls.push([previous, payload]);
+						if (payload < 0) throw new Error('action failed');
+						return previous + payload;
+					},
+					10,
+					undefined,
+					'action',
+				);
+				dispatch = run;
+				return [state, pending] as const;
+			});
+
+		expect(render()).toEqual([10, false]);
+		scope.commit();
+		dispatch(-1);
+		dispatch(5);
+		for (let index = 0; index < 8; index++) await Promise.resolve();
+
+		expect(calls).toEqual([
+			[10, -1],
+			[10, 5],
+		]);
+		expect(reported).toHaveLength(1);
+		expect(reported.shift()!).toThrow('action failed');
+		expect(render()).toEqual([15, false]);
+		scope.commit();
+		scope.dispose();
+	});
+
+	it('publishes imperative handles only from accepted visible hook-scope drafts', () => {
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleLayoutEffectCommit(task) {
+				task();
+			},
+		});
+		const history: Array<string | null> = [];
+		let current: string | null = null;
+		const ref = (value: { readonly label: string } | null) => {
+			current = value?.label ?? null;
+			history.push(current);
+		};
+		const render = (label: string): void =>
+			scope.render(() => useImperativeHandle(ref, () => ({ label }), [label], 'handle'));
+
+		render('alpha');
+		expect(current).toBeNull();
+		expect(history).toEqual([]);
+		scope.commit();
+		expect(current).toBe('alpha');
+
+		render('beta');
+		expect(current).toBe('alpha');
+		scope.abort();
+		expect(history).toEqual(['alpha']);
+
+		render('beta');
+		scope.commit(false);
+		expect(current).toBeNull();
+		expect(history).toEqual(['alpha', null]);
+
+		render('gamma');
+		scope.commit(false);
+		expect(history).toEqual(['alpha', null]);
+		scope.commit(true);
+		expect(current).toBe('gamma');
+
+		scope.dispose();
+		expect(current).toBeNull();
+		expect(history).toEqual(['alpha', null, 'gamma', null]);
+	});
+
+	it('activates effect events only from the latest accepted hook-scope draft', () => {
+		const scope = createUniversalHookScope({ renderer: 'test', scheduleRender() {} });
+		const render = (value: string): (() => string) =>
+			scope.render(() => useEffectEvent(() => value, 'event'));
+
+		const event = render('alpha');
+		expect(() => event()).toThrow(/cannot run before commit/);
+		scope.commit();
+		expect(event()).toBe('alpha');
+
+		expect(render('beta')).toBe(event);
+		expect(event()).toBe('alpha');
+		scope.abort();
+		expect(event()).toBe('alpha');
+
+		expect(render('gamma')).toBe(event);
+		expect(event()).toBe('alpha');
+		scope.commit();
+		expect(event()).toBe('gamma');
+		scope.dispose();
+		expect(() => event()).toThrow(/cannot run before commit/);
+	});
+
+	it('publishes linked-state source generations only when the adopting host commits', () => {
+		const scheduled: unknown[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				scheduled.push(slot);
+			},
+		});
+		let update!: (value: string | ((previous: string) => string)) => void;
+		const render = (source: string): string =>
+			scope.render(() => {
+				const [value, setValue] = useLinkedState<string, string>(
+					source,
+					(next, previous) =>
+						previous === undefined ? `initial:${next}` : `${next}<-${previous.value}`,
+					undefined,
+					'linked',
+				);
+				update = setValue;
+				return value;
+			});
+		const pass = (source: string): string => {
+			const value = render(source);
+			scope.commit();
+			return value;
+		};
+
+		expect(pass('alpha')).toBe('initial:alpha');
+		update((value) => value + '!');
+		expect(scheduled).toEqual(['linked']);
+		expect(pass('alpha')).toBe('initial:alpha!');
+
+		expect(render('beta')).toBe('beta<-initial:alpha!');
+		scope.abort();
+		expect(pass('alpha')).toBe('initial:alpha!');
+		expect(pass('beta')).toBe('beta<-initial:alpha!');
+		scope.dispose();
+	});
+
+	it('projects local linked-state edits while preserving source reconciliation', () => {
+		const scheduled: unknown[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				scheduled.push(slot);
+			},
+		});
+		let update!: (value: string | ((previous: string) => string)) => void;
+		let getValue!: () => string;
+		const render = (source: string): string =>
+			scope.render(() => {
+				const [value, setValue, get] = __useLinkedStateWithGetter<string, string>(
+					source,
+					(next, previous) =>
+						previous === undefined ? `initial:${next}` : `${next}<-${previous.value}`,
+					undefined,
+					'linked',
+				);
+				update = setValue;
+				getValue = get;
+				return value;
+			});
+
+		expect(render('alpha')).toBe('initial:alpha');
+		scope.commit();
+		update((value) => value + '!');
+		expect(scheduled).toEqual(['linked']);
+
+		let projected = '';
+		expect(
+			scope.renderDirty(['linked'], (sources) => {
+				projected = sources[0]!() as string;
+			}),
+		).toBe(true);
+		expect(projected).toBe('initial:alpha!');
+		scope.abort();
+
+		expect(
+			scope.renderDirty(['linked'], (sources) => {
+				projected = sources[0]!() as string;
+			}),
+		).toBe(true);
+		scope.commit();
+		expect(getValue()).toBe('initial:alpha!');
+
+		expect(render('beta')).toBe('beta<-initial:alpha!');
+		scope.commit();
+		scope.dispose();
+	});
+
+	it('declines linked-state projection when no current-value getter exists', () => {
+		const scope = createUniversalHookScope({ renderer: 'test', scheduleRender() {} });
+		scope.render(() =>
+			useLinkedState<string, string>('alpha', (source) => `initial:${source}`, undefined, 'linked'),
+		);
+		scope.commit();
+		let ran = false;
+		expect(
+			scope.renderDirty(['linked'], () => {
+				ran = true;
+			}),
+		).toBe(false);
+		expect(ran).toBe(false);
+		scope.dispose();
+	});
+
 	it('keeps a state cell across renders and schedules when a committed setter writes it', () => {
 		const { scope, scheduled, pass } = scopeWithLog();
 
@@ -710,6 +973,64 @@ describe('universal hook scope', () => {
 			/declared an effect/,
 		);
 		scope.dispose();
+	});
+
+	it('publishes insertion effects in their own phase and keeps them connected while hidden', () => {
+		const insertion: (() => void)[] = [];
+		const layout: (() => void)[] = [];
+		const lifecycle: string[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleInsertionEffectCommit: (task) => insertion.push(task),
+			scheduleLayoutEffectCommit: (task) => layout.push(task),
+		});
+		const render = (version: number, visible: boolean): void => {
+			scope.render(() => {
+				useInsertionEffect(
+					() => {
+						lifecycle.push(`insertion:create:${version}`);
+						return () => lifecycle.push(`insertion:cleanup:${version}`);
+					},
+					[version],
+					'insertion',
+				);
+				useLayoutEffect(
+					() => {
+						lifecycle.push(`layout:create:${version}`);
+						return () => lifecycle.push(`layout:cleanup:${version}`);
+					},
+					[version],
+					'layout',
+				);
+			});
+			scope.commit(visible);
+		};
+
+		render(0, false);
+		expect(insertion).toHaveLength(1);
+		expect(layout).toEqual([]);
+		insertion.shift()!();
+		expect(lifecycle).toEqual(['insertion:create:0']);
+
+		render(1, false);
+		expect(insertion).toHaveLength(1);
+		expect(layout).toEqual([]);
+		insertion.shift()!();
+		expect(lifecycle.slice(-2)).toEqual(['insertion:cleanup:0', 'insertion:create:1']);
+
+		render(1, true);
+		expect(insertion).toEqual([]);
+		expect(layout).toHaveLength(1);
+		layout.shift()!();
+		expect(lifecycle.at(-1)).toBe('layout:create:1');
+
+		scope.dispose();
+		expect(insertion).toHaveLength(1);
+		expect(layout).toHaveLength(1);
+		insertion.shift()!();
+		layout.shift()!();
+		expect(lifecycle.slice(-2)).toEqual(['insertion:cleanup:1', 'layout:cleanup:1']);
 	});
 
 	it('refuses a context read instead of silently answering the default value', () => {

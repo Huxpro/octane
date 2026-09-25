@@ -107,6 +107,9 @@ export function createUnavailableLynxMainThreadWorkletRegistry(): LynxMainThread
 		updateRef<T>(_descriptor: LynxMainThreadRefDescriptor, _value: T): void {
 			unavailable();
 		},
+		mountRef(_descriptor: LynxMainThreadRefDescriptor, _value: object): void {
+			unavailable();
+		},
 		releaseRef(_descriptor: LynxMainThreadRefDescriptor): void {},
 		retainOwner(_descriptor: LynxMainThreadRefDescriptor): LynxMainThreadRefCell {
 			return unavailable();
@@ -153,6 +156,9 @@ export function createReplaceableLynxMainThreadWorkletRegistry(
 		},
 		updateRef<T>(descriptor: LynxMainThreadRefDescriptor, value: T) {
 			current.updateRef(descriptor, value);
+		},
+		mountRef(descriptor: LynxMainThreadRefDescriptor, value: object) {
+			current.mountRef(descriptor, value);
 		},
 		releaseRef(descriptor: LynxMainThreadRefDescriptor) {
 			current.releaseRef(descriptor);

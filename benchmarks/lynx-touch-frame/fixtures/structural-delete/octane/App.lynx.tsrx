@@ -3,6 +3,11 @@ import { useMainThreadRef } from '@octanejs/lynx';
 import type { LynxPublicHandle } from '@octanejs/lynx';
 import { useEffect, useRef, useState } from 'octane';
 
+interface NativeMainThreadElement extends OctaneBenchMainThreadElement {
+	/** Internal Element PAPI handle required by this structural-removal benchmark. */
+	readonly element: object;
+}
+
 function LoadPane() @{
 	const loadRows: { id: string; label: string }[] = [];
 	for (let index = 0; index < 200; index += 1) {
@@ -32,8 +37,8 @@ function LoadPane() @{
 
 export function App() @{
 	const [rows, setRows] = useState(() => Array.from({ length: 16 }, (_, index) => index + 1));
-	const panelRef = useMainThreadRef<object>();
-	const targetRef = useMainThreadRef<object>();
+	const panelRef = useMainThreadRef<NativeMainThreadElement>();
+	const targetRef = useMainThreadRef<NativeMainThreadElement>();
 	const mtsPresent = useMainThreadRef(true);
 
 	const observeTouch = (event: Issue197TouchEvent) => {
@@ -49,7 +54,7 @@ export function App() @{
 		let changedFrameOrdinal = 0;
 		const poll = (changedVsyncPlatformTimestamp: number) => {
 			changedFrameOrdinal += 1;
-			if (__QuerySelector(panel, '#target-8', {}) === null) {
+			if (panel.querySelector('#target-8') === null) {
 				if (__BENCH_PROFILE__) {
 					lynx.performance.profileMark('Issue197::T2::structural-delete::changed-vsync');
 				}
@@ -90,7 +95,7 @@ export function App() @{
 		if (panel === null || panel === undefined || target === null || target === undefined) return;
 		if (!mtsPresent.current) return;
 		mtsPresent.current = false;
-		__RemoveElement(panel, target);
+		__RemoveElement(panel.element, target.element);
 		__FlushElementTree();
 	};
 

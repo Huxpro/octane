@@ -2947,7 +2947,7 @@ function installMainThreadRef<Node extends LynxElementRef>(
 	// terminal cleanup must still clear the ref identity.
 	state.mainThreadRefs.set(node, ref);
 	state.mainThreadRefOwners.set(ref._wvid, node);
-	registry.updateRef(ref, node);
+	registry.mountRef(ref, node);
 }
 
 function installMainThreadProps<Node extends LynxElementRef>(

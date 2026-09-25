@@ -1777,6 +1777,14 @@
   },
   {
     "suite": "lynx-table",
+    "op": "branch_owner_renders",
+    "target": "octane-lynx",
+    "reference": "changed-rows-model",
+    "maxRatio": 1,
+    "note": "A mount followed by pure state-driven @if and @switch changes enters the owning component once. The external counting wrapper cannot disqualify the compiled component, and painted branch text controls semantic correctness."
+  },
+  {
+    "suite": "lynx-table",
     "op": "create_commands_1k",
     "target": "octane-lynx",
     "reference": "changed-rows-model",

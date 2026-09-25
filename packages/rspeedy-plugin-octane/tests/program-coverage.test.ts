@@ -697,7 +697,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report).toEqual({
 			version: 1,
 			matrix: {
-				version: 20,
+				version: 28,
 				runtimeNames: [
 					'Activity',
 					'createContext',
@@ -705,12 +705,20 @@ describe('Lynx application Block eligibility', () => {
 					'memo',
 					'startTransition',
 					'use',
+					'useActionState',
+					'useOptimistic',
 					'useBatch',
 					'useCallback',
 					'useContext',
 					'useDeferredValue',
+					'useDebugValue',
 					'useEffect',
+					'useEffectEvent',
+					'useId',
+					'useImperativeHandle',
+					'useInsertionEffect',
 					'useLayoutEffect',
+					'useLinkedState',
 					'useMemo',
 					'useReducer',
 					'useRef',
@@ -767,11 +775,16 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.matrix.runtimeNames).toContain('Activity');
 	});
 
-	it('admits the retained reducer, memo, and layout-effect hook set only when paired', () => {
+	it('admits the retained reducer, memo, insertion, and layout-effect hook set only when paired', () => {
 		const proofs = completeProofs();
 		const semanticModule = proofs.semanticRequirements.modules[0]!;
 		const hooks = semanticRequirements({
-			runtimeUses: [site('useLayoutEffect', 4, 2), site('useMemo', 5, 2), site('useReducer', 6, 2)],
+			runtimeUses: [
+				site('useInsertionEffect', 4, 2),
+				site('useLayoutEffect', 5, 2),
+				site('useMemo', 6, 2),
+				site('useReducer', 7, 2),
+			],
 		});
 		const report = evaluateLynxBlockEligibility({
 			...proofs,
@@ -784,7 +797,7 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.eligible).toBe(true);
 		expect(report.reasons).toEqual([]);
 		expect(report.matrix.runtimeNames).toEqual(
-			expect.arrayContaining(['useLayoutEffect', 'useMemo', 'useReducer']),
+			expect.arrayContaining(['useInsertionEffect', 'useLayoutEffect', 'useMemo', 'useReducer']),
 		);
 	});
 
@@ -811,6 +824,125 @@ describe('Lynx application Block eligibility', () => {
 		expect(report.matrix.runtimeNames).toEqual(
 			expect.arrayContaining(['startTransition', 'useDeferredValue', 'useTransition']),
 		);
+	});
+
+	it('admits paired useId semantics', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const ids = semanticRequirements({ runtimeUses: [site('useId', 4, 2)] });
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: ids, mainThread: ids }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toContain('useId');
+	});
+
+	it('admits paired useLinkedState semantics', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const linked = semanticRequirements({ runtimeUses: [site('useLinkedState', 4, 2)] });
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: linked, mainThread: linked }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toContain('useLinkedState');
+	});
+
+	it('admits paired useEffectEvent semantics', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const events = semanticRequirements({ runtimeUses: [site('useEffectEvent', 4, 2)] });
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: events, mainThread: events }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toContain('useEffectEvent');
+	});
+
+	it('admits paired useDebugValue semantics', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const debugValues = semanticRequirements({ runtimeUses: [site('useDebugValue', 4, 2)] });
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: debugValues, mainThread: debugValues }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toContain('useDebugValue');
+	});
+
+	it('admits paired useImperativeHandle semantics', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const handles = semanticRequirements({ runtimeUses: [site('useImperativeHandle', 4, 2)] });
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: handles, mainThread: handles }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toContain('useImperativeHandle');
+	});
+
+	it('admits paired useActionState semantics', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const actions = semanticRequirements({ runtimeUses: [site('useActionState', 4, 2)] });
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: actions, mainThread: actions }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toContain('useActionState');
+	});
+
+	it('admits paired useOptimistic semantics', () => {
+		const proofs = completeProofs();
+		const semanticModule = proofs.semanticRequirements.modules[0]!;
+		const optimistic = semanticRequirements({ runtimeUses: [site('useOptimistic', 4, 2)] });
+		const report = evaluateLynxBlockEligibility({
+			...proofs,
+			semanticRequirements: {
+				...proofs.semanticRequirements,
+				modules: [{ ...semanticModule, background: optimistic, mainThread: optimistic }],
+			},
+		});
+
+		expect(report.eligible).toBe(true);
+		expect(report.reasons).toEqual([]);
+		expect(report.matrix.runtimeNames).toContain('useOptimistic');
 	});
 
 	it('admits paired nested keyed-range ownership', () => {
@@ -950,7 +1082,7 @@ describe('Lynx application Block eligibility', () => {
 					{
 						...semanticModule,
 						background: semanticRequirements({
-							runtimeUses: [site('useOptimistic', 2, 3)],
+							runtimeUses: [site('useFormStatus', 2, 3)],
 							runtimeExports: [site('Suspense', 3, 4)],
 							opaqueRuntimeAccesses: [site('export-all', 4, 5)],
 						}),
@@ -1004,7 +1136,7 @@ describe('Lynx application Block eligibility', () => {
 					code: 'unsupported-runtime-use',
 					module: '/src/App.tsrx',
 					thread: 'background',
-					name: 'useOptimistic',
+					name: 'useFormStatus',
 					line: 2,
 					column: 3,
 				},
@@ -1411,6 +1543,18 @@ describe('Lynx application resident-program coverage', () => {
 			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/core/block-component.ts',
 			connections: [] as { module: unknown }[],
 		};
+		const generalFirstScreen = {
+			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/first-screen.ts',
+		};
+		const staleRenderer = {
+			nameForCondition: () => '/repo/node_modules/@octanejs/lynx/src/main-renderer.ts',
+			connections: [
+				{
+					dependency: { request: './core/first-screen.js' },
+					module: generalFirstScreen,
+				},
+			],
+		};
 		const compiledProgramStore = {
 			nameForCondition: () =>
 				'/repo/node_modules/@octanejs/lynx/src/core/compiled-program-store.ts',
@@ -1431,6 +1575,7 @@ describe('Lynx application resident-program coverage', () => {
 			compiledProgramStore,
 			compiledProgramFirstScreen,
 			papi,
+			staleRenderer,
 		]);
 		const replacements: Array<{
 			test: RegExp;
@@ -1440,6 +1585,10 @@ describe('Lynx application resident-program coverage', () => {
 		const rebuiltModules: unknown[] = [];
 		graph.rebuildModule = (module: unknown, callback: (error: Error | null) => void) => {
 			rebuiltModules.push(module);
+			if (module === staleRenderer) {
+				callback(new Error('relative first-screen consumers are not application selectors'));
+				return;
+			}
 			if (module === mainThread) {
 				callback(null);
 				return;
@@ -1552,7 +1701,7 @@ describe('Lynx application resident-program coverage', () => {
 
 		// The proof passes, compiler-program module selection, owner discovery /
 		// verification, and dependency-first rebuild ordering all inspect the graph.
-		expect(graphVisits).toBe(36);
+		expect(graphVisits).toBe(40);
 		expect(rebuiltModules).toEqual([
 			background,
 			mainThread,
@@ -1614,7 +1763,7 @@ describe('Lynx application resident-program coverage', () => {
 			},
 			[LYNX_BLOCK_SELECTION_ASSET_INFO]: {
 				version: 1,
-				matrix: { version: 20 },
+				matrix: { version: 28 },
 				eligible: true,
 				reasons: [],
 			},

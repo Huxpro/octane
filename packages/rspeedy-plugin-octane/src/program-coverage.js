@@ -36,7 +36,7 @@ export const LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_VERSION = 1;
 export const LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO =
 	'octane:lynx-compiled-program-native-list-feature-selection';
 export const LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_VERSION = 1;
-export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 20;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 28;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
 	// Each name has an independent assertion through the Block component path.
@@ -48,12 +48,20 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 		'memo',
 		'startTransition',
 		'use',
+		'useActionState',
+		'useOptimistic',
 		'useBatch',
 		'useCallback',
 		'useContext',
 		'useDeferredValue',
+		'useDebugValue',
 		'useEffect',
+		'useEffectEvent',
+		'useId',
+		'useImperativeHandle',
+		'useInsertionEffect',
 		'useLayoutEffect',
+		'useLinkedState',
 		'useMemo',
 		'useReducer',
 		'useRef',
@@ -394,6 +402,7 @@ function importsLynxFirstScreenFacade(compilation, module) {
 	return [...compilation.moduleGraph.getOutgoingConnections(module)].some(
 		(connection) =>
 			activeConnection(connection) &&
+			connection.dependency?.request === '@octanejs/lynx/first-screen' &&
 			connection.module != null &&
 			isLynxFirstScreenFacade(connection.module),
 	);

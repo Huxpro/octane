@@ -21,3 +21,20 @@ automatically for state, reducer, derived, conditional, nested scalar, event,
 and structural outputs. Dirty scalar updates encode and write only affected
 bindings and listener sites; unrelated program slots and rows no longer add
 wire-value cloning, validation, or lookup work.
+Dependency discovery is indexed by stable hook getter at component commit, so a
+state-only update no longer scans unrelated compiler groups. Keyed ranges whose
+iterable expression is compiler-proven pure now replay only their descriptor and
+enter the existing range reconciler without executing the owning component;
+opaque iterable evaluation and all unproved structural work retain the complete
+component transaction.
+
+Compiler-certified keyed selection now follows one strict equality or
+inequality predicate through pure logical, conditional, unary, and template
+expressions. It preserves JavaScript strict-equality edge cases such as signed
+zero, while opaque calls and ambiguous or repeated selection captures continue
+through the conservative full-range path.
+
+Pure state-driven `@if` conditions and `@switch` discriminants/case values now
+replay their structural descriptors through the same transactional range path,
+so branch changes no longer re-enter the owning component. Calls, member reads,
+and other opaque branch expressions keep the conservative owner-render path.

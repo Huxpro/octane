@@ -35,7 +35,7 @@ function PlainRow(props: PlainRowProps) @{
 const MemoPlainRow = memo(PlainRow);
 
 interface ContextLeafProps {
-	readonly leafRef: LynxMainThreadRefCell<object | undefined>;
+	readonly leafRef: LynxMainThreadRefCell<OctaneBenchMainThreadElement | undefined>;
 }
 
 function ContextLeaf(props: ContextLeafProps) @{
@@ -49,7 +49,7 @@ const MemoContextLeaf = memo(ContextLeaf);
 
 interface ContextLayerProps {
 	readonly depth: number;
-	readonly leafRef: LynxMainThreadRefCell<object | undefined>;
+	readonly leafRef: LynxMainThreadRefCell<OctaneBenchMainThreadElement | undefined>;
 }
 
 function ContextLayer(props: ContextLayerProps) @{
@@ -66,7 +66,7 @@ const MemoContextLayer = memo(ContextLayer);
 
 interface ConsumerRowProps {
 	readonly depth: number;
-	readonly leafRef: LynxMainThreadRefCell<object | undefined>;
+	readonly leafRef: LynxMainThreadRefCell<OctaneBenchMainThreadElement | undefined>;
 	readonly row: BenchRow;
 }
 
@@ -81,7 +81,7 @@ const MemoConsumerRow = memo(ConsumerRow);
 interface ContextRowProps {
 	readonly consumer: number;
 	readonly depth: number;
-	readonly leafRef: LynxMainThreadRefCell<object | undefined>;
+	readonly leafRef: LynxMainThreadRefCell<OctaneBenchMainThreadElement | undefined>;
 	readonly row: BenchRow;
 }
 
@@ -97,7 +97,7 @@ const MemoContextRow = memo(ContextRow);
 
 export function App() @{
 	const [tone, setTone] = useState('light');
-	const leafRef = useMainThreadRef<object>();
+	const leafRef = useMainThreadRef<OctaneBenchMainThreadElement>();
 	const consumer = CONSUMER;
 	const depth = __ISSUE288_DEPTH__;
 
@@ -107,7 +107,7 @@ export function App() @{
 		if (leaf === null || leaf === undefined) {
 			throw new Error('ISSUE288_OBSERVER_FAILURE context leaf ref missing at touchstart');
 		}
-		const before = __GetComputedStyleByKey(leaf, 'background-color');
+		const before = leaf.getComputedStyleProperty('background-color');
 		const inputPlatformTimestamp = event.timestamp;
 		if (__ISSUE288_PROFILE__) {
 			lynx.performance.profileMark(`Issue288::${__ISSUE288_ARM__}::mts-input`);
@@ -115,7 +115,7 @@ export function App() @{
 		let changedFrameOrdinal = 0;
 		const poll = (changedVsyncPlatformTimestamp: number) => {
 			changedFrameOrdinal += 1;
-			const after = __GetComputedStyleByKey(leaf, 'background-color');
+			const after = leaf.getComputedStyleProperty('background-color');
 			if (after !== before) {
 				if (__ISSUE288_PROFILE__) {
 					lynx.performance.profileMark(`Issue288::${__ISSUE288_ARM__}::changed-vsync`);

@@ -158,7 +158,10 @@ The package now contains:
   activation/release lifetimes, adopted-node ref updates, and rejection of
   colliding background/main handlers for the same native event;
 - `useMainThreadRef(initialValue)`, whose main-local cell persists for the
-  mounted hook owner while host detach still writes `null`, plus
+  mounted hook owner while host detach still writes `null`; a host-bound ref
+  receives `LynxMainThreadElement`, not the opaque Element PAPI handle, so use
+  its attribute, style, query, measurement, animation, and `invoke()` methods;
+  plus
   `runOnMainThread()` and `runOnBackground()` with cancelable promises,
   asynchronous values/errors, pre-adoption queuing, exactly-once settlement,
   and stale-root plus active/retained definition-revision rejection;

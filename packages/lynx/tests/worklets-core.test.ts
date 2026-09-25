@@ -241,6 +241,27 @@ describe('Lynx main-thread worklets', () => {
 		registry.close();
 	});
 
+	it('publishes wrapped native element handles only through host ref mounts', () => {
+		const ref = createLynxMainThreadRefDescriptor('test:wrapped-element-ref');
+		const raw = { native: 1 };
+		const wrapped = { element: raw, setAttribute: vi.fn() };
+		const wrapElementRef = vi.fn((value: object) => {
+			expect(value).toBe(raw);
+			return wrapped;
+		});
+		const registry = createLynxMainThreadWorkletRegistry({ wrapElementRef });
+		const cell = registry.retainRef(ref, null);
+
+		registry.mountRef(ref, raw);
+
+		expect(wrapElementRef).toHaveBeenCalledOnce();
+		expect(cell.current).toBe(wrapped);
+		registry.updateRef(ref, null);
+		expect(cell.current).toBeNull();
+		registry.releaseRef(ref);
+		registry.close();
+	});
+
 	it('persists initialized state across activations only while its component owner is retained', () => {
 		const ref = createLynxMainThreadRefDescriptor('test:owned-state', 0);
 		const descriptor = registerMainThreadWorklet(

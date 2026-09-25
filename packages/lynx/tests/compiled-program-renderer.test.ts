@@ -31,14 +31,23 @@ import {
 	universalTry,
 	universalValue,
 	use,
+	useActionState,
 	useBatch,
 	useContext,
 	useDeferredValue,
+	useDebugValue,
+	useEffectEvent,
+	useId,
+	useImperativeHandle,
+	useInsertionEffect,
 	useLayoutEffect,
+	useLinkedState,
 	useMemo,
+	useOptimistic,
 	useReducer,
 	useState,
 	useTransition,
+	__useLinkedStateWithGetter,
 } from '../src/main-renderer.compiled-program.js';
 
 const WIRE: UniversalHostTemplateProgram = {
@@ -76,6 +85,155 @@ const PLAN: UniversalProgramPlan = {
 };
 
 describe('@octanejs/lynx compact compiled-program renderer', () => {
+	it('allocates distinct deterministic useId values for the first screen', () => {
+		const plan = universalPlan('lynx', PLAN);
+		const App = defineUniversalComponent('lynx', () => {
+			const first = useId();
+			const second = useId();
+			return universalValue(plan, [first, second, first + ':' + second]);
+		});
+
+		const first = renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues;
+		const repeated = renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues;
+		expect(first).toEqual(repeated);
+		expect(first?.slice(0, 2)).toEqual([':octane-u4:', ':octane-u8:']);
+	});
+
+	it('reclaims useId values from discarded first-screen try arms', () => {
+		const plan = universalPlan('lynx', PLAN);
+		const never = new Promise<never>(() => {});
+		for (const discard of ['error', 'suspend'] as const) {
+			let discarded = '';
+			const App = defineUniversalComponent('lynx', () =>
+				universalTry(
+					() => {
+						discarded = useId();
+						if (discard === 'error') throw new Error('discard compact try arm');
+						return use(never);
+					},
+					() => universalValue(plan, [useId(), 'pending', 'pending']),
+					() => universalValue(plan, [useId(), 'caught', 'caught']),
+				),
+			);
+
+			const selected = renderLynxFirstScreen(App, {}).nodes[0]?.children[0]?.selectedValues;
+			expect(selected?.[0]).toBe(discarded);
+		}
+	});
+
+	it('evaluates linked-state pairs and getter tuples for the first screen', () => {
+		const plan = universalPlan('lynx', PLAN);
+		const Pair = defineUniversalComponent('lynx', ({ source }: { readonly source: string }) => {
+			const [value, update] = useLinkedState(source, (next) => `pair:${next}`);
+			return universalValue(plan, [value, typeof update, value]);
+		});
+		const Getter = defineUniversalComponent('lynx', ({ source }: { readonly source: string }) => {
+			const [value, update, read] = __useLinkedStateWithGetter(source, (next) => `getter:${next}`);
+			return universalValue(plan, [value, typeof update, read()]);
+		});
+
+		expect(renderLynxFirstScreen(Pair, { source: 'alpha' }).nodes[0]?.selectedValues).toEqual([
+			'pair:alpha',
+			'function',
+			'pair:alpha',
+		]);
+		expect(renderLynxFirstScreen(Getter, { source: 'beta' }).nodes[0]?.selectedValues).toEqual([
+			'getter:beta',
+			'function',
+			'getter:beta',
+		]);
+	});
+
+	it('installs a render-only effect-event placeholder without running its body', () => {
+		const plan = universalPlan('lynx', PLAN);
+		let calls = 0;
+		const App = defineUniversalComponent('lynx', () => {
+			const event = useEffectEvent(() => calls++);
+			event();
+			return universalValue(plan, [typeof event, calls, String(calls)]);
+		});
+
+		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual(['function', '0', '0']);
+		expect(calls).toBe(0);
+	});
+
+	it('accepts debug values without formatting or changing the first screen', () => {
+		const plan = universalPlan('lynx', PLAN);
+		let formats = 0;
+		const App = defineUniversalComponent('lynx', () => {
+			useDebugValue({ label: 'row', count: 1 }, (value: { label: string; count: number }) => {
+				formats++;
+				return `${value.label}:${value.count}`;
+			});
+			return universalValue(plan, ['stable', 'debug', 'stable:debug']);
+		});
+
+		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual([
+			'stable',
+			'debug',
+			'stable:debug',
+		]);
+		expect(formats).toBe(0);
+		expect(() => useDebugValue('outside render')).toThrow('hook ran outside render');
+	});
+
+	it('does not publish imperative handles from the compact first screen', () => {
+		const plan = universalPlan('lynx', PLAN);
+		const ref: { current: string | null } = { current: null };
+		let creates = 0;
+		const App = defineUniversalComponent('lynx', () => {
+			useImperativeHandle(ref, () => {
+				creates++;
+				return 'main-thread-handle';
+			}, []);
+			return universalValue(plan, [String(ref.current), creates, String(creates)]);
+		});
+
+		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual(['null', '0', '0']);
+		expect(ref.current).toBeNull();
+		expect(creates).toBe(0);
+	});
+
+	it('previews action state without running or scheduling its action', () => {
+		const plan = universalPlan('lynx', PLAN);
+		let calls = 0;
+		const App = defineUniversalComponent('lynx', () => {
+			const [state, dispatch, pending] = useActionState((previous: string, payload: string) => {
+				calls++;
+				return `${previous}/${payload}`;
+			}, 'initial');
+			dispatch('main');
+			return universalValue(plan, [state, pending ? 'pending' : 'idle', String(calls)]);
+		});
+
+		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual([
+			'initial',
+			'idle',
+			'0',
+		]);
+		expect(calls).toBe(0);
+	});
+
+	it('previews optimistic passthrough without running or scheduling its reducer', () => {
+		const plan = universalPlan('lynx', PLAN);
+		let calls = 0;
+		const App = defineUniversalComponent('lynx', () => {
+			const [state, add] = useOptimistic('initial', (previous: string, payload: string) => {
+				calls++;
+				return `${previous}/${payload}`;
+			});
+			add('main');
+			return universalValue(plan, [state, typeof add, String(calls)]);
+		});
+
+		expect(renderLynxFirstScreen(App, {}).nodes[0]?.selectedValues).toEqual([
+			'initial',
+			'function',
+			'0',
+		]);
+		expect(calls).toBe(0);
+	});
+
 	it('normalizes every resident value exactly once before the scalar transport', () => {
 		const plan = universalPlan('lynx', PLAN);
 		const authoredClass = ['row', { active: true, disabled: false }] as const;
@@ -104,6 +262,9 @@ describe('@octanejs/lynx compact compiled-program renderer', () => {
 				memoCalls++;
 				return `count:${getCount()}`;
 			}, [count]);
+			useInsertionEffect(() => {
+				throw new Error('the compact first screen must not publish insertion effects');
+			}, [label]);
 			useLayoutEffect(() => {
 				throw new Error('the compact first screen must not publish layout effects');
 			}, [label]);

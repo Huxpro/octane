@@ -2735,6 +2735,8 @@ export function useTransition(_slot?: unknown): [boolean, typeof startTransition
 export function useActionState<State, Payload>(
 	_action: (previousState: State, payload: Payload) => State | Promise<State>,
 	initialState: State,
+	_permalinkOrSlot?: string | unknown,
+	_maybeSlot?: unknown,
 ): [State, (payload: Payload) => void, boolean] {
 	currentOwner();
 	return [initialState, NOOP_UPDATE, false];
@@ -2761,7 +2763,8 @@ export function useFormStatus(): FormStatus {
 
 export function useOptimistic<State, Action = State>(
 	passthrough: State,
-	_reducer?: (state: State, action: Action) => State,
+	_reducerOrSlot?: ((state: State, action: Action) => State) | unknown,
+	_maybeSlot?: unknown,
 ): [State, (action: Action) => void] {
 	currentOwner();
 	return [passthrough, NOOP_UPDATE];
@@ -2846,7 +2849,12 @@ export function warmChild(component: any, props: any): void {
 	if (typeof plan === 'function') warmFirstScreenPlan(() => plan(props));
 }
 
-export function useImperativeHandle(): void {
+export function useImperativeHandle<T>(
+	_ref: { current: T | null } | ((value: T | null) => void) | null,
+	_create: () => T,
+	_deps?: readonly unknown[] | null,
+	_slot?: unknown,
+): void {
 	currentOwner();
 }
 
@@ -2855,7 +2863,7 @@ export function useEffectEvent<T extends (...args: any[]) => any>(_fn: T, _slot?
 	return NOOP_UPDATE as T;
 }
 
-export function useDebugValue(): void {
+export function useDebugValue(_value?: unknown, _format?: unknown, _slot?: unknown): void {
 	currentOwner();
 }
 

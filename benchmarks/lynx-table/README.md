@@ -41,6 +41,28 @@ root runner:
 node benchmarks/bench.mjs --only lynx-table --ratios
 ```
 
+The same deterministic run also mounts a small authored `@if` + `@switch`
+control, advances it through two state changes, and performs one local
+`useLinkedState` edit. Its owner-render ratio is gated at 1× against a one-mount
+model, while the painted mode, both branch labels, and linked value are checked
+at every step. The counter sits in an external wrapper, so observation cannot
+make the compiled component ineligible for structural or scalar replay.
+The two hook tuples intentionally share one `const` statement, covering the
+compiler's per-declarator dependency proof rather than only one declaration per
+statement.
+
+On 2026-09-15, `LYNX_TABLE_SCALES=1000 node run.mjs 1` measured **3** owner
+entries with the compiler authorization removed and **1** with descriptor
+replay enabled. Both arms painted the same
+`then/default → else/case → else/default` sequence; the ordinary table control
+also stayed at 2 selection commands, 256 serialized bytes, and 2 Row renders.
+
+On 2026-09-25, the same one-iteration control measured **2** owner entries when
+local linked-state edits were excluded from dirty projection and **1** after
+getter-backed `useLinkedState` cells joined the compiled scalar path. Both arms
+painted `linked:initial → linked:initial!`; the ordinary 1,000-row control stayed
+at 2 selection commands, 256 serialized bytes, and 2 Row renders.
+
 ### Who asks about a mounted node
 
 A second reference target, `eager-selector-model`, measures one thing the
@@ -3808,6 +3830,243 @@ not the Web RPC-envelope aggregate, so only shape and counts compare. The same
 source/build family had already passed the surviving ~7,000-row Part-A probe
 above. Record:
 `stages/results/issue42-a-create-clear-recreate-1000.json`.
+
+#### Reusable lifecycle and process-memory lanes (#291)
+
+`stages/issue194-device-run.mjs` also supports the longer lifecycle gate used by
+#291. `--sequence-cycles 20` performs 79 state-changing taps: the first cycle is
+create → clear → recreate, and each later cycle starts with a reset clear before
+repeating those three phases. The reset makes every measured create begin from
+the same empty state without restarting the LynxView.
+
+There are two deliberately separate lanes:
+
+1. Build with `BENCH_ISSUE194_NATIVE=1` and run the normal `commit` completion
+   mode. Every action must have both the Native ACK/second-frame receipt and the
+   matching main-thread receipt. The build-only probe records live program
+   instance handles, structural ranges, listener slots, and retained native
+   host references. An ordinary owner must return every clear to the
+   first-screen baseline. The Lynx 4.1 Element Template owner additionally
+   reports detached recycled handles and their native-node cost: logical state
+   must return to baseline, the first clear establishes one fixed pool, every
+   later clear must reproduce it, every create must consume it, and active plus
+   recycled host references must stay on the first populated plateau. This
+   distinguishes bounded reuse from the `TextShadowNode` weak-global growth
+   that otherwise aborts Android at 51,200 entries.
+2. Build the ordinary shipping bundles without `BENCH_ISSUE194_NATIVE`, then add
+   `--native-only --process-memory --settle-ms 4000`. This lane requires Native
+   state/frame receipts but no instrumentation receipt. It samples
+   `smaps_rollup`, `/proc/<pid>/status`, and `dumpsys meminfo` after the settled
+   first screen, after every action receipt, and again after the settle delay.
+   The first post-receipt sample is an operational high-water checkpoint after
+   the transport ACK and second native frame; it is not labelled an
+   instantaneous peak.
+
+Both lanes use the existing device runner arguments (`--serial`, DevTool-off
+bundle URL/file, target `--cell` URL/file, tap coordinates, scale, sample count,
+timeout, question, and output), plus:
+
+```bash
+--workload create --create-clear-recreate --sequence-cycles 20 \
+--tap-x <create-x> --tap-y <create-y> \
+--clear-tap-x <clear-x> --clear-tap-y <clear-y>
+```
+
+The same runner accepts an explicit app-owned mutation sequence without
+weakening those lifecycle controls. Repeat
+`--sequence-step phase=workload,x,y` in tap order and omit `--workload` plus the
+lifecycle flags. Phase names must be unique; workloads are limited to the
+buttons/cells that emit `lynx-native-bench-v2`. Each step is paired by its
+stable interaction ordinal, so a storm can publish many main commits without
+being mistaken for later input. The commit lane requires the latest main
+receipt after the tap, exact pre/post semantics, transport ACK/complete shape,
+two native frames, and a stable ownership census. Pure update/select/swap/storm
+steps must retain the current populated census exactly. `append1k` must add
+exactly 1,000 handles, 2,000 listener slots, and 4,000 retained host refs while
+leaving ranges and the recycle pool unchanged; the registered second-row remove
+must retire exactly one handle, two listener slots, and four host refs into the
+bounded recycle pool. For example:
+
+```bash
+--sequence-step setup=create,<create-x>,<create-y> \
+--sequence-step update=update10th,<update-x>,<update-y> \
+--sequence-step select=select,<row-1-label-x>,<row-1-y> \
+--sequence-step swap=swap,<swap-x>,<swap-y> \
+--sequence-step update-storm=updateStorm,<storm-x>,<storm-y> \
+--sequence-step select-storm=selectStorm,<storm-x>,<storm-y> \
+--sequence-step remove=remove,<row-1-remove-x>,<row-1-y>
+```
+
+The 10k append slice uses the smaller two-step window so its precondition and
+growth census stay explicit:
+
+```bash
+--sequence-step setup=create,<create-10k-x>,<create-10k-y> \
+--sequence-step append=append1k,<append-x>,<append-y>
+```
+
+This is one serialized semantic window, not seven independent latency samples:
+the first create is setup for every later operation, and each reported latency
+belongs only to its own native input-to-second-frame receipt. A failed state,
+storm tick/barrier/ACK count, wire receipt, or census rejects the entire cold
+launch rather than dropping one unfavorable step.
+
+An expected Element Template live-capacity probe adds `--capacity-outcome`.
+That flag does not accept an arbitrary JavaScript error: the only app-level
+capacity rejection recognized by this sequence is `RangeError: Octane Lynx
+OL512` on `append1k`, with no accepted main commit, the complete Native ACK and
+two-frame receipt, and every sampled state field unchanged. The report labels
+that terminal result `capacity-rejection`; ordinary completed sequences still
+have to pass the full state and ownership census above.
+
+The shipping memory lane additionally appends:
+
+```bash
+--native-only --process-memory --settle-ms 4000 \
+--cell-commit baseline=<full-40-character-sha> \
+--cell-commit candidate=<full-40-character-sha>
+```
+
+Every memory cell requires its own full source SHA; the runner already records
+the independently hashed bundle bytes. A checkout SHA alone is not accepted as
+the identity of two bundles that can come from different revisions.
+
+The timeout covers first-screen settling and every per-action settle delay, so
+a 20-cycle memory window needs more than 316 seconds before launch and device
+overhead are included. A process-accounting parse failure aborts the run rather
+than emitting a partial memory result.
+
+Long device cohorts can stop cleanly at a complete cell-group boundary with
+`--checkpoint <file> --max-new-samples <N>`. For a two-cell AB/BA run, `N` must
+be even. If an invalid attempt or interruption leaves a partial pair in the
+checkpoint, the next bounded invocation stops at the last complete pair inside
+its requested budget rather than splitting the following pair. A later
+invocation with the same command and checkpoint resumes the sequence only when
+the runner commit, raw device serial and fingerprint, controls, and every
+bundle identity still match. This supports a second lease of the same physical
+device; it rejects combining different devices into one apparent session.
+Invalid attempts are checkpointed immediately and name each failed acceptance
+gate. The final invocation writes `--out` and removes the checkpoint only after
+the complete target is accepted.
+
+Every preflight and measurement also captures its unique log marker's device
+epoch before launching the bundle. If logcat later evicts that marker, the
+runner keeps only records at or after the captured epoch. This is the evidence
+boundary; `adb logcat -c` is best effort because a Sandbox shell can return
+success without clearing every readable buffer.
+
+Re-judge a completed two-cell shipping window without leasing the device again:
+
+```bash
+node stages/issue291-native-memory-analyze.mjs \
+  --input <raw-device-window.json> \
+  --reference baseline --candidate candidate \
+  --out <paired-memory-comparison.json>
+```
+
+The analyzer requires 20 cycles per sample, at least 10 balanced adjacent AB/BA
+pairs, exact source and bundle identities, all three Android accounting sources,
+and the complete per-action memory/state sequence. It bootstraps whole
+session-pair ratios rather than individual checkpoints and applies #291's frozen
+1.05 CI-upper non-inferiority limit. A failed measured check exits non-zero.
+Even when settled and after-clear pass, the overall #291 memory verdict remains
+`inconclusive` until a separate instrument captures true peak heap; the
+operational post-receipt high-water statistic is reported but never relabelled.
+
+##### Native heap peak lane (Android 11+ only)
+
+`stages/issue291-native-heap-peak-run.mjs` wraps the same fresh-process
+lifecycle runner with Perfetto `android.heapprofd`. It starts the profile before
+Explorer, uses the platform's `dump_at_max` mode, and pulls one trace after each
+bounded lease segment. This is a separate profiling lane: its value is the
+maximum sampled live `malloc`/`new` bytes requested during the process window;
+its timings are perturbed and are never eligible for the latency headline.
+
+The wrapper fails before the Native runner unless the device is Android 11 or
+newer and advertises `android.heapprofd`. Android 10 introduced heapprofd but
+does not contain `HeapprofdConfig.dump_at_max`; periodic dumps on such a device
+are not substituted for peak. Consequently, an Android 10 process-memory record
+cannot be combined with a later Android 11 peak trace to close the gate: the
+complete process-memory and peak cohorts must be rerun on the same device and
+runtime.
+
+For each bounded runner invocation, omit the runner's `--serial` after `--` and
+wrap all its other arguments:
+
+```bash
+node stages/issue291-native-heap-peak-run.mjs \
+  --serial <connected-android-11+-serial> \
+  --trace-out <segment.pftrace> \
+  --receipt-out <segment-receipt.json> \
+  -- \
+  <issue194-device-run arguments including --process-memory, \
+    --create-clear-recreate, --checkpoint, and --max-new-samples>
+```
+
+The wrapper uses a 4 KiB Poisson sampling interval, a non-blocking 256 MiB
+client/daemon buffer, and a periodically flushed ring-buffer trace. Any
+heapprofd overrun remains a failed trace rather than blocking allocations and
+changing the workload further. SIGINT/SIGTERM is forwarded to the runner before
+the detached trace is stopped and pulled; the per-segment receipt records its
+accepted ordinal range, trace hash, exact configuration hash, and current
+checkpoint hash. The temporary device trace is removed only after a successful
+pull.
+
+After all segments and the final Native window exist, use a pinned
+`trace_processor_shell` to bind each segment to its explicit accepted ordinal
+range:
+
+```bash
+node stages/issue291-native-heap-peak-collect.mjs \
+  --input <raw-device-window.json> \
+  --trace-processor <trace_processor_shell> \
+  --trace 1-4=<segment-1.pftrace> \
+  --trace 5-8=<segment-2.pftrace> \
+  --out <heap-peak-evidence.json>
+
+node stages/issue291-native-memory-analyze.mjs \
+  --input <raw-device-window.json> \
+  --peak <heap-peak-evidence.json> \
+  --reference baseline --candidate candidate \
+  --out <complete-memory-comparison.json>
+```
+
+The collector checks the raw trace protobuf for `self_max` fields and rejects
+ordinary `self_allocated`/`self_freed` profiles. It also rejects non-startup
+profiles, negative allocation rows, missing or duplicate fresh PIDs, buffer
+overrun/corruption, client errors, guardrails, concurrent-profile rejection,
+missing/malformed packets, non-finalized profiles, and adaptive sampling. Its
+output binds the raw Native window, source commits, bundle hashes, trace hashes,
+and trace-processor binary/version. Only that complete evidence can change
+`peakHeap` and the overall #291 memory gate from `inconclusive` to pass/fail.
+
+##### M0-current versus shipping M4 formal process-memory window
+
+The receipt-bound shipping candidate at `204f4cf4c535` completed the registered
+process-memory cohort against M0-current `e82160fc0e66` on one physical Aries 10
+device with Explorer 1.0 / Lynx SDK 4.2. The run used 10 balanced adjacent
+AB/BA pairs (five in each order), 20 lifecycle cycles and 79 actions per sample,
+a 4-second settle, DevTool disabled, and zero invalid attempts. Its 9,594,779
+byte raw record has SHA-256
+`dad1c380dfda570d3973d08a8faefc4de422fd1257cae7dc78d8392b01f9fe42`;
+the compact checked-in comparison is
+`stages/results/issue291-m0-candidate-formal-204f4cf4c.json`.
+
+| process metric | checkpoint | candidate / M0 | paired 95% CI | ≤ 1.05 |
+|---|---|---:|---:|---|
+| Native heap allocated | empty first screen | 0.9795 | [0.9763, 0.9828] | pass |
+| Native heap allocated | operational create high-water | 0.8320 | [0.8292, 0.8355] | pass |
+| Native heap allocated | settled populated | 0.9794 | [0.9754, 0.9831] | pass |
+| Native heap allocated | after clear | 0.9770 | [0.9731, 0.9817] | pass |
+| total PSS | empty first screen | 0.9371 | [0.9256, 0.9492] | pass |
+| total PSS | operational create high-water | 0.7862 | [0.7727, 0.8001] | pass |
+| total PSS | settled populated | 0.8148 | [0.7774, 0.8507] | pass |
+| total PSS | after clear | 0.8236 | [0.7793, 0.8678] | pass |
+
+The analyzer therefore reports `availableChecksPassed: true`, with settled and
+after-clear heap passing. The registered overall memory gate remains
+`inconclusive`: the operational high-water sample is taken only after the ACK
+and second native frame, so it cannot prove the instantaneous peak requirement.
 
 The clear@1k cross-framework window found a measurement-fidelity boundary, not
 a Native rank:

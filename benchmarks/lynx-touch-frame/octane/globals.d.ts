@@ -2,6 +2,13 @@ declare const __BENCH_TOPOLOGY__: 'T2' | 'T3';
 declare const __BENCH_LOAD__: 'idle' | 'sustained-scroll';
 declare const __BENCH_PROFILE__: boolean;
 
+interface OctaneBenchMainThreadElement {
+	setAttribute(name: string, value: unknown): void;
+	setStyleProperty(name: string, value: string): void;
+	getComputedStyleProperty(name: string): string;
+	querySelector(selector: string): OctaneBenchMainThreadElement | null;
+}
+
 declare function __AddInlineStyle(node: object, name: string, value: string): void;
 declare function __FlushElementTree(node?: object): void;
 declare function __GetAttributeByName(node: object, name: string): unknown;

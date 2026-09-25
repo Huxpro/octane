@@ -5,6 +5,7 @@ import {
 	runOnMainThread,
 	useMainThreadRef,
 	type LynxCancelablePromise,
+	type LynxMainThreadElement,
 	type LynxPublicHandle,
 } from '@octanejs/lynx';
 import type {
@@ -80,7 +81,8 @@ const viewProps: RendererElements['view'] = {
 		void firstTouchPageY;
 	},
 };
-const mainThreadRef = useMainThreadRef<object>();
+const mainThreadRef = useMainThreadRef<LynxMainThreadElement>();
+mainThreadRef.current?.setStyleProperty('opacity', '0.5');
 const mainThreadState = useMainThreadRef(0);
 const mainThreadStateValue: number = mainThreadState.current;
 const optionalMainThreadState = useMainThreadRef<string>();

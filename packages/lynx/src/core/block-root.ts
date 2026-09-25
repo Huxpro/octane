@@ -73,6 +73,8 @@ export interface LynxBlockRootOptions {
 	readonly transportRoot: number;
 	/** Bring your own core, primarily so a test can pin the id allocators. */
 	readonly core?: LynxBlockCore;
+	/** Preserve renderer event priority when a handler enters universal hook cells. */
+	readonly eventScope?: <T>(priority: UniversalEventPriority, run: () => T) => T;
 }
 
 export interface LynxBlockRoot {
@@ -163,6 +165,7 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 		);
 	}
 	const core = options.core ?? createLynxBlockCore();
+	const eventScope = options.eventScope ?? ((_priority, run) => run());
 	const rejectUnavailableHostRefs = (): never => {
 		throw new Error(
 			typeof __OCTANE_LYNX_DEVELOPMENT__ === 'undefined' || __OCTANE_LYNX_DEVELOPMENT__
@@ -537,23 +540,25 @@ export function createLynxBlockRoot(options: LynxBlockRootOptions): LynxBlockRoo
 			// Every pre-validated delivery runs even when an earlier handler
 			// throws, as `universal-core.ts` guarantees: a partially-dispatched
 			// valid batch is exactly the outcome pre-validation exists to prevent.
-			const results = new Array<unknown>(message.deliveries.length);
-			let errors: unknown[] | null = null;
-			for (let index = 0; index < message.deliveries.length; index++) {
-				const { listener, payload } = message.deliveries[index]!;
-				try {
-					results[index] = listeners.get(listener)!.handler(payload);
-				} catch (error) {
-					(errors ??= []).push(error);
+			return eventScope(message.priority, () => {
+				const results = new Array<unknown>(message.deliveries.length);
+				let errors: unknown[] | null = null;
+				for (let index = 0; index < message.deliveries.length; index++) {
+					const { listener, payload } = message.deliveries[index]!;
+					try {
+						results[index] = listeners.get(listener)!.handler(payload);
+					} catch (error) {
+						(errors ??= []).push(error);
+					}
 				}
-			}
-			if (errors !== null) {
-				if (errors.length === 1) throw errors[0];
-				throw typeof AggregateError === 'function'
-					? new AggregateError(errors, 'Multiple Lynx block listeners failed.')
-					: errors[0];
-			}
-			return Object.freeze(results);
+				if (errors !== null) {
+					if (errors.length === 1) throw errors[0];
+					throw typeof AggregateError === 'function'
+						? new AggregateError(errors, 'Multiple Lynx block listeners failed.')
+						: errors[0];
+				}
+				return Object.freeze(results);
+			});
 		},
 
 		acceptsNativeEvent(listener, priority) {

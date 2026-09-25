@@ -1,6 +1,8 @@
 declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 
 import type {
+	LinkedStateOptions,
+	LinkedStatePrevious,
 	UniversalComponent,
 	UniversalContext,
 	UniversalEventListenerDescriptor,
@@ -589,9 +591,14 @@ function materialize(value: unknown, visibility: 'visible' | 'hidden' = 'visible
 	}
 	if (record?.$$kind === UNIVERSAL_TRY) {
 		const boundary = value as unknown as TryValue;
+		const universalIdCheckpoint = nextUniversalId;
 		try {
 			return [range(materialize(boundary.body(), visibility))];
 		} catch (error) {
+			// The body never becomes part of the first tree. Let the pending or
+			// catch arm consume the same deterministic positions, matching both the
+			// complete main-thread renderer and the accepted background attempt.
+			nextUniversalId = universalIdCheckpoint;
 			if (error instanceof FirstScreenSuspense) {
 				if (boundary.pending === null) throw error;
 				return [range(materialize(boundary.pending(), visibility))];
@@ -722,6 +729,7 @@ function collectEvents(
 let rendering = false;
 let renderingContexts: CompactContexts = null;
 let nextHookSlot = 0;
+let nextUniversalId = 1;
 const NOOP_UPDATE = () => {};
 
 export function renderLynxFirstScreen<Props>(
@@ -733,11 +741,13 @@ export function renderLynxFirstScreen<Props>(
 		{ readonly id?: unknown } | undefined;
 	if (metadata?.id !== 'lynx') fail('requires a compiled Lynx component');
 	rendering = true;
+	nextUniversalId = 1;
 	let nodes: CompactNode[];
 	try {
 		nodes = materialize(component(props, componentContext()));
 	} finally {
 		renderingContexts = null;
+		nextUniversalId = 1;
 		rendering = false;
 	}
 	const ids = { id: 1 };
@@ -791,6 +801,26 @@ export function useState<T>(
 
 export const __useStateWithGetter = useState;
 
+export function useLinkedState<Source, Value>(
+	source: Source,
+	reconcile: (source: Source, previous: LinkedStatePrevious<Source, Value> | undefined) => Value,
+	_optionsOrSlot?: LinkedStateOptions<Source, Value> | symbol | string | number,
+	_slot?: unknown,
+): [Value, (next: Value | ((previous: Value) => Value)) => void] {
+	requireRender();
+	return [reconcile(source, undefined), NOOP_UPDATE];
+}
+
+export function __useLinkedStateWithGetter<Source, Value>(
+	source: Source,
+	reconcile: (source: Source, previous: LinkedStatePrevious<Source, Value> | undefined) => Value,
+	optionsOrSlot?: LinkedStateOptions<Source, Value> | symbol | string | number,
+	slot?: unknown,
+): [Value, (next: Value | ((previous: Value) => Value)) => void, () => Value] {
+	const [value, setValue] = useLinkedState(source, reconcile, optionsOrSlot, slot);
+	return [value, setValue, () => value];
+}
+
 export function useReducer<S, A, I = S>(
 	_reducer: (state: S, action: A) => S,
 	initialArg: I,
@@ -807,6 +837,9 @@ export function useReducer<S, A, I = S>(
 
 export const __useReducerWithGetter = useReducer;
 
+export function useInsertionEffect(): void {
+	requireRender();
+}
 export function useLayoutEffect(): void {
 	requireRender();
 }
@@ -832,6 +865,17 @@ export function useCallback<T extends (...args: any[]) => any>(
 export function useRef<T>(initial: T, _slot?: unknown): { current: T } {
 	requireRender();
 	return { current: initial };
+}
+
+export function useId(_slot?: unknown): string {
+	requireRender();
+	const index = nextUniversalId++;
+	// The compact first screen is the first Universal root in its isolated main-
+	// thread realm. Match that root's Cantor-paired namespace so this renderer
+	// stays byte-identical to the complete main-thread implementation.
+	const sum = 1 + index;
+	const paired = (sum * (sum + 1)) / 2 + index;
+	return `:octane-u${paired.toString(36)}:`;
 }
 
 export function useEffect(): void {
@@ -907,4 +951,41 @@ export function startTransition(_fn: () => void | Promise<unknown>): void {}
 export function useTransition(_slot?: unknown): [boolean, typeof startTransition] {
 	requireRender();
 	return [false, startTransition];
+}
+
+export function useActionState<State, Payload>(
+	_action: (previousState: State, payload: Payload) => State | Promise<State>,
+	initialState: State,
+	_permalinkOrSlot?: string | unknown,
+	_maybeSlot?: unknown,
+): [State, (payload: Payload) => void, boolean] {
+	requireRender();
+	return [initialState, NOOP_UPDATE, false];
+}
+
+export function useOptimistic<State, Action = State>(
+	passthrough: State,
+	_reducerOrSlot?: ((state: State, action: Action) => State) | unknown,
+	_maybeSlot?: unknown,
+): [State, (action: Action) => void] {
+	requireRender();
+	return [passthrough, NOOP_UPDATE];
+}
+
+export function useImperativeHandle<T>(
+	_ref: { current: T | null } | ((value: T | null) => void) | null,
+	_create: () => T,
+	_deps?: readonly unknown[] | null,
+	_slot?: unknown,
+): void {
+	requireRender();
+}
+
+export function useEffectEvent<T extends (...args: any[]) => any>(_fn: T, _slot?: unknown): T {
+	requireRender();
+	return NOOP_UPDATE as T;
+}
+
+export function useDebugValue(_value?: unknown, _format?: unknown, _slot?: unknown): void {
+	requireRender();
 }

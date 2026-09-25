@@ -246,10 +246,9 @@ it('reverses gallery auto-scroll at the bottom and top edges', async () => {
 }, 90_000);
 
 // Lynx for Web calls a `'main thread'` handler from inside its own wasm element
-// context, which then refuses the `__FlushElementTree()` that the documented
-// main-thread scripting pattern ends with. Every refusal used to escape the
-// handler as an uncaught page error — one per event, so a handler bound to a
-// per-frame event flooded the console for as long as the page lived.
+// context. MainThread.Element must defer and coalesce the resulting element-tree
+// flush rather than attempt it inline; an inline refusal otherwise escapes as an
+// uncaught page error for every event.
 it('publishes a main-thread handler flush without faulting the Web host', async () => {
 	await withWebHostPage(MAIN_THREAD_FLUSH_ROOT, 'octane-lynx-web-flush-', async (page) => {
 		const probe = page.getByText('Tap to flush', { exact: true });

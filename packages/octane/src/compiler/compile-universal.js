@@ -3357,17 +3357,18 @@ function templateProgramForComponent(node, state) {
 }
 
 /**
- * Prove that one parent value reaches a component row only as the boolean
- * result of comparing it with that row's key.
+ * Prove that one parent value reaches a component row only through one strict
+ * equality or inequality predicate comparing it with that row's key.
  *
  * This is the universal/Lynx counterpart of compile.js's
  * `keyedSelectionDepIndex`. It is intentionally narrower: the row must already
  * satisfy `templateProgramForComponent`, the key is one direct item property,
- * and every other outer capture must be passed as a bare prop value. Property
- * reads on an outer object could hide a getter or a mutation behind stable
- * identity, so they fail closed. The proof also records whether the component
- * props omit the loop index, allowing shifted survivors to keep their row
- * descriptors. The full range path remains the fallback.
+ * Pure template, conditional, logical, binary, and unary operators may wrap the
+ * predicate, while every other outer capture must be passed as a bare prop
+ * value. Property reads on an outer object could hide a getter or a mutation
+ * behind stable identity, so they fail closed. The proof also records whether
+ * the component props omit the loop index, allowing shifted survivors to keep
+ * their row descriptors. The full range path remains the fallback.
  */
 function keyedSelectionForComponent(node, component, state, itemBinding, indexBinding) {
 	if (!state.sparseKeyedSelection || itemBinding.type !== 'Identifier') return null;
@@ -3405,16 +3406,49 @@ function keyedSelectionForComponent(node, component, state, itemBinding, indexBi
 			expression.property.name === keyProperty
 		);
 	};
+	const selectionCandidates = (value) => {
+		const candidates = [];
+		const visit = (candidate) => {
+			const expression = unwrapFirstScreenExpression(candidate);
+			if (!expression || typeof expression !== 'object') return;
+			if (
+				expression.type === 'BinaryExpression' &&
+				(expression.operator === '===' || expression.operator === '!==')
+			) {
+				const left = unwrapFirstScreenExpression(expression.left);
+				const right = unwrapFirstScreenExpression(expression.right);
+				const selected = isItemKey(left) ? right : isItemKey(right) ? left : null;
+				if (selected?.type === 'Identifier') candidates.push(selected);
+				return;
+			}
+			if (expression.type === 'TemplateLiteral') {
+				for (const child of expression.expressions ?? []) visit(child);
+				return;
+			}
+			if (expression.type === 'ConditionalExpression') {
+				visit(expression.test);
+				visit(expression.consequent);
+				visit(expression.alternate);
+				return;
+			}
+			if (expression.type === 'BinaryExpression' || expression.type === 'LogicalExpression') {
+				visit(expression.left);
+				visit(expression.right);
+				return;
+			}
+			if (expression.type === 'UnaryExpression') visit(expression.argument);
+		};
+		visit(value);
+		return candidates;
+	};
 
 	let selected = null;
 	for (const attribute of component.openingElement?.attributes ?? component.attributes ?? []) {
 		const value = attribute.value;
 		if (value?.type !== 'JSXExpressionContainer') continue;
 		const expression = unwrapFirstScreenExpression(value.expression);
-		if (expression?.type !== 'BinaryExpression' || expression.operator !== '===') continue;
-		const left = unwrapFirstScreenExpression(expression.left);
-		const right = unwrapFirstScreenExpression(expression.right);
-		const candidate = isItemKey(left) ? right : isItemKey(right) ? left : null;
+		const candidates = selectionCandidates(expression);
+		const candidate = candidates.length === 1 ? candidates[0] : null;
 		if (
 			candidate?.type !== 'Identifier' ||
 			candidate.name === itemBinding.name ||
@@ -3824,61 +3858,61 @@ function dirtyComponentCandidate(render, hooks, state) {
 	const replacements = [];
 	for (const statement of render.setup ?? []) {
 		if (typeOnlySetupStatement(statement)) continue;
-		if (
-			statement.type !== 'VariableDeclaration' ||
-			statement.kind !== 'const' ||
-			statement.declarations?.length !== 1
-		) {
+		if (statement.type !== 'VariableDeclaration' || statement.kind !== 'const') {
 			return null;
 		}
-		const declaration = statement.declarations[0];
-		const value = unwrapFirstScreenExpression(declaration.init);
-		const hookName =
-			value?.type === 'CallExpression' && value.callee?.type === 'Identifier'
-				? state.runtimeImports.get(value.callee.name)
-				: null;
-		if (hookName === 'useState' || hookName === 'useReducer') {
-			const pattern = declaration.id;
-			const elements = pattern?.type === 'ArrayPattern' ? (pattern.elements ?? []) : [];
+		for (const declaration of statement.declarations ?? []) {
+			const value = unwrapFirstScreenExpression(declaration.init);
+			const hookName =
+				value?.type === 'CallExpression' && value.callee?.type === 'Identifier'
+					? state.runtimeImports.get(value.callee.name)
+					: null;
+			if (hookName === 'useState' || hookName === 'useLinkedState' || hookName === 'useReducer') {
+				const pattern = declaration.id;
+				const elements = pattern?.type === 'ArrayPattern' ? (pattern.elements ?? []) : [];
+				if (
+					pattern?.type !== 'ArrayPattern' ||
+					elements[0]?.type !== 'Identifier' ||
+					elements.slice(3).some((element) => element !== null) ||
+					elements.some((element) => element?.type === 'RestElement') ||
+					(elements[2] !== null && elements[2] !== undefined && elements[2].type !== 'Identifier')
+				) {
+					return null;
+				}
+				const getter =
+					elements[2]?.name ??
+					allocName(state, `${state.planPrefix || '__octane'}Get${sources.length}`);
+				if (elements[2] == null) {
+					const nextElements = [
+						elements[0],
+						elements[1] ?? null,
+						generatedIdentifier(getter, pattern),
+					];
+					replacements.push([
+						pattern,
+						inheritGeneratedOrigin({ ...pattern, elements: nextElements }, pattern),
+					]);
+				}
+				sources.push({ value: elements[0].name, getter, hook: hookName, origin: declaration });
+				continue;
+			}
 			if (
-				pattern?.type !== 'ArrayPattern' ||
-				elements[0]?.type !== 'Identifier' ||
-				elements.slice(3).some((element) => element !== null) ||
-				elements.some((element) => element?.type === 'RestElement') ||
-				(elements[2] !== null && elements[2] !== undefined && elements[2].type !== 'Identifier')
+				declaration.id?.type !== 'Identifier' ||
+				declaration.init == null ||
+				!dirtyPureExpression(declaration.init)
 			) {
 				return null;
 			}
-			const getter =
-				elements[2]?.name ??
-				allocName(state, `${state.planPrefix || '__octane'}Get${sources.length}`);
-			if (elements[2] == null) {
-				const nextElements = [
-					elements[0],
-					elements[1] ?? null,
-					generatedIdentifier(getter, pattern),
-				];
-				replacements.push([
-					pattern,
-					inheritGeneratedOrigin({ ...pattern, elements: nextElements }, pattern),
-				]);
-			}
-			sources.push({ value: elements[0].name, getter, hook: hookName, origin: declaration });
-			continue;
+			derived.push({
+				name: declaration.id.name,
+				statement:
+					statement.declarations.length === 1
+						? statement
+						: inheritGeneratedOrigin({ ...statement, declarations: [declaration] }, statement),
+				refs: dirtyExpressionReferences(declaration.init),
+				deps: null,
+			});
 		}
-		if (
-			declaration.id?.type !== 'Identifier' ||
-			declaration.init == null ||
-			!dirtyPureExpression(declaration.init)
-		) {
-			return null;
-		}
-		derived.push({
-			name: declaration.id.name,
-			statement,
-			refs: dirtyExpressionReferences(declaration.init),
-			deps: null,
-		});
 	}
 	if (
 		sources.length === 0 ||
@@ -3921,18 +3955,20 @@ function dirtyComputationArrayAst(candidate, values, root, state, origin) {
 		}
 		if (deps.size === 0) continue;
 		const kind = structuralSlots.has(slot) ? 'structural' : 'scalar';
+		const replayable = kind === 'scalar' || state.dirtyStructuralReplayExpressions.has(expression);
 		if (kind === 'scalar' && !dirtyPureExpression(expression)) return null;
 		const ordered = [...deps].sort((left, right) => left - right);
-		const key = `${kind}:${ordered.join(',')}`;
+		const key = `${kind}:${replayable ? 'replay' : 'owner'}:${ordered.join(',')}`;
 		const group = groups.get(key) ?? {
 			kind,
+			replayable,
 			deps: ordered,
 			slots: [],
-			values: kind === 'scalar' ? [] : null,
-			refs: kind === 'scalar' ? [] : null,
+			values: replayable ? [] : null,
+			refs: replayable ? [] : null,
 		};
 		group.slots.push(slot);
-		if (kind === 'scalar') {
+		if (replayable) {
 			group.values.push(expression);
 			group.refs.push(...refs);
 		}
@@ -3943,7 +3979,7 @@ function dirtyComputationArrayAst(candidate, values, root, state, origin) {
 	const descriptors = [];
 	for (const group of groups.values()) {
 		let run = null;
-		if (group.kind === 'scalar') {
+		if (group.replayable) {
 			const required = new Set();
 			const visit = (name) => {
 				const entry = derivedByName.get(name);
@@ -3986,7 +4022,10 @@ function dirtyComputationArrayAst(candidate, values, root, state, origin) {
 					b.prop(
 						'init',
 						b.literal('purity', '"purity"'),
-						jsonValueToAst(group.kind === 'scalar' ? 'pure' : 'unknown', origin),
+						jsonValueToAst(
+							group.kind === 'scalar' ? 'pure' : group.replayable ? 'descriptor-pure' : 'unknown',
+							origin,
+						),
 					),
 					b.prop(
 						'init',
@@ -4945,7 +4984,13 @@ function compileForAst(node, context, state) {
 	} else if (node.empty) {
 		args.push(compileBlockValueAst(node.empty?.body ?? [], state, [], node.empty));
 	}
-	return addDynamicAst(context, generatedCall(state.helpers.for, args, node));
+	const range = generatedCall(state.helpers.for, args, node);
+	// Recreating this descriptor does not enumerate the iterable or execute a
+	// row body. The Block runtime may therefore project a state-only update into
+	// this range without re-entering the owning component; all structural work
+	// still goes through the ordinary keyed range implementation.
+	if (dirtyPureExpression(node.right)) state.dirtyStructuralReplayExpressions.add(range);
+	return addDynamicAst(context, range);
 }
 
 function compileIfAst(node, context, state) {
@@ -4965,7 +5010,12 @@ function compileIfAst(node, context, state) {
 	}
 	const args = [rewriteSourceAst(node.test, state), consequent];
 	if (alternate !== null) args.push(alternate);
-	return addDynamicAst(context, generatedCall(state.helpers.if, args, node));
+	const branch = generatedCall(state.helpers.if, args, node);
+	// Descriptor construction evaluates only the condition. Branch bodies stay
+	// behind thunks and continue through the ordinary structural range renderer,
+	// so a state-only pure condition can be replayed without entering its owner.
+	if (dirtyPureExpression(node.test)) state.dirtyStructuralReplayExpressions.add(branch);
+	return addDynamicAst(context, branch);
 }
 
 function compileIfValueAst(node, state) {
@@ -4993,7 +5043,16 @@ function compileSwitchAst(node, context, state) {
 		inheritGeneratedOrigin(b.array(cases), node),
 	];
 	if (fallback !== null) args.push(fallback);
-	return addDynamicAst(context, generatedCall(state.helpers.switch, args, node));
+	const branch = generatedCall(state.helpers.switch, args, node);
+	// The discriminant and case values are the only eager user expressions in a
+	// switch descriptor. Keep opaque calls/getters on the owner-render path.
+	if (
+		dirtyPureExpression(node.discriminant) &&
+		(node.cases ?? []).every((item) => item.test == null || dirtyPureExpression(item.test))
+	) {
+		state.dirtyStructuralReplayExpressions.add(branch);
+	}
+	return addDynamicAst(context, branch);
 }
 
 function compileTryAst(node, context, state) {
@@ -6498,6 +6557,7 @@ export function lowerUniversalRendererRegionAst(
 			options.profile !== true,
 		profileFilename: options.profileFilename,
 		helpers: {},
+		dirtyStructuralReplayExpressions: new WeakSet(),
 		componentNames: collectComponentNames(analysisAst),
 		runtimeImports: new Map(),
 		planPrefix: prefix,
@@ -6825,6 +6885,7 @@ export function compileUniversal(
 			options.profile !== true,
 		profileFilename: options.profileFilename,
 		helpers: {},
+		dirtyStructuralReplayExpressions: new WeakSet(),
 		componentNames: collectComponentNames(ast),
 		runtimeImports: new Map(),
 		// The `lynx` target keeps the universal front-end and descriptor ABI but

@@ -94,6 +94,11 @@ if (__BENCH_AUTOROWS__ > 0) {
 		});
 
 		updateStage('src/App.lynx.tsrx', (source, file) => {
+			// The current benchmark app owns the Native tap/ACK/frame receipt and
+			// semantic snapshot directly. Older frozen app sources need the legacy
+			// probe below; wrapping the current handlers again would double-run every
+			// action and invalidate the observation boundary.
+			if (source.includes("'__NATIVE_BENCH_RESULT__'")) return source;
 			let next = replaceOnce(
 				source,
 				`const INITIAL_ROWS: RowData[] =
@@ -163,9 +168,10 @@ function measureIssue194Tap(workload: string, scale: number, action: () => void)
 `,
 				file,
 			);
-			next = replaceOnce(
-				next,
-				`const _stormChannel = new MessageChannel();
+			if (next.includes('const _stormChannel = new MessageChannel();')) {
+				next = replaceOnce(
+					next,
+					`const _stormChannel = new MessageChannel();
 let _stormPending: (() => void) | null = null;
 _stormChannel.port1.onmessage = () => {
 \tconst cb = _stormPending;
@@ -177,7 +183,7 @@ function nextMacrotask(cb: () => void) {
 \t_stormChannel.port2.postMessage(0);
 }
 `,
-				`const _stormChannel: MessageChannel | null = null;
+					`const _stormChannel: MessageChannel | null = null;
 let _stormPending: (() => void) | null = null;
 if (_stormChannel) {
 \t_stormChannel.port1.onmessage = () => {
@@ -195,8 +201,9 @@ function nextMacrotask(cb: () => void) {
 \t_stormChannel.port2.postMessage(0);
 }
 `,
-				file,
-			);
+					file,
+				);
+			}
 			next = replaceOnce(
 				next,
 				`\tconst [rows, setRows] = useState<RowData[]>(INITIAL_ROWS);
@@ -363,18 +370,6 @@ function measureIssue194BlockTap(
 			return next;
 		});
 
-		updateRepo('packages/lynx/src/core/block-background.ts', (source, file) =>
-			replaceOnce(
-				source,
-				'pending = Promise.allSettled([pending, work]);',
-				`pending = Promise.all([
-\t\t\tpending.catch(() => undefined),
-\t\t\twork.catch(() => undefined),
-\t\t]);`,
-				file,
-			),
-		);
-
 		updateRepo('packages/lynx/src/core/papi.ts', (source, file) => {
 			let next = replaceOnce(
 				source,
@@ -446,6 +441,95 @@ function requireFunction<
 				file,
 			);
 			return next.replaceAll('performance.now()', 'Date.now()');
+		});
+
+		updateRepo('packages/lynx/src/core/compiled-program-store.ts', (source, file) => {
+			let next = replaceOnce(
+				source,
+				`\tsize(): number;
+\tisFaulted(): boolean;
+`,
+				`\tsize(): number;
+\t__issue194Census?(): {
+\t\treadonly handles: number;
+\t\treadonly ranges: number;
+\t\treadonly listenerSlots: number;
+\t\treadonly retainedHostRefs: number;
+\t};
+\tisFaulted(): boolean;
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\tsize() {
+\t\t\treturn instances.size;
+\t\t},
+\t\tisFaulted() {
+`,
+				`\t\tsize() {
+\t\t\treturn instances.size;
+\t\t},
+\t\t__issue194Census() {
+\t\t\tlet listenerSlots = 0;
+\t\t\tlet retainedHostRefs = 0;
+\t\t\tfor (const value of instances.values()) {
+\t\t\t\tlistenerSlots += value.run.plan.events.length;
+\t\t\t\tretainedHostRefs += value.run.plan.resident?.length ?? value.run.plan.nodes;
+\t\t\t}
+\t\t\treturn {
+\t\t\t\thandles: instances.size,
+\t\t\t\tranges: ranges.size,
+\t\t\t\tlistenerSlots,
+\t\t\t\tretainedHostRefs,
+\t\t\t\trecycledHandles: 0,
+\t\t\t\trecycledHostRefs: 0,
+\t\t\t};
+\t\t},
+\t\tisFaulted() {
+`,
+				file,
+			);
+			return next;
+		});
+
+		updateRepo('packages/lynx/src/core/element-template-program-store.ts', (source, file) => {
+			return replaceOnce(
+				source,
+				`\t\tsize() {
+\t\t\treturn instances.size;
+\t\t},
+\t\tisFaulted() {
+`,
+				`\t\tsize() {
+\t\t\treturn instances.size;
+\t\t},
+\t\t__issue194Census() {
+\t\t\tlet listenerSlots = 0;
+\t\t\tlet retainedHostRefs = 0;
+\t\t\tfor (const value of instances.values()) {
+\t\t\t\tlistenerSlots += value.plan.events.length;
+\t\t\t\tretainedHostRefs += value.plan.nodes;
+\t\t\t}
+\t\t\tlet recycledHandles = 0;
+\t\t\tlet recycledHostRefs = 0;
+\t\t\tfor (const [plan, handles] of recycled) {
+\t\t\t\trecycledHandles += handles.length;
+\t\t\t\trecycledHostRefs += handles.length * plan.nodes;
+\t\t\t}
+\t\t\treturn {
+\t\t\t\thandles: instances.size,
+\t\t\t\tranges: ranges.size,
+\t\t\t\tlistenerSlots,
+\t\t\t\tretainedHostRefs,
+\t\t\t\trecycledHandles,
+\t\t\t\trecycledHostRefs,
+\t\t\t};
+\t\t},
+\t\tisFaulted() {
+`,
+				file,
+			);
 		});
 
 		updateRepo('packages/lynx/src/main-thread-implementation.ts', (source, file) => {
@@ -530,7 +614,7 @@ function requireFunction<
 			next = replaceOnce(
 				next,
 				`\tconst dispatch = (message: LynxBackgroundInboundMessage): void => {
-\t\tconst validated = selfCheckLynxBackgroundInboundMessage(message);
+\t\tconst validated = selfCheckBackgroundInbound(message);
 \t\tconst encoded = encodeLynxTransportValue(validated, reportEncodingDiagnostic);
 \t\tconst frames = frameLynxTransportValue(encoded, nextFrameSequence++);
 \t\tfor (const data of frames) {
@@ -550,7 +634,7 @@ function requireFunction<
 \t};
 \tlet issue194ActiveCommitWire: Issue194CommitWire | null = null;
 \tconst dispatch = (message: LynxBackgroundInboundMessage): void => {
-\t\tconst validated = selfCheckLynxBackgroundInboundMessage(message);
+\t\tconst validated = selfCheckBackgroundInbound(message);
 \t\tconst encoded = encodeLynxTransportValue(validated, reportEncodingDiagnostic);
 \t\tconst frames = frameLynxTransportValue(encoded, nextFrameSequence++);
 \t\tconst identity = message as Partial<UniversalTransportIdentity> & { type?: unknown };
@@ -712,6 +796,119 @@ function requireFunction<
 				.replaceAll('performance.now()', 'Date.now()');
 		});
 
+		// Automatic production applications no longer execute the general
+		// main-thread receiver above: whole-graph selection installs the compact
+		// product receiver for both ordinary Element PAPI and Element Template
+		// owners. Observe that shared, actually executed commit boundary as well so
+		// current product builds cannot silently produce only the background receipt.
+		updateRepo('packages/lynx/src/core/compiled-program-product-receiver.ts', (source, file) => {
+			let next = replaceOnce(
+				source,
+				`\tlet nextCall = 1;
+`,
+				`\tlet nextCall = 1;
+\ttype Issue194CompactWireMessage = {
+\t\treadonly type: string;
+\t\treadonly encodedPayloadBytes: number;
+\t\treadonly contextEventJsonBytes: number;
+\t};
+\tlet issue194ActiveCommitWire: {
+\t\treadonly root: number;
+\t\treadonly version: number;
+\t\treadonly messages: Issue194CompactWireMessage[];
+\t} | null = null;
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\t\tconst frames = frameLynxTransportValue(encoded, sequence++);
+\t\t\tfor (const data of frames) {
+\t\t\t\tcontext.dispatchEvent({ type: LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT, data });
+\t\t\t}
+`,
+				`\t\t\tconst frames = frameLynxTransportValue(encoded, sequence++);
+\t\t\tconst identity = message as Partial<UniversalTransportIdentity> & { type?: unknown };
+\t\t\tif (
+\t\t\t\tissue194ActiveCommitWire !== null &&
+\t\t\t\tidentity.root === issue194ActiveCommitWire.root &&
+\t\t\t\tidentity.version === issue194ActiveCommitWire.version
+\t\t\t) {
+\t\t\t\tissue194ActiveCommitWire.messages.push({
+\t\t\t\t\ttype: typeof identity.type === 'string' ? identity.type : 'unknown',
+\t\t\t\t\tencodedPayloadBytes: frames.reduce((total, data) => total + data.length, 0),
+\t\t\t\t\tcontextEventJsonBytes: frames.reduce(
+\t\t\t\t\t\t(total, data) =>
+\t\t\t\t\t\t\ttotal +
+\t\t\t\t\t\t\tJSON.stringify({
+\t\t\t\t\t\t\t\ttype: LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT,
+\t\t\t\t\t\t\t\tdata,
+\t\t\t\t\t\t\t}).length,
+\t\t\t\t\t\t0,
+\t\t\t\t\t),
+\t\t\t\t});
+\t\t\t}
+\t\t\tfor (const data of frames) {
+\t\t\t\tcontext.dispatchEvent({ type: LYNX_COMPILED_PROGRAM_MAIN_TO_BACKGROUND_EVENT, data });
+\t\t\t}
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\tbusy = true;
+\t\ttry {
+\t\t\tapplyLynxCompiledProgramFrame(candidate, page, options.resolveProgram, message.frame, () => {
+`,
+				`\t\tbusy = true;
+\t\tconst issue194CommitStarted = Date.now();
+\t\tissue194ActiveCommitWire = { root: message.root, version: message.version, messages: [] };
+\t\ttry {
+\t\t\tapplyLynxCompiledProgramFrame(candidate, page, options.resolveProgram, message.frame, () => {
+`,
+				file,
+			);
+			next = replaceOnce(
+				next,
+				`\t\tif (send({ ...message, type: 'ack' })) send({ ...message, type: 'complete' });
+`,
+				`\t\tconst issue194Census = (store as any).__issue194Census?.() ?? null;
+\t\tif (send({ ...message, type: 'ack' })) send({ ...message, type: 'complete' });
+\t\tconst issue194Wire = issue194ActiveCommitWire;
+\t\tissue194ActiveCommitWire = null;
+\t\tif (issue194Wire === null) {
+\t\t\tthrow new Error('issue #194 native probe lost the active compact commit wire record.');
+\t\t}
+\t\tconsole.log('__ISSUE194_MAIN_COMMIT__' + JSON.stringify({
+\t\t\tprotocol: 'octane-issue194-compact-main-v1',
+\t\t\troot: message.root,
+\t\t\tversion: message.version,
+\t\t\tframeBytes: JSON.stringify(message.frame).length,
+\t\t\twallMs: Date.now() - issue194CommitStarted,
+\t\t\tcensus: issue194Census,
+\t\t\twireToBts: {
+\t\t\t\tboundary: 'native-context-proxy-main-to-background-encoded-payloads',
+\t\t\t\twireToBtsBytes: issue194Wire.messages.reduce(
+\t\t\t\t\t(total, entry) => total + entry.encodedPayloadBytes,
+\t\t\t\t\t0,
+\t\t\t\t),
+\t\t\t\twireToBtsMsgs: issue194Wire.messages.length,
+\t\t\t\tcontextEventJsonBytes: issue194Wire.messages.reduce(
+\t\t\t\t\t(total, entry) => total + entry.contextEventJsonBytes,
+\t\t\t\t\t0,
+\t\t\t\t),
+\t\t\t\tackMessages: issue194Wire.messages.filter((entry) => entry.type === 'ack').length,
+\t\t\t\tackEncoding: 'compiled-program',
+\t\t\t\tacknowledgedHostCount: null,
+\t\t\t\tmessages: issue194Wire.messages,
+\t\t\t},
+\t\t}));
+`,
+				file,
+			);
+			return next;
+		});
+
 		// The Explorer's native main/background realms intentionally do not
 		// expose the Web Performance API. The regular stage probes run in the
 		// browser harness too, so keep their high-resolution clock there and
@@ -845,6 +1042,10 @@ function requireFunction<
 		});
 
 		updateRepo('packages/lynx/src/core/host-driver.ts', (source, file) => {
+			// The current host driver journals compiled runs after anchored range
+			// attachment and is not the owner used by the compact application. Keep
+			// the historical per-program probe only for the frozen pre-anchor source.
+			if (source.includes('physicalBefore: Node | null = null')) return source;
 			let next = replaceOnce(
 				source,
 				`\tconst mountProgram = (
@@ -853,6 +1054,7 @@ function requireFunction<
 \t\tparentId: number | null,
 \t\tphysicalParent: Node,
 \t\tparentVisible: boolean,
+\t\tphysicalBefore: Node | null = null,
 \t): void => {
 \t\tconst plan = node.plan;
 \t\tconst ids = node.ids;
@@ -863,6 +1065,7 @@ function requireFunction<
 \t\tparentId: number | null,
 \t\tphysicalParent: Node,
 \t\tparentVisible: boolean,
+\t\tphysicalBefore: Node | null = null,
 \t): void => {
 \t\tconst issue194MountStarted = Date.now();
 \t\tconst plan = node.plan;
