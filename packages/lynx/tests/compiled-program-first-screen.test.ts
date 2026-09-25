@@ -211,6 +211,102 @@ describe('compiled-program first-screen painter', () => {
 		expect(page.children[0]?.attributes.hidden).toBe(true);
 		adoption.dispose();
 	});
+
+	it('transfers nested sibling programs when the background batches their parent run', () => {
+		const range = { slot: 0, node: 0, id: 1, paintsText: false } as const;
+		const group = emittedPlan(
+			{
+				nodes: [{ type: 'view', parent: -1, props: { class: 'group' } }],
+				events: [],
+			},
+			'createBatchedFirstScreenGroup',
+			[range],
+		);
+		const leaf = emittedPlan(
+			{
+				nodes: [{ type: 'text', parent: -1, props: { class: 'leaf' } }],
+				events: [],
+			},
+			'createBatchedFirstScreenLeaf',
+		);
+		const child = (id: number) => ({
+			kind: 'program' as const,
+			id,
+			plan: leaf,
+			values: [],
+			ids: [id],
+			spans: [],
+			texts: [],
+			rangeIds: [],
+			children: [],
+		});
+		const parent = (id: number) => ({
+			kind: 'program' as const,
+			id,
+			plan: group,
+			values: [],
+			ids: [id],
+			spans: [1],
+			texts: [undefined],
+			rangeIds: [undefined],
+			children: [child(id + 1)],
+		});
+		const result: LynxFirstScreenRenderResult = {
+			batch: undefined as never,
+			envelope: { renderer: 'lynx', version: 1, events: [] },
+			hostCount: 4,
+			logicalCount: 4,
+			programs: 4,
+			nodes: [parent(1), parent(3)],
+		};
+		const base = createFakePAPI();
+		const papi = {
+			...base,
+			intrinsics: {
+				view: (pageId: number) => base.createElement('view', pageId, ''),
+				text: (pageId: number) => base.createElement('text', pageId, ''),
+				rawText: (value: string) => base.createElement('#text', 0, value),
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const adoption = paintLynxCompiledProgramFirstScreen(result, papi, page);
+		const parents = adoption.resolveSeed({
+			firstHandle: 2,
+			count: 2,
+			parent: page,
+			before: null,
+			plan: group,
+			values: [],
+		});
+		expect(parents).toBeDefined();
+		const firstParent = parents!.nodes[0]!;
+		const secondParent = parents!.nodes[2]!;
+		const firstLeaf = adoption.resolveSeed({
+			firstHandle: 4,
+			count: 1,
+			parent: firstParent,
+			before: null,
+			plan: leaf,
+			values: [],
+		});
+		const secondLeaf = adoption.resolveSeed({
+			firstHandle: 5,
+			count: 1,
+			parent: secondParent,
+			before: null,
+			plan: leaf,
+			values: [],
+		});
+
+		expect(page.children).toEqual([firstParent, secondParent]);
+		expect(firstLeaf?.nodes[0]).toBe(firstParent.children[0]);
+		expect(secondLeaf?.nodes[0]).toBe(secondParent.children[0]);
+		expect(() => adoption.verify()).not.toThrow();
+		adoption.finish();
+		adoption.dispose();
+		expect(page.children).toEqual([firstParent, secondParent]);
+	});
+
 	it('defers a native-list first screen without creating a generic host or requiring adoption', () => {
 		const list = emittedPlan(
 			{ nodes: [{ type: 'list', parent: -1, props: { 'list-type': 'single' } }], events: [] },
