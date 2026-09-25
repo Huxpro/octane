@@ -10,6 +10,7 @@ import {
 	issue194DeviceResumeMismatch,
 	issue194LifecycleSequence,
 	issue194LogWindow,
+	issue194Ol512CapacityRejectionChecks,
 	issue194MutationCensus,
 	issue194NativePostState,
 	issue194NativeTransitionChecks,
@@ -626,6 +627,51 @@ test('issue #194 operation census grows, preserves, and retires the exact row ow
 			},
 		]).valid,
 		false,
+	);
+});
+
+test('issue #194 capacity mode accepts only an atomic OL512 append rejection', () => {
+	const state = {
+		rowCount: 10000,
+		firstId: 1,
+		secondId: 2,
+		thirdId: 3,
+		row998Id: 999,
+		firstLabel: 'pretty blue car',
+		selectedId: null,
+	};
+	const input = {
+		workload: 'append1k',
+		attribution: null,
+		receipt: {
+			name: 'append1k',
+			preState: state,
+			postState: state,
+			transportEvidence: { acknowledged: true },
+			renderEvidence: { kind: 'native-animation-frame', frames: 2 },
+		},
+		errors: ['app::onAppJSError:{name:RangeError;message:Octane Lynx OL512}'],
+		scale: 10000,
+	};
+	assert.deepEqual(issue194RejectionReasons(issue194Ol512CapacityRejectionChecks(input)), []);
+	assert.deepEqual(
+		issue194RejectionReasons(
+			issue194Ol512CapacityRejectionChecks({
+				...input,
+				receipt: { ...input.receipt, postState: { ...state, rowCount: 10500 } },
+			}),
+		),
+		['stateUnchanged'],
+	);
+	assert.ok(
+		issue194RejectionReasons(
+			issue194Ol512CapacityRejectionChecks({ ...input, attribution: { version: 3 } }),
+		).includes('noAcceptedMainCommit'),
+	);
+	assert.ok(
+		issue194RejectionReasons(
+			issue194Ol512CapacityRejectionChecks({ ...input, errors: ['some other error'] }),
+		).includes('explicitOl512'),
 	);
 });
 

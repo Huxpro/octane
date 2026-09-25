@@ -3911,6 +3911,14 @@ belongs only to its own native input-to-second-frame receipt. A failed state,
 storm tick/barrier/ACK count, wire receipt, or census rejects the entire cold
 launch rather than dropping one unfavorable step.
 
+An expected Element Template live-capacity probe adds `--capacity-outcome`.
+That flag does not accept an arbitrary JavaScript error: the only app-level
+capacity rejection recognized by this sequence is `RangeError: Octane Lynx
+OL512` on `append1k`, with no accepted main commit, the complete Native ACK and
+two-frame receipt, and every sampled state field unchanged. The report labels
+that terminal result `capacity-rejection`; ordinary completed sequences still
+have to pass the full state and ownership census above.
+
 The shipping memory lane additionally appends:
 
 ```bash

@@ -190,6 +190,35 @@ export function issue194NativeTransitionChecks(receipt, scale) {
 	}
 }
 
+/** Recognize the one safe >10k ET result without turning arbitrary errors into success. */
+export function issue194Ol512CapacityRejectionChecks({
+	workload,
+	attribution,
+	receipt,
+	errors,
+	scale,
+}) {
+	const before = receipt?.preState;
+	const after = receipt?.postState;
+	return {
+		expectedWorkload: workload === 'append1k' && (receipt?.name ?? receipt?.workload) === workload,
+		explicitOl512:
+			Array.isArray(errors) &&
+			errors.some((line) => /\bRangeError\b.*\bOctane Lynx OL512\b/.test(line)),
+		noAcceptedMainCommit: attribution === null,
+		inputScale: before?.rowCount === scale,
+		stateUnchanged: sameSnapshotFields(before, after, [
+			...sampledIdentityKeys,
+			'firstLabel',
+			'selectedId',
+		]),
+		transportAcknowledged: receipt?.transportEvidence?.acknowledged === true,
+		nativeFrames:
+			receipt?.renderEvidence?.kind === 'native-animation-frame' &&
+			receipt?.renderEvidence?.frames === 2,
+	};
+}
+
 /** Prove growth, pure mutations, and removal change only their exact row owners. */
 export function issue194MutationCensus(sequenceEvidence) {
 	const populated =

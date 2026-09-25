@@ -15,6 +15,7 @@ import {
 	issue194NativePostState,
 	issue194NativeTransitionChecks,
 	issue194NativeWorkloads,
+	issue194Ol512CapacityRejectionChecks,
 	issue194RejectionReasons,
 	normalizeIssue194NativeReceipt,
 	parseIssue194SequenceStep,
@@ -587,7 +588,19 @@ async function measure(cell, ordinal) {
 							entry.workload === activeSequenceStep.workload &&
 							entry.scale === scale,
 					) ?? null;
-				if (native !== null && (mode === 'native-only' || main !== null)) {
+				const capacityRejectionChecks = issue194Ol512CapacityRejectionChecks({
+					workload: activeSequenceStep.workload,
+					attribution: main,
+					receipt: native,
+					errors: observedErrors,
+					scale,
+				});
+				const expectedCapacityRejection =
+					capacityOutcome && issue194RejectionReasons(capacityRejectionChecks).length === 0;
+				if (
+					native !== null &&
+					(mode === 'native-only' || main !== null || expectedCapacityRejection)
+				) {
 					const postReceipt = processMemory ? readProcessMemory(processMemoryPid) : null;
 					if (processMemory) await delay(settleMs);
 					const settled = processMemory ? readProcessMemory(processMemoryPid) : null;
@@ -758,6 +771,15 @@ async function measure(cell, ordinal) {
 				? validBackgroundState
 				: validFirstScreenShape);
 	const errors = [...new Set(observedErrors)];
+	const capacityRejectionChecks = issue194Ol512CapacityRejectionChecks({
+		workload: sequenceEvidence.at(-1)?.workload ?? null,
+		attribution: sequenceEvidence.at(-1)?.attribution ?? null,
+		receipt: sequenceEvidence.at(-1)?.backgroundSettle ?? null,
+		errors,
+		scale,
+	});
+	const capacityRejected =
+		capacityOutcome && issue194RejectionReasons(capacityRejectionChecks).length === 0;
 	const completionChecks = {
 		attribution: engineOnly || mode === 'native-only' || attribution !== null,
 		state: validState,
@@ -770,7 +792,7 @@ async function measure(cell, ordinal) {
 	};
 	const completedAndValid = issue194RejectionReasons(completionChecks).length === 0;
 	const capacityTerminalOutcome =
-		parsed.loadStartMs !== null && (parsed.nativeCrashMs !== null || timedOut);
+		parsed.loadStartMs !== null && (parsed.nativeCrashMs !== null || timedOut || capacityRejected);
 	const nativeCrashChecks = {
 		devtoolStayedDisabled: parsed.devtoolEnabledEvidence.length === 0,
 		loadStart: parsed.loadStartMs !== null,
@@ -797,7 +819,14 @@ async function measure(cell, ordinal) {
 		ordinal,
 		cell: cell.label,
 		accepted,
-		outcome: parsed.nativeCrashMs !== null ? 'native-crash' : timedOut ? 'timeout' : 'completed',
+		outcome:
+			parsed.nativeCrashMs !== null
+				? 'native-crash'
+				: capacityRejected
+					? 'capacity-rejection'
+					: timedOut
+						? 'timeout'
+						: 'completed',
 		timeoutMs,
 		nativeCrash: {
 			atMs: parsed.nativeCrashMs,
@@ -854,6 +883,12 @@ async function measure(cell, ordinal) {
 						required: mode !== 'native-only',
 						...mutationCensus,
 					},
+		capacityRejection: capacityOutcome
+			? {
+					valid: capacityRejected,
+					checks: capacityRejectionChecks,
+				}
+			: null,
 		processMemory: processMemory
 			? {
 					measurement:
@@ -956,7 +991,7 @@ let report = {
 						},
 		engineOnly,
 		expectedOutcome: capacityOutcome
-			? `terminal outcome at ${timeoutMs} ms: completed, native-crash, or timeout`
+			? `terminal outcome at ${timeoutMs} ms: completed, exact OL512 capacity-rejection, native-crash, or timeout`
 			: nativeCrashOutcome
 				? 'native-crash'
 				: 'completed',
@@ -1027,7 +1062,9 @@ collection: for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
 								? ` after ${sample.nativeCrash.loadToCrashMs} ms`
 								: sample.outcome === 'timeout'
 									? ` at ${sample.timeoutMs} ms cutoff`
-									: ` after ${sample.boundaries.loadToFirstScreenMs} ms`
+									: sample.outcome === 'capacity-rejection'
+										? ' with atomic state preservation'
+										: ` after ${sample.boundaries.loadToFirstScreenMs} ms`
 						}`
 					: `[issue194] accepted ${cell.label}: ${sample.boundaries.loadToFirstScreenMs} ms`,
 			);
