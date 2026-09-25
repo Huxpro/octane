@@ -11,8 +11,13 @@ import {
 	issue194DeviceResumeMismatch,
 	issue194LifecycleSequence,
 	issue194LogWindow,
+	issue194MutationCensus,
+	issue194NativePostState,
+	issue194NativeTransitionChecks,
+	issue194NativeWorkloads,
 	issue194RejectionReasons,
 	normalizeIssue194NativeReceipt,
+	parseIssue194SequenceStep,
 	parseIssue194AndroidProcessMemory,
 	summarizeIssue194LifecycleCensus,
 	validateIssue194ProcessMemoryControls,
@@ -48,6 +53,12 @@ const clearTapY = clearTapYArg === null ? null : Number(clearTapYArg);
 const createClearRecreate = args.includes('--create-clear-recreate');
 const sequenceCyclesArg = readOptionalArg('--sequence-cycles');
 const sequenceCycles = sequenceCyclesArg === null ? 1 : Number(sequenceCyclesArg);
+const sequenceSteps = [];
+for (let index = 0; index < args.length; index++) {
+	if (args[index] === '--sequence-step') {
+		sequenceSteps.push(parseIssue194SequenceStep(args[index + 1]));
+	}
+}
 const question = readArg('--question');
 const scale = Number(readArg('--scale'));
 const samples = Number(readArg('--samples'));
@@ -106,8 +117,8 @@ if (
 if (maxNewSamples !== null && checkpoint === null) {
 	throw new Error('--max-new-samples requires --checkpoint.');
 }
-if (workload !== null && workload !== 'create' && workload !== 'clear') {
-	throw new Error('--workload must be create or clear.');
+if (workload !== null && !issue194NativeWorkloads.includes(workload)) {
+	throw new Error(`--workload must be one of ${issue194NativeWorkloads.join(', ')}.`);
 }
 if (
 	workload !== null &&
@@ -133,6 +144,17 @@ if (!Number.isSafeInteger(sequenceCycles) || sequenceCycles < 1) {
 if (sequenceCyclesArg !== null && !createClearRecreate) {
 	throw new Error('--sequence-cycles requires --create-clear-recreate.');
 }
+if (
+	sequenceSteps.length > 0 &&
+	(workload !== null || createClearRecreate || sequenceCyclesArg !== null || processMemory)
+) {
+	throw new Error(
+		'--sequence-step is exclusive with --workload, --create-clear-recreate, --sequence-cycles, and --process-memory.',
+	);
+}
+if (new Set(sequenceSteps.map((step) => step.phase)).size !== sequenceSteps.length) {
+	throw new Error('--sequence-step phases must be unique within one measured sequence.');
+}
 validateIssue194ProcessMemoryControls({
 	processMemory,
 	mode,
@@ -142,6 +164,11 @@ validateIssue194ProcessMemoryControls({
 if (processMemory && cells.some((cell) => cell.sourceCommit === undefined)) {
 	throw new Error('--process-memory requires one --cell-commit=<full-sha> for every cell.');
 }
+const configuredInteractionSequence = createClearRecreate
+	? issue194LifecycleSequence(sequenceCycles, { x: tapX, y: tapY }, { x: clearTapX, y: clearTapY })
+	: sequenceSteps.length > 0
+		? sequenceSteps
+		: null;
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../app');
 const run = (command, commandArgs, { allowFailure = false } = {}) => {
@@ -477,13 +504,7 @@ async function measure(cell, ordinal) {
 			),
 		);
 	};
-	const interactionSequence = createClearRecreate
-		? issue194LifecycleSequence(
-				sequenceCycles,
-				{ x: tapX, y: tapY },
-				{ x: clearTapX, y: clearTapY },
-			)
-		: null;
+	const interactionSequence = configuredInteractionSequence;
 	const sequenceEvidence = [];
 	let activeSequenceStep = null;
 	while (Date.now() < deadline) {
@@ -529,7 +550,9 @@ async function measure(cell, ordinal) {
 				activeSequenceStep === null &&
 				sequenceEvidence.length < interactionSequence.length &&
 				(sequenceEvidence.length > 0 ||
-					(parsed.firstScreenMs !== null && parsed.loadEndMs !== null))
+					(parsed.firstScreenMs !== null &&
+						parsed.loadEndMs !== null &&
+						(mode === 'native-only' || parsed.main.some((entry) => entry.version === 1))))
 			) {
 				const spec = interactionSequence[sequenceEvidence.length];
 				if (processMemory && processMemoryBaseline === null) {
@@ -540,8 +563,7 @@ async function measure(cell, ordinal) {
 				activeSequenceStep = {
 					...spec,
 					interactionOrdinal: sequenceEvidence.length + 1,
-					mainBefore: parsed.main.length,
-					nativeBefore: parsed.native.length,
+					mainVersionBefore: Math.max(0, ...parsed.main.map((entry) => entry.version ?? 0)),
 					issuedAtMs: Date.now(),
 				};
 				adb('shell', 'input', 'tap', String(spec.x), String(spec.y));
@@ -551,14 +573,13 @@ async function measure(cell, ordinal) {
 				continue;
 			}
 			if (activeSequenceStep !== null) {
-				// The device log ring can evict the very large create record while
-				// later commits are still running, so array offsets are not stable
-				// across snapshots. Version 1 is first-tree adoption; the three
-				// serialized interaction commits are therefore versions 2/3/4.
+				// The device log ring can evict earlier records, and storms commit
+				// once per tick. Pair by the Native interaction ordinal, then retain
+				// the latest commit version produced after this tap.
 				const main =
-					parsed.main.find(
-						(entry) => entry.version === activeSequenceStep.interactionOrdinal + 1,
-					) ?? null;
+					parsed.main
+						.filter((entry) => entry.version > activeSequenceStep.mainVersionBefore)
+						.at(-1) ?? null;
 				const native =
 					parsed.native.find(
 						(entry) =>
@@ -582,6 +603,7 @@ async function measure(cell, ordinal) {
 						},
 						attribution: main,
 						backgroundSettle: native,
+						transitionChecks: issue194NativeTransitionChecks(native, scale),
 						processMemory:
 							postReceipt === null
 								? null
@@ -658,32 +680,27 @@ async function measure(cell, ordinal) {
 	parsed.devtoolEnabledEvidence = [
 		...new Set([...observedDevtoolEnabledEvidence, ...parsed.devtoolEnabledEvidence]),
 	];
-	const attribution = createClearRecreate
-		? (sequenceEvidence.at(-1)?.attribution ?? null)
-		: workload !== null
-			? (parsed.main.filter((entry) => entry.version >= 2).at(-1) ?? null)
-			: mode === 'direct-result'
-				? (parsed.direct.at(-1) ?? null)
-				: mode === 'first-screen-ready'
-					? (parsed.firstScreen.at(-1) ?? null)
-					: (parsed.main.at(-1) ?? null);
-	const backgroundSettle = createClearRecreate
-		? (sequenceEvidence.at(-1)?.backgroundSettle ?? null)
-		: workload === null
-			? (parsed.native.find((entry) => entry.scale === scale) ?? null)
-			: (parsed.native.find((entry) => entry.workload === workload && entry.scale === scale) ??
-				null);
-	const state = backgroundSettle?.postState ?? null;
-	const validPopulatedState = (candidate) =>
-		candidate?.rowCount === scale &&
-		candidate.firstId === 1 &&
-		candidate.secondId === 2 &&
-		candidate.thirdId === 3 &&
-		(scale < 999 || candidate.row998Id === 999);
+	const attribution =
+		interactionSequence !== null
+			? (sequenceEvidence.at(-1)?.attribution ?? null)
+			: workload !== null
+				? (parsed.main.filter((entry) => entry.version >= 2).at(-1) ?? null)
+				: mode === 'direct-result'
+					? (parsed.direct.at(-1) ?? null)
+					: mode === 'first-screen-ready'
+						? (parsed.firstScreen.at(-1) ?? null)
+						: (parsed.main.at(-1) ?? null);
+	const backgroundSettle =
+		interactionSequence !== null
+			? (sequenceEvidence.at(-1)?.backgroundSettle ?? null)
+			: workload === null
+				? (parsed.native.find((entry) => entry.scale === scale) ?? null)
+				: (parsed.native.find((entry) => entry.workload === workload && entry.scale === scale) ??
+					null);
 	const validBackgroundState =
-		workload === 'clear'
-			? validPopulatedState(backgroundSettle?.preState) && state?.rowCount === 0
-			: validPopulatedState(state);
+		workload !== null &&
+		backgroundSettle !== null &&
+		issue194RejectionReasons(issue194NativeTransitionChecks(backgroundSettle, scale)).length === 0;
 	const validSequenceState =
 		interactionSequence !== null &&
 		sequenceEvidence.length === interactionSequence.length &&
@@ -693,9 +710,7 @@ async function measure(cell, ordinal) {
 				entry.cycle === expected.cycle &&
 				entry.phase === expected.phase &&
 				entry.workload === expected.workload &&
-				entry.backgroundSettle?.preState?.rowCount ===
-					(expected.workload === 'create' ? 0 : scale) &&
-				entry.backgroundSettle?.postState?.rowCount === (expected.workload === 'create' ? scale : 0)
+				issue194RejectionReasons(entry.transitionChecks).length === 0
 			);
 		});
 	const validSequenceWire = sequenceEvidence.every((entry) => {
@@ -708,12 +723,18 @@ async function measure(cell, ordinal) {
 			wire.wireToBtsMsgs >= 2 &&
 			wire.ackMessages === 1 &&
 			Array.isArray(wire.messages) &&
-			wire.messages.length === wire.wireToBtsMsgs
+			wire.messages.length === wire.wireToBtsMsgs &&
+			wire.messages.filter((message) => message.type === 'ack').length === 1 &&
+			wire.messages.filter((message) => message.type === 'complete').length === 1
 		);
 	});
 	const lifecycleCensus = summarizeIssue194LifecycleCensus(sequenceEvidence, initialCensus);
 	const validLifecycleCensus =
 		sequenceCyclesArg === null || mode === 'native-only' || lifecycleCensus.valid;
+	const mutationCensus =
+		sequenceSteps.length === 0 ? null : issue194MutationCensus(sequenceEvidence);
+	const validMutationCensus =
+		mutationCensus === null || mode === 'native-only' || mutationCensus.valid;
 	const calls = attribution?.calls;
 	const rawTextCount = calls?.__CreateRawText?.count ?? 0;
 	const firstScreenLayout =
@@ -729,9 +750,10 @@ async function measure(cell, ordinal) {
 		firstScreenLayout !== null;
 	const validState =
 		engineOnly ||
-		(createClearRecreate
+		(interactionSequence !== null
 			? validSequenceState &&
-				(mode === 'native-only' || (validSequenceWire && validLifecycleCensus))
+				(mode === 'native-only' ||
+					(validSequenceWire && validLifecycleCensus && validMutationCensus))
 			: mode === 'commit' || mode === 'native-only'
 				? validBackgroundState
 				: validFirstScreenShape);
@@ -810,20 +832,28 @@ async function measure(cell, ordinal) {
 			loadToFirstScreenMs: elapsed(parsed.loadStartMs, parsed.firstScreenMs),
 			loadTemplateMs: elapsed(parsed.loadStartMs, parsed.loadEndMs),
 		},
-		stateEvidence: state,
+		stateEvidence: issue194NativePostState(backgroundSettle),
 		preStateEvidence: backgroundSettle?.preState ?? null,
 		firstScreenShapeEvidence: mode === 'commit' || mode === 'native-only' ? null : calls,
 		firstScreenLayout: mode === 'commit' || mode === 'native-only' ? null : firstScreenLayout,
 		backgroundSettle,
-		sequenceEvidence: createClearRecreate
-			? sequenceEvidence.map(({ processMemory: _processMemory, ...entry }) => entry)
-			: null,
+		sequenceEvidence:
+			interactionSequence !== null
+				? sequenceEvidence.map(({ processMemory: _processMemory, ...entry }) => entry)
+				: null,
 		lifecycleCensus: createClearRecreate
 			? {
 					required: sequenceCyclesArg !== null && mode !== 'native-only',
 					...lifecycleCensus,
 				}
 			: null,
+		mutationCensus:
+			mutationCensus === null
+				? null
+				: {
+						required: mode !== 'native-only',
+						...mutationCensus,
+					},
 		processMemory: processMemory
 			? {
 					measurement:
@@ -840,16 +870,17 @@ async function measure(cell, ordinal) {
 					})),
 				}
 			: null,
-		adbInput: createClearRecreate
-			? sequenceEvidence.map((entry) => ({
-					cycle: entry.cycle,
-					phase: entry.phase,
-					workload: entry.workload,
-					...entry.adbInput,
-				}))
-			: workload === null
-				? null
-				: { workload, x: tapX, y: tapY, issuedAtMs: tapAtMs, issued: tapped },
+		adbInput:
+			interactionSequence !== null
+				? sequenceEvidence.map((entry) => ({
+						cycle: entry.cycle,
+						phase: entry.phase,
+						workload: entry.workload,
+						...entry.adbInput,
+					}))
+				: workload === null
+					? null
+					: { workload, x: tapX, y: tapY, issuedAtMs: tapAtMs, issued: tapped },
 		attribution,
 		errors,
 		rejectionReasons: [...new Set(rejectionReasons)],
@@ -890,39 +921,39 @@ let report = {
 				}
 			: null,
 		workload,
-		interactionSequence: createClearRecreate
-			? {
-					cycles: sequenceCycles,
-					steps: issue194LifecycleSequence(
-						sequenceCycles,
-						{ x: tapX, y: tapY },
-						{ x: clearTapX, y: clearTapY },
-					).map(({ cycle, phase, workload }) => ({ cycle, phase, workload })),
-				}
-			: null,
-		wireBoundary: createClearRecreate
-			? 'native ContextProxy encoded payloads; not the Web RPC-envelope aggregate'
-			: null,
+		interactionSequence:
+			configuredInteractionSequence !== null
+				? {
+						...(createClearRecreate ? { cycles: sequenceCycles } : null),
+						steps: configuredInteractionSequence.map(({ cycle, phase, workload }) => ({
+							...(cycle === undefined ? null : { cycle }),
+							phase,
+							workload,
+						})),
+					}
+				: null,
+		wireBoundary:
+			configuredInteractionSequence !== null
+				? 'native ContextProxy encoded payloads; not the Web RPC-envelope aggregate'
+				: null,
 		lifecycleCensusRequired:
 			createClearRecreate && sequenceCyclesArg !== null && mode !== 'native-only',
-		adbInput: createClearRecreate
-			? issue194LifecycleSequence(
-					sequenceCycles,
-					{ x: tapX, y: tapY },
-					{ x: clearTapX, y: clearTapY },
-				).map(({ cycle, phase, workload, x, y }) => ({
-					cycle,
-					phase,
-					workload,
-					command: `adb -s <serial> shell input tap ${x} ${y}`,
-				}))
-			: workload === null
-				? null
-				: {
-						command: `adb -s <serial> shell input tap ${tapX} ${tapY}`,
-						x: tapX,
-						y: tapY,
-					},
+		mutationCensusRequired: sequenceSteps.length > 0 && mode !== 'native-only',
+		adbInput:
+			configuredInteractionSequence !== null
+				? configuredInteractionSequence.map(({ cycle, phase, workload, x, y }) => ({
+						...(cycle === undefined ? null : { cycle }),
+						phase,
+						workload,
+						command: `adb -s <serial> shell input tap ${x} ${y}`,
+					}))
+				: workload === null
+					? null
+					: {
+							command: `adb -s <serial> shell input tap ${tapX} ${tapY}`,
+							x: tapX,
+							y: tapY,
+						},
 		engineOnly,
 		expectedOutcome: capacityOutcome
 			? `terminal outcome at ${timeoutMs} ms: completed, native-crash, or timeout`

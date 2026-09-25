@@ -1,3 +1,34 @@
+export const issue194NativeWorkloads = Object.freeze([
+	'create',
+	'append1k',
+	'update10th',
+	'select',
+	'swap',
+	'remove',
+	'clear',
+	'updateStorm',
+	'selectStorm',
+]);
+
+const issue194NativeWorkloadSet = new Set(issue194NativeWorkloads);
+
+/** Parse one explicit Native input step without letting shell coordinates imply semantics. */
+export function parseIssue194SequenceStep(value) {
+	if (typeof value !== 'string') throw new TypeError('issue #194 sequence step must be a string.');
+	const match = value.match(/^([a-z][a-z0-9-]*)=([A-Za-z][A-Za-z0-9]*),(\d+),(\d+)$/);
+	if (match === null || !issue194NativeWorkloadSet.has(match[2])) {
+		throw new Error(
+			'issue #194 sequence step must be phase=workload,x,y with a supported workload and non-negative integer coordinates.',
+		);
+	}
+	const x = Number(match[3]);
+	const y = Number(match[4]);
+	if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) {
+		throw new Error('issue #194 sequence step coordinates must be safe integers.');
+	}
+	return { phase: match[1], workload: match[2], x, y };
+}
+
 /** Map the current app-owned Native v2 receipt onto the historical #194 runner fields. */
 export function normalizeIssue194NativeReceipt(value, interactionOrdinal) {
 	const workload = value.name;
@@ -8,8 +39,197 @@ export function normalizeIssue194NativeReceipt(value, interactionOrdinal) {
 				? value.interactionOrdinal
 				: interactionOrdinal,
 		workload,
-		scale: workload === 'clear' ? value.preState?.rowCount : value.postState?.rowCount,
+		scale: workload === 'create' ? value.postState?.rowCount : value.preState?.rowCount,
 	};
+}
+
+/** Preserve the final Native semantic state in every runner result shape. */
+export function issue194NativePostState(receipt) {
+	return receipt?.postState ?? null;
+}
+
+const sampledIdentityKeys = ['rowCount', 'firstId', 'secondId', 'thirdId', 'row998Id'];
+
+function sameSnapshotFields(before, after, keys) {
+	return (
+		before !== null &&
+		before !== undefined &&
+		after !== null &&
+		after !== undefined &&
+		keys.every((key) => before[key] === after[key])
+	);
+}
+
+function issue194StormChecks(receipt, ticks) {
+	return {
+		stormCompletion:
+			receipt.stormEvidence?.expectedTicks === ticks &&
+			receipt.stormEvidence?.completedTicks === ticks &&
+			receipt.stormEvidence?.renderBarriers === ticks,
+		stormAcknowledgements: receipt.transportEvidence?.tickAcknowledgements === ticks,
+		firstFeedback:
+			Number.isFinite(receipt.firstFeedbackLatencyMs) && receipt.firstFeedbackLatencyMs >= 0,
+	};
+}
+
+/** Semantic postcondition for one app-owned Native input receipt at its input scale. */
+export function issue194NativeTransitionChecks(receipt, scale) {
+	if (!Number.isSafeInteger(scale) || scale < 1) {
+		throw new TypeError('issue #194 transition scale must be a positive integer.');
+	}
+	const workload = receipt?.name ?? receipt?.workload;
+	const before = receipt?.preState;
+	const after = receipt?.postState;
+	if (!issue194NativeWorkloadSet.has(workload)) return { supportedWorkload: false };
+	const boundaryChecks = {
+		transportAcknowledged: receipt?.transportEvidence?.acknowledged === true,
+		nativeFrames:
+			receipt?.renderEvidence?.kind === 'native-animation-frame' &&
+			receipt?.renderEvidence?.frames === 2,
+	};
+
+	switch (workload) {
+		case 'create':
+			return {
+				...boundaryChecks,
+				precondition: before?.rowCount === 0 || before?.rowCount === scale,
+				rowCount: after?.rowCount === scale,
+				identity:
+					Number.isSafeInteger(after?.firstId) &&
+					after.secondId === after.firstId + 1 &&
+					after.thirdId === after.firstId + 2 &&
+					(scale < 999 || after.row998Id === after.firstId + 998),
+				label: typeof after?.firstLabel === 'string' && after.firstLabel.length > 0,
+				selection: after?.selectedId === null,
+			};
+		case 'append1k':
+			return {
+				...boundaryChecks,
+				precondition: before?.rowCount === scale,
+				rowCount: after?.rowCount === scale + 1000,
+				identity: sameSnapshotFields(before, after, sampledIdentityKeys.slice(1)),
+				label: before?.firstLabel === after?.firstLabel,
+				selection: before?.selectedId === after?.selectedId,
+			};
+		case 'update10th':
+			return {
+				...boundaryChecks,
+				rowCount: before?.rowCount === scale && after?.rowCount === scale,
+				identity: sameSnapshotFields(before, after, sampledIdentityKeys),
+				label:
+					typeof before?.firstLabel === 'string' &&
+					after?.firstLabel === `${before.firstLabel} !!!`,
+				selection: before?.selectedId === after?.selectedId,
+			};
+		case 'select':
+			return {
+				...boundaryChecks,
+				rowCount: before?.rowCount === scale && after?.rowCount === scale,
+				identity: sameSnapshotFields(before, after, sampledIdentityKeys),
+				label: before?.firstLabel === after?.firstLabel,
+				selection: Number.isSafeInteger(before?.secondId) && after?.selectedId === before.secondId,
+			};
+		case 'swap':
+			return {
+				...boundaryChecks,
+				rowCount: before?.rowCount === scale && after?.rowCount === scale,
+				identity:
+					after?.firstId === before?.firstId &&
+					after?.secondId === before?.row998Id &&
+					after?.thirdId === before?.thirdId &&
+					after?.row998Id === before?.secondId,
+				label: before?.firstLabel === after?.firstLabel,
+				selection: before?.selectedId === after?.selectedId,
+			};
+		case 'remove':
+			return {
+				...boundaryChecks,
+				rowCount: before?.rowCount === scale && after?.rowCount === scale - 1,
+				identity:
+					after?.firstId === before?.firstId &&
+					after?.secondId === before?.thirdId &&
+					Number.isSafeInteger(before?.thirdId) &&
+					after?.thirdId === before.thirdId + 1 &&
+					Number.isSafeInteger(before?.secondId) &&
+					Number.isSafeInteger(before?.row998Id) &&
+					after?.row998Id === Math.max(before.secondId, before.row998Id) + 1,
+				label: before?.firstLabel === after?.firstLabel,
+				selection: before?.selectedId === after?.selectedId,
+			};
+		case 'clear':
+			return {
+				...boundaryChecks,
+				precondition: before?.rowCount === scale,
+				rowCount: after?.rowCount === 0,
+				empty:
+					after?.firstId === null &&
+					after?.secondId === null &&
+					after?.thirdId === null &&
+					after?.row998Id === null &&
+					after?.firstLabel === null &&
+					after?.selectedId === null,
+			};
+		case 'updateStorm':
+			return {
+				...boundaryChecks,
+				rowCount: before?.rowCount === scale && after?.rowCount === scale,
+				identity: sameSnapshotFields(before, after, sampledIdentityKeys),
+				label: after?.firstLabel === 'bench 50',
+				selection: before?.selectedId === after?.selectedId,
+				...issue194StormChecks(receipt, 50),
+			};
+		case 'selectStorm':
+			return {
+				...boundaryChecks,
+				rowCount: before?.rowCount === scale && after?.rowCount === scale,
+				identity: sameSnapshotFields(before, after, sampledIdentityKeys),
+				label: before?.firstLabel === after?.firstLabel,
+				selection: Number.isSafeInteger(before?.firstId) && after?.selectedId === before.firstId,
+				...issue194StormChecks(receipt, 30),
+			};
+	}
+}
+
+/** Prove pure mutations retain the owner graph and one row removal retires one owner. */
+export function issue194MutationCensus(sequenceEvidence) {
+	const populated =
+		sequenceEvidence.find((entry) => entry.workload === 'create')?.attribution?.census ?? null;
+	const keys = [
+		'handles',
+		'ranges',
+		'listenerSlots',
+		'retainedHostRefs',
+		'recycledHandles',
+		'recycledHostRefs',
+	];
+	const same = (left, right) =>
+		left !== null &&
+		right !== null &&
+		keys.every((key) => Number.isSafeInteger(left[key]) && left[key] === right[key]);
+	const stableWorkloads = new Set(['update10th', 'select', 'swap', 'updateStorm', 'selectStorm']);
+	let final = populated;
+	let valid = populated !== null;
+	for (const entry of sequenceEvidence) {
+		const census = entry.attribution?.census ?? null;
+		if (entry.workload === 'create') {
+			valid &&= same(census, populated);
+		} else if (stableWorkloads.has(entry.workload)) {
+			valid &&= same(census, populated);
+		} else if (entry.workload === 'remove') {
+			valid &&=
+				census !== null &&
+				census.handles === populated.handles - 1 &&
+				census.ranges === populated.ranges &&
+				census.listenerSlots === populated.listenerSlots - 2 &&
+				census.retainedHostRefs === populated.retainedHostRefs - 4 &&
+				census.recycledHandles === populated.recycledHandles + 1 &&
+				census.recycledHostRefs === populated.recycledHostRefs + 4;
+		} else {
+			valid = false;
+		}
+		final = census;
+	}
+	return { valid, populated, final };
 }
 
 export function issue194DeviceCompletionMode(argumentList) {

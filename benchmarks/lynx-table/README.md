@@ -3872,6 +3872,35 @@ timeout, question, and output), plus:
 --clear-tap-x <clear-x> --clear-tap-y <clear-y>
 ```
 
+The same runner accepts an explicit app-owned mutation sequence without
+weakening those lifecycle controls. Repeat
+`--sequence-step phase=workload,x,y` in tap order and omit `--workload` plus the
+lifecycle flags. Phase names must be unique; workloads are limited to the
+buttons/cells that emit `lynx-native-bench-v2`. Each step is paired by its
+stable interaction ordinal, so a storm can publish many main commits without
+being mistaken for later input. The commit lane requires the latest main
+receipt after the tap, exact pre/post semantics, transport ACK/complete shape,
+two native frames, and a stable ownership census. Pure update/select/swap/storm
+steps must retain the populated census exactly; the registered second-row
+remove must retire exactly one handle, two listener slots, and four host refs
+into the bounded recycle pool. For example:
+
+```bash
+--sequence-step setup=create,<create-x>,<create-y> \
+--sequence-step update=update10th,<update-x>,<update-y> \
+--sequence-step select=select,<row-1-label-x>,<row-1-y> \
+--sequence-step swap=swap,<swap-x>,<swap-y> \
+--sequence-step update-storm=updateStorm,<storm-x>,<storm-y> \
+--sequence-step select-storm=selectStorm,<storm-x>,<storm-y> \
+--sequence-step remove=remove,<row-1-remove-x>,<row-1-y>
+```
+
+This is one serialized semantic window, not seven independent latency samples:
+the first create is setup for every later operation, and each reported latency
+belongs only to its own native input-to-second-frame receipt. A failed state,
+storm tick/barrier/ACK count, wire receipt, or census rejects the entire cold
+launch rather than dropping one unfavorable step.
+
 The shipping memory lane additionally appends:
 
 ```bash

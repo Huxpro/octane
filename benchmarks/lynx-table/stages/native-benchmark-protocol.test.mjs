@@ -10,6 +10,11 @@ import {
 	issue194DeviceResumeMismatch,
 	issue194LifecycleSequence,
 	issue194LogWindow,
+	issue194MutationCensus,
+	issue194NativePostState,
+	issue194NativeTransitionChecks,
+	issue194NativeWorkloads,
+	parseIssue194SequenceStep,
 	issue194RejectionReasons,
 	normalizeIssue194NativeReceipt,
 	parseIssue194AndroidProcessMemory,
@@ -348,6 +353,257 @@ test('issue #194 runner normalizes app-owned Native v2 create and clear receipts
 	assert.equal(clear.scale, 1000);
 });
 
+test('issue #194 Native sequence steps are explicit, bounded, and app-owned', () => {
+	assert.deepEqual(parseIssue194SequenceStep('setup=create,175,435'), {
+		phase: 'setup',
+		workload: 'create',
+		x: 175,
+		y: 435,
+	});
+	assert.deepEqual(parseIssue194SequenceStep('update-storm=updateStorm,400,590'), {
+		phase: 'update-storm',
+		workload: 'updateStorm',
+		x: 400,
+		y: 590,
+	});
+	assert.deepEqual(issue194NativeWorkloads, [
+		'create',
+		'append1k',
+		'update10th',
+		'select',
+		'swap',
+		'remove',
+		'clear',
+		'updateStorm',
+		'selectStorm',
+	]);
+	for (const invalid of [
+		'',
+		'create=175,435',
+		'bad phase=create,175,435',
+		'setup=unknown,175,435',
+		'setup=create,-1,435',
+		'setup=create,1.5,435',
+	]) {
+		assert.throws(() => parseIssue194SequenceStep(invalid), /sequence step/);
+	}
+});
+
+test('issue #194 Native receipts retain the measured input scale for every operation', () => {
+	const base = {
+		rowCount: 10000,
+		firstId: 1,
+		secondId: 2,
+		thirdId: 3,
+		row998Id: 999,
+		firstLabel: 'pretty blue car',
+		selectedId: null,
+	};
+	assert.equal(
+		normalizeIssue194NativeReceipt(
+			{ name: 'create', preState: { rowCount: 0 }, postState: base },
+			1,
+		).scale,
+		10000,
+	);
+	for (const name of issue194NativeWorkloads.filter((candidate) => candidate !== 'create')) {
+		assert.equal(
+			normalizeIssue194NativeReceipt(
+				{ name, preState: base, postState: { ...base, rowCount: 9999 } },
+				1,
+			).scale,
+			10000,
+			name,
+		);
+	}
+});
+
+test('issue #194 Native sequence oracle covers every registered mutation semantically', () => {
+	const receiptEnvelope = {
+		transportEvidence: { acknowledged: true },
+		renderEvidence: { kind: 'native-animation-frame', frames: 2 },
+	};
+	const created = {
+		rowCount: 10000,
+		firstId: 1,
+		secondId: 2,
+		thirdId: 3,
+		row998Id: 999,
+		firstLabel: 'pretty blue car',
+		selectedId: null,
+	};
+	const receipts = [
+		{
+			...receiptEnvelope,
+			name: 'create',
+			preState: {
+				rowCount: 0,
+				firstId: null,
+				secondId: null,
+				thirdId: null,
+				row998Id: null,
+				firstLabel: null,
+				selectedId: null,
+			},
+			postState: created,
+		},
+		{
+			...receiptEnvelope,
+			name: 'update10th',
+			preState: created,
+			postState: { ...created, firstLabel: 'pretty blue car !!!' },
+		},
+		{
+			...receiptEnvelope,
+			name: 'select',
+			preState: { ...created, firstLabel: 'pretty blue car !!!' },
+			postState: { ...created, firstLabel: 'pretty blue car !!!', selectedId: 2 },
+		},
+		{
+			...receiptEnvelope,
+			name: 'swap',
+			preState: { ...created, firstLabel: 'pretty blue car !!!', selectedId: 2 },
+			postState: {
+				...created,
+				secondId: 999,
+				row998Id: 2,
+				firstLabel: 'pretty blue car !!!',
+				selectedId: 2,
+			},
+		},
+		{
+			...receiptEnvelope,
+			name: 'updateStorm',
+			preState: {
+				...created,
+				secondId: 999,
+				row998Id: 2,
+				firstLabel: 'pretty blue car !!!',
+				selectedId: 2,
+			},
+			postState: {
+				...created,
+				secondId: 999,
+				row998Id: 2,
+				firstLabel: 'bench 50',
+				selectedId: 2,
+			},
+			stormEvidence: {
+				expectedTicks: 50,
+				completedTicks: 50,
+				renderBarriers: 50,
+			},
+			transportEvidence: { acknowledged: true, tickAcknowledgements: 50 },
+			firstFeedbackLatencyMs: 12,
+		},
+		{
+			...receiptEnvelope,
+			name: 'selectStorm',
+			preState: {
+				...created,
+				secondId: 999,
+				row998Id: 2,
+				firstLabel: 'bench 50',
+				selectedId: 2,
+			},
+			postState: {
+				...created,
+				secondId: 999,
+				row998Id: 2,
+				firstLabel: 'bench 50',
+				selectedId: 1,
+			},
+			stormEvidence: {
+				expectedTicks: 30,
+				completedTicks: 30,
+				renderBarriers: 30,
+			},
+			transportEvidence: { acknowledged: true, tickAcknowledgements: 30 },
+			firstFeedbackLatencyMs: 8,
+		},
+		{
+			...receiptEnvelope,
+			name: 'remove',
+			preState: {
+				...created,
+				secondId: 999,
+				row998Id: 2,
+				firstLabel: 'bench 50',
+				selectedId: 1,
+			},
+			postState: {
+				rowCount: 9999,
+				firstId: 1,
+				secondId: 3,
+				thirdId: 4,
+				row998Id: 1000,
+				firstLabel: 'bench 50',
+				selectedId: 1,
+			},
+		},
+	];
+	for (const receipt of receipts) {
+		const checks = issue194NativeTransitionChecks(receipt, 10000);
+		assert.deepEqual(issue194RejectionReasons(checks), [], receipt.name);
+	}
+
+	const brokenStorm = structuredClone(receipts[4]);
+	brokenStorm.stormEvidence.completedTicks = 49;
+	assert.deepEqual(issue194RejectionReasons(issue194NativeTransitionChecks(brokenStorm, 10000)), [
+		'stormCompletion',
+	]);
+	const brokenSwap = structuredClone(receipts[3]);
+	brokenSwap.postState.row998Id = 999;
+	assert.ok(
+		issue194RejectionReasons(issue194NativeTransitionChecks(brokenSwap, 10000)).includes(
+			'identity',
+		),
+	);
+	const missingAck = structuredClone(receipts[0]);
+	missingAck.transportEvidence.acknowledged = false;
+	assert.deepEqual(issue194RejectionReasons(issue194NativeTransitionChecks(missingAck, 10000)), [
+		'transportAcknowledged',
+	]);
+});
+
+test('issue #194 mutation census preserves owners and retires only the removed row', () => {
+	const populated = {
+		handles: 10001,
+		ranges: 2,
+		listenerSlots: 20012,
+		retainedHostRefs: 40028,
+		recycledHandles: 0,
+		recycledHostRefs: 0,
+	};
+	const stable = ['update10th', 'select', 'swap', 'updateStorm', 'selectStorm'].map((workload) => ({
+		workload,
+		attribution: { census: populated },
+	}));
+	const removed = {
+		handles: 10000,
+		ranges: 2,
+		listenerSlots: 20010,
+		retainedHostRefs: 40024,
+		recycledHandles: 1,
+		recycledHostRefs: 4,
+	};
+	assert.deepEqual(
+		issue194MutationCensus([
+			{ workload: 'create', attribution: { census: populated } },
+			...stable,
+			{ workload: 'remove', attribution: { census: removed } },
+		]),
+		{ valid: true, populated, final: removed },
+	);
+	assert.equal(
+		issue194MutationCensus([
+			{ workload: 'create', attribution: { census: populated } },
+			{ workload: 'update10th', attribution: { census: { ...populated, handles: 10002 } } },
+		]).valid,
+		false,
+	);
+});
+
 test('Native v2 receipts carry stable ordinals and lifecycle cycles reset populated pages', () => {
 	const measurement = nestedBlock(app, 'function measureNative(');
 	assert.ok(
@@ -361,6 +617,8 @@ test('Native v2 receipts carry stable ordinals and lifecycle cycles reset popula
 		2,
 	);
 	assert.equal(normalized.interactionOrdinal, 41);
+	assert.equal(issue194NativePostState(normalized), normalized.postState);
+	assert.equal(issue194NativePostState(null), null);
 
 	assert.deepEqual(
 		issue194LifecycleSequence(2, { x: 1, y: 2 }, { x: 3, y: 4 }).map(
