@@ -52,6 +52,7 @@ describe('Lynx MainThread.Element adapter', () => {
 			__FlushElementTree: flush,
 		};
 		const element = createLynxMainThreadElement(parent, target);
+		expect(Object.keys(element)).toEqual([]);
 
 		element.setAttribute('data-owner', 'row-0');
 		element.setStyleProperty('background-color', 'green');
@@ -63,6 +64,7 @@ describe('Lynx MainThread.Element adapter', () => {
 		expect(element.querySelector('#child')?.getAttributeNames).toBeTypeOf('function');
 		expect(element.querySelectorAll('.child')).toHaveLength(1);
 		const animation = element.animate([{ opacity: 0 }, { opacity: 1 }], 120);
+		expect(Object.keys(animation)).toEqual(['id', 'effect']);
 		expect(animate).toHaveBeenLastCalledWith(parent, [
 			0,
 			animation.id,

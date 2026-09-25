@@ -67,14 +67,19 @@ function scheduleFlush<Node extends object>(target: object): void {
 /** Public Lynx MainThread.Element surface around one opaque Element PAPI handle. */
 export class LynxMainThreadElement<Node extends object = object> {
 	declare private readonly element: Node;
+	declare private readonly target: object;
 
-	constructor(
-		element: Node,
-		private readonly target: object = globalThis,
-	) {
-		Object.defineProperty(this, 'element', {
-			get() {
-				return element;
+	constructor(element: Node, target: object = globalThis) {
+		Object.defineProperties(this, {
+			element: {
+				get() {
+					return element;
+				},
+			},
+			target: {
+				get() {
+					return target;
+				},
 			},
 		});
 	}
@@ -168,14 +173,28 @@ export class LynxMainThreadAnimation<Node extends object = object> {
 		readonly keyframes: readonly LynxMainThreadKeyframe[];
 		readonly options: LynxMainThreadAnimationOptions;
 	};
+	declare private readonly element: Node;
+	declare private readonly globals: object;
 
 	constructor(
-		private readonly element: Node,
+		element: Node,
 		target: LynxMainThreadElement<Node>,
 		keyframes: readonly LynxMainThreadKeyframe[],
 		options: LynxMainThreadAnimationOptions,
-		private readonly globals: object,
+		globals: object,
 	) {
+		Object.defineProperties(this, {
+			element: {
+				get() {
+					return element;
+				},
+			},
+			globals: {
+				get() {
+					return globals;
+				},
+			},
+		});
 		this.effect = { target, keyframes, options };
 		this.operate(LynxMainThreadAnimationOperation.Start, keyframes, options);
 	}
