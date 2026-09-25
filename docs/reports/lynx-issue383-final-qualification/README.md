@@ -204,7 +204,7 @@ fixture/observer and stable DevTool lifecycle are prerequisites for a rerun.
 
 | Gate inherited from #290/#291/#383 | Result | Evidence or gap |
 | --- | --- | --- |
-| Android output, identity, events/effects, real input | **Partial / fail** | Current-product structural create cells at 1k, 3k, and 5k passed their paired semantic samples and native taps. A fresh ET-only 10k cohort passed 5/5 cold starts with exact state, ACK, and two frames; the ordinary owner still crashes at the JNI global-reference ceiling, while higher-scale startup and all list cells remain failed or unqualified. |
+| Android output, identity, events/effects, real input | **Partial / fail** | Current-product structural create cells at 1k, 3k, and 5k passed their paired semantic samples and native taps. Fresh ET-only 10k create and create-clear-recreate cohorts each passed 5/5 cold starts with exact state, ACK, two frames, and strict ownership census; the ordinary owner still crashes at the JNI global-reference ceiling, while higher-scale startup and all list cells remain failed or unqualified. |
 | Latest upstream strict win, weighted geometric mean, CI upper bound `< 1.0` | **Inconclusive / fail** | Upstream lacks the Native producer; no valid full scorecard exists. |
 | Peer strict win and per-cell non-inferiority CI upper bound `<= 1.05` | **Fail** | Candidate creation is materially slower and becomes DNF at 10k while every peer completes. |
 | At least 10 independent AB/BA pairs | **Partial** | The current-product ordinary/structural Element Template 1k, 3k, and 5k create cells each completed 10 pairs; the registered non-create, 10k+, memory, list, upstream, and peer matrix has not. |
@@ -246,6 +246,10 @@ them as final qualification. They are not counted as R11 passes.
   is the sanitized clean-device structural ET-only 10k five-sample cohort;
   SHA-256
   `01137d3243d23025dce498d2d59bafbcbf5e7b123248bed5efd4d2a5365641f3`.
+- [`android-current-head-structural-element-template-create10000-lifecycle.json`](evidence/android-current-head-structural-element-template-create10000-lifecycle.json)
+  is the sanitized five-sample 10k create-clear-recreate lifecycle cohort;
+  SHA-256
+  `d99bf205ef6cab2165a900f689d7660119a5e71ff680cdcf3470136c5be9fecd`.
 - [`../lynx-issue382-release-candidate/README.md`](../lynx-issue382-release-candidate/README.md)
   records the source/build, external-consumer, semantic, graph-retention, and
   bundle inventory qualification inherited from R10.
@@ -504,6 +508,24 @@ does not. The ET-specific 10k correctness/stability blocker is closed, but
 ordinary 10k, behavior above 10k, memory/GC, the non-create/list matrix, and the
 other release gates remain open. The **NO-GO** verdict, ordinary/Universal
 compatibility paths, and default selection therefore remain unchanged.
+
+The same immutable bundle then completed five independent cold-launch
+create→clear→recreate samples on a fresh lease. All 15 operations passed on the
+first attempt with exact pre/post state, one transport ACK, two native frames,
+and the required lifecycle census. Median native input-to-second-frame latency
+was 21,342 ms for the first create, 2,585 ms for clear, and 2,934 ms for
+recreate; corresponding main commit medians were 20,721 / 2,512 / 2,371 ms.
+Clear returned live ownership to the rows-0 baseline of one handle, one range,
+12 listener slots, and 28 retained host refs while retaining a bounded recycle
+pool of 10,000 handles and 40,000 host refs. Recreate consumed that pool and
+restored the populated 10,001 / 2 / 20,012 / 40,028 census exactly in every
+sample.
+
+This closes the single-cycle 10k owner-lifecycle correctness/stability slice and
+adds registered clear/recreate operation timings. It does not prove a causal
+latency benefit from recycling, does not replace the required 20-cycle Android
+11+ peak/settled/after-clear/post-GC memory campaign, and does not cover sparse
+updates, selection, swapping, removal, storms, or native-list behavior.
 
 ## Upstream alignment and remaining owner work
 
