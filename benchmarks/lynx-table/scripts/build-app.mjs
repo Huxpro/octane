@@ -8,6 +8,8 @@
 //   node scripts/build-app.mjs
 //   OCTANE_LYNX_PROFILE=1 node scripts/build-app.mjs   # wire-counter build
 //   BENCH_AUTOROWS=1000 node scripts/build-app.mjs     # pre-populated table
+//   BENCH_LIST_ROWS=100 BENCH_LIST_LIFECYCLE=1 node scripts/build-app.mjs
+//                                                     # native-list semantic acceptance
 //   BENCH_CORE=block node scripts/build-app.mjs        # issue-#103 Block core
 //   BENCH_CORE=automatic node scripts/build-app.mjs    # omit the product core override
 //   BENCH_CORE=block BENCH_BLOCK_MODE=derived node scripts/build-app.mjs
@@ -126,8 +128,12 @@ export function buildTableApp({
 	const stage = path.join(pluginDir, 'examples', STAGE_NAME);
 	const autoRows = Number(process.env.BENCH_AUTOROWS ?? '0') || 0;
 	const listRows = Number(process.env.BENCH_LIST_ROWS ?? '0') || 0;
+	const listLifecycle = process.env.BENCH_LIST_LIFECYCLE === '1';
 	if (autoRows > 0 && listRows > 0) {
 		throw new TypeError('BENCH_AUTOROWS and BENCH_LIST_ROWS are mutually exclusive.');
+	}
+	if (listLifecycle && listRows === 0) {
+		throw new TypeError('BENCH_LIST_LIFECYCLE=1 requires BENCH_LIST_ROWS.');
 	}
 	const profile = process.env.OCTANE_LYNX_PROFILE === '1';
 	const elementTemplate = process.env.BENCH_ELEMENT_TEMPLATE === '1';
@@ -319,7 +325,7 @@ export function buildTableApp({
 	const distTag = tagFrom(process.env.BENCH_DIST_TAG);
 	const label =
 		(listRows > 0
-			? `octane list app (${listRows} rows, ${core} core)`
+			? `octane list${listLifecycle ? ' lifecycle' : ''} app (${listRows} rows, ${core} core)`
 			: core === 'block'
 				? `octane table app (${core}/${blockMode})`
 				: core === 'automatic'
@@ -355,7 +361,7 @@ export function buildTableApp({
 		elementTemplateSuffix +
 		distTag +
 		(autoRows > 0 ? `-rows${autoRows}` : '') +
-		(listRows > 0 ? `-list-rows${listRows}` : '') +
+		(listRows > 0 ? `-list${listLifecycle ? '-lifecycle' : ''}-rows${listRows}` : '') +
 		(issue278Attribution
 			? `-issue278-${issue278Validation}-${profile ? (issue278Counts ? 'counts' : 'timed') : issue278Timeline ? 'timeline' : 'control'}${issue278Scalar ? '-scalar' : ''}`
 			: '') +
