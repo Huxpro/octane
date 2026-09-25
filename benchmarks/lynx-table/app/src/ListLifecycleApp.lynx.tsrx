@@ -1,6 +1,7 @@
 /** @jsxImportSource @octanejs/lynx/intrinsics */
 
 import { useMainThreadRef } from '@octanejs/lynx';
+import type { LynxMainThreadElement } from '@octanejs/lynx';
 import { useState } from 'octane';
 
 interface LifecycleRowData {
@@ -19,7 +20,7 @@ const LIFECYCLE_ROWS: readonly LifecycleRowData[] = Array.from(
 
 function LifecycleRow(props: LifecycleRowProps) @{
 	const [backgroundHits, setBackgroundHits] = useState(0);
-	const mainReceipt = useMainThreadRef<MainThread.Element | null>(null);
+	const mainReceipt = useMainThreadRef<LynxMainThreadElement | null>(null);
 	const reportMainTap = (owner: string, measuredBackground: string) => {
 		'background only';
 		console.log('__OCTANE_NATIVE_LIST_MAIN_TAP__=' + owner + ';measured=' + measuredBackground);

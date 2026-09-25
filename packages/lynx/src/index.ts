@@ -17,6 +17,7 @@ export type { LynxValidationMode } from './core/protocol.js';
 export { withLynxBlockProgram } from './core/block-program.js';
 export type { LynxBlockProgram, LynxBlockProgramContext } from './core/block-program.js';
 export { useMainThreadRef } from './renderer.js';
+export type { LynxMainThreadElement } from './core/main-thread-element.js';
 export {
 	runOnBackground,
 	runOnMainThread,
