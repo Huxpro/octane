@@ -190,7 +190,7 @@ export function issue194NativeTransitionChecks(receipt, scale) {
 	}
 }
 
-/** Prove pure mutations retain the owner graph and one row removal retires one owner. */
+/** Prove growth, pure mutations, and removal change only their exact row owners. */
 export function issue194MutationCensus(sequenceEvidence) {
 	const populated =
 		sequenceEvidence.find((entry) => entry.workload === 'create')?.attribution?.census ?? null;
@@ -207,23 +207,42 @@ export function issue194MutationCensus(sequenceEvidence) {
 		right !== null &&
 		keys.every((key) => Number.isSafeInteger(left[key]) && left[key] === right[key]);
 	const stableWorkloads = new Set(['update10th', 'select', 'swap', 'updateStorm', 'selectStorm']);
+	let expected = populated;
 	let final = populated;
 	let valid = populated !== null;
 	for (const entry of sequenceEvidence) {
 		const census = entry.attribution?.census ?? null;
 		if (entry.workload === 'create') {
+			expected = populated;
 			valid &&= same(census, populated);
+		} else if (entry.workload === 'append1k') {
+			if (expected === null) {
+				valid = false;
+			} else {
+				expected = {
+					...expected,
+					handles: expected.handles + 1000,
+					listenerSlots: expected.listenerSlots + 2000,
+					retainedHostRefs: expected.retainedHostRefs + 4000,
+				};
+				valid &&= same(census, expected);
+			}
 		} else if (stableWorkloads.has(entry.workload)) {
-			valid &&= same(census, populated);
+			valid &&= same(census, expected);
 		} else if (entry.workload === 'remove') {
-			valid &&=
-				census !== null &&
-				census.handles === populated.handles - 1 &&
-				census.ranges === populated.ranges &&
-				census.listenerSlots === populated.listenerSlots - 2 &&
-				census.retainedHostRefs === populated.retainedHostRefs - 4 &&
-				census.recycledHandles === populated.recycledHandles + 1 &&
-				census.recycledHostRefs === populated.recycledHostRefs + 4;
+			if (expected === null) {
+				valid = false;
+			} else {
+				expected = {
+					...expected,
+					handles: expected.handles - 1,
+					listenerSlots: expected.listenerSlots - 2,
+					retainedHostRefs: expected.retainedHostRefs - 4,
+					recycledHandles: expected.recycledHandles + 1,
+					recycledHostRefs: expected.recycledHostRefs + 4,
+				};
+				valid &&= same(census, expected);
+			}
 		} else {
 			valid = false;
 		}

@@ -449,6 +449,12 @@ test('issue #194 Native sequence oracle covers every registered mutation semanti
 		},
 		{
 			...receiptEnvelope,
+			name: 'append1k',
+			preState: created,
+			postState: { ...created, rowCount: 11000 },
+		},
+		{
+			...receiptEnvelope,
 			name: 'update10th',
 			preState: created,
 			postState: { ...created, firstLabel: 'pretty blue car !!!' },
@@ -547,12 +553,12 @@ test('issue #194 Native sequence oracle covers every registered mutation semanti
 		assert.deepEqual(issue194RejectionReasons(checks), [], receipt.name);
 	}
 
-	const brokenStorm = structuredClone(receipts[4]);
+	const brokenStorm = structuredClone(receipts[5]);
 	brokenStorm.stormEvidence.completedTicks = 49;
 	assert.deepEqual(issue194RejectionReasons(issue194NativeTransitionChecks(brokenStorm, 10000)), [
 		'stormCompletion',
 	]);
-	const brokenSwap = structuredClone(receipts[3]);
+	const brokenSwap = structuredClone(receipts[4]);
 	brokenSwap.postState.row998Id = 999;
 	assert.ok(
 		issue194RejectionReasons(issue194NativeTransitionChecks(brokenSwap, 10000)).includes(
@@ -566,7 +572,7 @@ test('issue #194 Native sequence oracle covers every registered mutation semanti
 	]);
 });
 
-test('issue #194 mutation census preserves owners and retires only the removed row', () => {
+test('issue #194 operation census grows, preserves, and retires the exact row owners', () => {
 	const populated = {
 		handles: 10001,
 		ranges: 2,
@@ -577,19 +583,28 @@ test('issue #194 mutation census preserves owners and retires only the removed r
 	};
 	const stable = ['update10th', 'select', 'swap', 'updateStorm', 'selectStorm'].map((workload) => ({
 		workload,
-		attribution: { census: populated },
+		attribution: {
+			census: {
+				...populated,
+				handles: 11001,
+				listenerSlots: 22012,
+				retainedHostRefs: 44028,
+			},
+		},
 	}));
+	const appended = stable[0].attribution.census;
 	const removed = {
-		handles: 10000,
+		handles: 11000,
 		ranges: 2,
-		listenerSlots: 20010,
-		retainedHostRefs: 40024,
+		listenerSlots: 22010,
+		retainedHostRefs: 44024,
 		recycledHandles: 1,
 		recycledHostRefs: 4,
 	};
 	assert.deepEqual(
 		issue194MutationCensus([
 			{ workload: 'create', attribution: { census: populated } },
+			{ workload: 'append1k', attribution: { census: appended } },
 			...stable,
 			{ workload: 'remove', attribution: { census: removed } },
 		]),
@@ -599,6 +614,16 @@ test('issue #194 mutation census preserves owners and retires only the removed r
 		issue194MutationCensus([
 			{ workload: 'create', attribution: { census: populated } },
 			{ workload: 'update10th', attribution: { census: { ...populated, handles: 10002 } } },
+		]).valid,
+		false,
+	);
+	assert.equal(
+		issue194MutationCensus([
+			{ workload: 'create', attribution: { census: populated } },
+			{
+				workload: 'append1k',
+				attribution: { census: { ...appended, retainedHostRefs: 44029 } },
+			},
 		]).valid,
 		false,
 	);

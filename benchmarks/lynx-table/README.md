@@ -3881,9 +3881,11 @@ stable interaction ordinal, so a storm can publish many main commits without
 being mistaken for later input. The commit lane requires the latest main
 receipt after the tap, exact pre/post semantics, transport ACK/complete shape,
 two native frames, and a stable ownership census. Pure update/select/swap/storm
-steps must retain the populated census exactly; the registered second-row
-remove must retire exactly one handle, two listener slots, and four host refs
-into the bounded recycle pool. For example:
+steps must retain the current populated census exactly. `append1k` must add
+exactly 1,000 handles, 2,000 listener slots, and 4,000 retained host refs while
+leaving ranges and the recycle pool unchanged; the registered second-row remove
+must retire exactly one handle, two listener slots, and four host refs into the
+bounded recycle pool. For example:
 
 ```bash
 --sequence-step setup=create,<create-x>,<create-y> \
@@ -3893,6 +3895,14 @@ into the bounded recycle pool. For example:
 --sequence-step update-storm=updateStorm,<storm-x>,<storm-y> \
 --sequence-step select-storm=selectStorm,<storm-x>,<storm-y> \
 --sequence-step remove=remove,<row-1-remove-x>,<row-1-y>
+```
+
+The 10k append slice uses the smaller two-step window so its precondition and
+growth census stay explicit:
+
+```bash
+--sequence-step setup=create,<create-10k-x>,<create-10k-y> \
+--sequence-step append=append1k,<append-x>,<append-y>
 ```
 
 This is one serialized semantic window, not seven independent latency samples:
