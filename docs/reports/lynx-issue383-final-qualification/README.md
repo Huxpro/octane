@@ -116,6 +116,19 @@ question of what happens at 10k append for the structural owner: it fails
 safely and confirms that >10k table work must move to the virtualized
 native-list architecture. It does not close the native-list gate.
 
+A later native-list investigation separated that gate into correctness and
+performance. The historical list observer admitted a descendant whose class
+was `bench-list-cell-body` when searching for `bench-list-cell`; it could then
+report an undefined `item-key` even though the real `list-item` had the valid
+`row-N` key. The repaired observer now requires both `localName=list-item` and
+an exact class token. Current Octane bundles mounted and scrolled at 1k and 10k,
+and a dedicated current-head Android lifecycle fixture proved physical-node
+reuse, keyed state isolation and re-entry, background events, main-thread refs
+and events, computed-style reads, attribute/style writes, and
+main-to-background callbacks. This closes the recorded Android semantic slice,
+not the performance gate: no formal repeated timing, fling, memory, peer, or
+platform cohort was run, so R11 remains **NO-GO**.
+
 ## Frozen cohort
 
 The cohort was last checked against the live remotes at 2026-09-14 02:55:01
@@ -239,6 +252,44 @@ cross-framework performance comparison. It also cannot establish candidate
 list correctness, recycling, fling smoothness, or wire cost. A repaired
 fixture/observer and stable DevTool lifecycle are prerequisites for a rerun.
 
+### 2026-09-25 observer correction and semantic rerun
+
+The historical DNF attribution above was traced to the observer rather than an
+Octane list-key defect. Its substring search matched both the real
+`list-item.bench-list-cell` and the descendant
+`view.bench-list-cell-body`. The correction in
+[Huxpro/lynx-js-framework-benchmark#71](https://github.com/Huxpro/lynx-js-framework-benchmark/pull/71)
+describes candidates before selecting them, admits only `list-item` plus the
+exact class token, and continues to reject a malformed exact cell. Its full
+suite passed 219/219 tests and revalidated all 50 frozen evidence entries.
+
+On Lynx Sandbox, ordinary Octane list bundles then mounted and scrolled at both
+1,000 and 10,000 rows. One physical text node was observed as `row-0`, then
+`row-22`, then `row-0`, establishing actual native reuse rather than merely a
+large static tree.
+
+The dedicated 100-row lifecycle fixture exposed and fixed a separate real
+device defect: Octane had published the opaque Element PAPI handle directly to
+`main-thread:ref`. JSDOM masked this because its raw node already implements
+`setAttribute`; real Lynx correctly failed because the handle is not a
+`MainThread.Element`. Host ref mounts now wrap the native handle with the Lynx
+Element API while ordinary ref-value updates remain unchanged.
+
+The rebuilt fixture passed the full row-0 → row-15 → row-0 sequence. Background
+tap state advanced independently to 1 for both keys and row 0 retained 1 after
+re-entry. Native node IDs 17 and 20 changed owners from row 0 to row 15. The
+main-thread handler read the pre-write native color, wrote a supported
+`aria-label` and a distinct color, and called the background thread with the
+current owner. The callbacks arrived as row 0, row 15, row 0; after reuse, node
+20 changed from `main-owner:row-0` / `#d6efc7` to
+`main-owner:row-15` / `#c7ddef`. Together with the unit stale-activation checks,
+this proves the current handler/ref replaced the retired owner rather than
+calling it.
+
+This rerun is deliberately classified as correctness evidence. It collected no
+registered latency repetitions or fling-frame distribution and therefore makes
+no native-list performance or ranking claim.
+
 ## Release-gate disposition
 
 | Gate inherited from #290/#291/#383 | Result | Evidence or gap |
@@ -249,7 +300,7 @@ fixture/observer and stable DevTool lifecycle are prerequisites for a rerun.
 | At least 10 independent AB/BA pairs | **Partial** | The current-product ordinary/structural Element Template 1k, 3k, and 5k create cells each completed 10 pairs; the 10k mutation sequence is a single-cell `n=5` correctness cohort, and the 10k+ performance, memory, list, upstream, and peer matrix has not completed. |
 | Ready/first-tap/steady p95 from at least 100 valid interactions | **Missing** | The mutation cohort has five serialized sequences / 35 registered inputs, not 100 independent samples; list has none. |
 | Peak/settled/after-clear heap and 20 create-clear-recreate GC cycles | **Missing** | No current-candidate Native memory campaign was completed. |
-| Native list reuse, recycle, fling, and stable identity | **Fail** | 640/640 Native attempts DNF across the lane. |
+| Native list reuse, recycle, fling, and stable identity | **Partial** | The historical 640-attempt lane is invalid because of observer/transport failure. A current-head Android semantic run now passes 1k/10k reachability, physical reuse, keyed state re-entry, refs, events, Element API mutation/measurement, and current-owner callbacks. Formal repeated performance, fling, memory, peer, and platform cohorts remain missing. |
 | Android no-JIT and retained low-end device | **Missing** | The Android 10 cohort is recorded, but a no-JIT policy and a separate retained low-end lane were not established. |
 | iOS correctness/performance, separately reported | **Externally blocked** | Qualification host is Linux x86_64 and has no `xcrun`/Simulator or leased iOS device. Android cannot substitute. |
 | Native bytecode/chunk-load and bundle budget | **Incomplete** | R10 records source/encoded/gzip/Brotli inventories; device VM bytecode and native chunk-load latency remain unmeasured. |
@@ -297,6 +348,11 @@ them as final qualification. They are not counted as R11 passes.
   is the sanitized five-sample 10k→11k append capacity-rejection cohort;
   SHA-256
   `e8cca3ebe642e183edc98605662bbf5f2a907d01a53d60aa19f3d841193e2502`.
+- [`android-current-head-native-list-lifecycle.json`](evidence/android-current-head-native-list-lifecycle.json)
+  is the sanitized native-list observer diagnosis, 1k/10k reachability check,
+  and current-head row lifecycle acceptance record. It qualifies correctness
+  only and explicitly leaves performance unqualified; SHA-256
+  `d68a2ecd67bc1a9d3cd1c4b8d441aceac8c7d1160c490e6173b26f8096944896`.
 - [`../lynx-issue382-release-candidate/README.md`](../lynx-issue382-release-candidate/README.md)
   records the source/build, external-consumer, semantic, graph-retention, and
   bundle inventory qualification inherited from R10.
