@@ -204,7 +204,7 @@ fixture/observer and stable DevTool lifecycle are prerequisites for a rerun.
 
 | Gate inherited from #290/#291/#383 | Result | Evidence or gap |
 | --- | --- | --- |
-| Android output, identity, events/effects, real input | **Partial / fail** | Current-product structural create cells at 1k, 3k, and 5k passed their paired semantic samples and native taps. The 10k ordinary owner crashed at the JNI global-reference ceiling, the structural owner had one 180-second timeout before one valid retry, and high-scale startup plus all list cells remain failed or unqualified. |
+| Android output, identity, events/effects, real input | **Partial / fail** | Current-product structural create cells at 1k, 3k, and 5k passed their paired semantic samples and native taps. A fresh ET-only 10k cohort passed 5/5 cold starts with exact state, ACK, and two frames; the ordinary owner still crashes at the JNI global-reference ceiling, while higher-scale startup and all list cells remain failed or unqualified. |
 | Latest upstream strict win, weighted geometric mean, CI upper bound `< 1.0` | **Inconclusive / fail** | Upstream lacks the Native producer; no valid full scorecard exists. |
 | Peer strict win and per-cell non-inferiority CI upper bound `<= 1.05` | **Fail** | Candidate creation is materially slower and becomes DNF at 10k while every peer completes. |
 | At least 10 independent AB/BA pairs | **Partial** | The current-product ordinary/structural Element Template 1k, 3k, and 5k create cells each completed 10 pairs; the registered non-create, 10k+, memory, list, upstream, and peer matrix has not. |
@@ -238,10 +238,14 @@ them as final qualification. They are not counted as R11 passes.
   `be7615df441519a99e7478d951a8f494feed6af4`; SHA-256
   `17d4576f488a30f4fca089c87ecce71a57352ba156748c69bbfbcc2449a143d3`.
 - [`android-current-head-structural-element-template-create-scale.json`](evidence/android-current-head-structural-element-template-create-scale.json)
-  is the sanitized current-product 3k/5k ten-pair continuation plus the 10k
-  safety split at runner head `947b1e541a17891e52486617b211af71c6e448c5`;
+  is the sanitized current-product 3k/5k ten-pair continuation, ordinary 10k
+  native-capacity failure, and structural ET 10k stability result at runner head
+  `5c571c70ec7bd052b2c6d59ed1004bf06ff22ccc`; SHA-256
+  `279f04381513836afd151e5558664315d3a32dce92210f935533f5f3f3201325`.
+- [`android-current-head-structural-element-template-create10000-et-only.json`](evidence/android-current-head-structural-element-template-create10000-et-only.json)
+  is the sanitized clean-device structural ET-only 10k five-sample cohort;
   SHA-256
-  `6158aaa7861505989f4871d86aee57256ab17c5f495c647f3e8d1c6bfe2d178c`.
+  `01137d3243d23025dce498d2d59bafbcbf5e7b123248bed5efd4d2a5365641f3`.
 - [`../lynx-issue382-release-candidate/README.md`](../lynx-issue382-release-candidate/README.md)
   records the source/build, external-consumer, semantic, graph-retention, and
   bundle inventory qualification inherited from R10.
@@ -457,9 +461,9 @@ Android, iOS, bytecode, latest-upstream, and peer qualification remain open.
 
 The same immutable ordinary and structural Element Template bundle cohort was
 then exercised at 3,000 and 5,000 rows on another Android 10 / Lynx SDK 4.2
-lease. The runner head was `947b1e541a17891e52486617b211af71c6e448c5`;
+lease. The final runner head was `5c571c70ec7bd052b2c6d59ed1004bf06ff22ccc`;
 the only changes since the bundle build were the M0 test mirror and this report's
-evidence, so no product or build input changed. Each formal cell used 10 cold
+documentation/evidence, so no product or build input changed. Each formal cell used 10 cold
 AB/BA pairs with DevTool disabled, native taps, the 0-to-scale state oracle,
 transport ACK, two native frames, and a 35 °C / thermal-status-0 gate. All 40
 formal attempts were accepted on the first try.
@@ -474,19 +478,32 @@ bytes at 3k and −73 bytes at 5k. The 3k result is positive in aggregate but do
 not satisfy an all-pairs strict-win reading because one native pair was 4 ms
 slower. The 5k result won every pair at both registered latency boundaries.
 
-The 10k safety probe did not qualify. The ordinary owner hit an
+The first 10k safety window did not qualify. The ordinary owner hit an
 Android ART `SIGABRT` after 24,048 ms because the JNI global-reference table
 reached its 51,200-entry ceiling; the captured summary contained 30,000
 `PaintingContext$a` and 20,474 `w9.w` references. The structural Element
 Template owner avoided that crash and one retry completed with exact 10,000-row
 state, ACK, and two frames in 21,525 ms, but its preceding attempt produced no
 state or attribution before the 180-second cutoff. One valid retry after one
-timeout is correctness/safety evidence, not a stable latency cell.
+timeout was correctness/safety evidence, not a stable result.
+
+A fresh lease then ran only the structural owner, with no ordinary crash before
+it. All five cold starts completed on their first attempt with zero invalid
+samples and the exact state, transport ACK, and two-frame oracle. Native
+tap-to-second-frame values were 20,547 / 21,702 / 21,306 / 21,025 / 20,739 ms
+(median 21,025 ms); main commit walls were 19,904 / 21,063 / 20,657 / 20,379 /
+20,099 ms (median 20,379 ms). Every sample reported 10,001 handles, two ranges,
+20,012 listener slots, and 40,028 retained host refs. This supersedes the
+earlier unstable observation for the structural 10k stability decision. It does
+not establish why the earlier attempt timed out, and it is not a paired latency
+rank because the ordinary owner cannot complete this scale.
 
 This continuation narrows the Android creation gap through 5k and demonstrates
 that the structural owner crosses a native capacity boundary the ordinary owner
-does not. It also leaves a concrete 10k blocker, so the **NO-GO** verdict,
-ordinary/Universal compatibility paths, and default selection remain unchanged.
+does not. The ET-specific 10k correctness/stability blocker is closed, but
+ordinary 10k, behavior above 10k, memory/GC, the non-create/list matrix, and the
+other release gates remain open. The **NO-GO** verdict, ordinary/Universal
+compatibility paths, and default selection therefore remain unchanged.
 
 ## Upstream alignment and remaining owner work
 

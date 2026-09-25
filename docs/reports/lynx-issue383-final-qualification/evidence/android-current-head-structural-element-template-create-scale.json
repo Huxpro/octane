@@ -1,15 +1,16 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-09-25T07:50:47.007Z",
-  "scope": "One Android 10 / Lynx SDK 4.2 continuation window over the immutable current-product ordinary and structural Element Template bundles. It contains formal ten-pair native create cells at 3,000 and 5,000 rows, plus fail-closed 10,000-row safety probes. It is not a memory, native-list, no-JIT, low-end, iOS, cross-framework, or default-switch claim.",
+  "recordedAt": "2026-09-25T08:23:12.728Z",
+  "scope": "Android 10 / Lynx SDK 4.2 continuation windows over the immutable current-product ordinary and structural Element Template bundles. They contain formal ten-pair native create cells at 3,000 and 5,000 rows, the ordinary 10,000-row native-capacity failure, and a clean-device five-sample structural Element Template stability cohort at 10,000 rows. This is not a memory, higher-scale, native-list, no-JIT, low-end, iOS, cross-framework, or default-switch claim.",
   "candidate": {
-    "runnerCommit": "947b1e541a17891e52486617b211af71c6e448c5",
+    "runnerCommit": "5c571c70ec7bd052b2c6d59ed1004bf06ff22ccc",
     "artifactBuildCommit": "be7615df441519a99e7478d951a8f494feed6af4",
     "branch": "feat/optimal-lynx-app-adoption",
     "productGraphUnchangedSinceArtifactBuild": true,
     "interveningFiles": [
       "benchmarks/lynx-table/stages/issue291-m0-native-probe.test.mjs",
       "docs/reports/lynx-issue383-final-qualification/README.md",
+      "docs/reports/lynx-issue383-final-qualification/evidence/android-current-head-structural-element-template-create-scale.json",
       "docs/reports/lynx-issue383-final-qualification/evidence/android-current-head-structural-element-template-create1000-abba.json"
     ]
   },
@@ -18,7 +19,10 @@
     "product": "aries",
     "android": "10",
     "abi": "arm64-v8a",
-    "identity": "sha256:24ab544e036a591dacf6c1bcc785ddb368a731035006165abbc8e7deba7c85e0",
+    "cohortIdentities": {
+      "create3000Create5000AndInitialCreate10000": "sha256:24ab544e036a591dacf6c1bcc785ddb368a731035006165abbc8e7deba7c85e0",
+      "create10000StructuralElementTemplateStability": "sha256:02b28dbfddd6b398625c3c8c43cd126b8b44f77121dd6e405c19a6e691b17adc"
+    },
     "rawIdentityRetained": false,
     "packageVersion": "1.0",
     "lynxSdk": "4.2",
@@ -208,31 +212,43 @@
     },
     "structuralElementTemplate": {
       "expectedOutcome": "completed",
-      "acceptedSamples": 1,
-      "attempts": 2,
-      "invalidAttempts": [
-        {
-          "outcome": "timeout",
-          "timeoutMs": 180000,
-          "rejectionReasons": ["attribution", "state"],
-          "nativeCrashObserved": false
-        }
-      ],
-      "acceptedSample": {
-        "semanticOraclePassed": true,
-        "nativeLatencyMs": 21525,
-        "mainCommitWallMs": 20908,
-        "frameBytes": 338667,
-        "transportAcknowledged": true,
-        "nativeFrames": 2,
-        "ownershipCensus": {
-          "handles": 10001,
-          "ranges": 2,
-          "listenerSlots": 20012,
-          "retainedHostRefs": 40028
-        }
+      "targetAcceptedSamples": 5,
+      "acceptedSamples": 5,
+      "attempts": 5,
+      "invalidAttempts": 0,
+      "semanticOraclePassed": true,
+      "nativeLatencyMs": {
+        "values": [20547, 21702, 21306, 21025, 20739],
+        "min": 20547,
+        "median": 21025,
+        "mean": 21063.8,
+        "max": 21702
       },
-      "interpretation": "The accepted retry proves one correct completion and avoids the ordinary owner's JNI crash, but the preceding 180-second timeout makes this an unstable safety result rather than a qualified latency cell."
+      "mainCommitWallMs": {
+        "values": [19904, 21063, 20657, 20379, 20099],
+        "min": 19904,
+        "median": 20379,
+        "mean": 20420.4,
+        "max": 21063
+      },
+      "frameBytes": {
+        "values": [338887, 338711, 338170, 339179, 338640],
+        "min": 338170,
+        "median": 338711,
+        "mean": 338717.4,
+        "max": 339179
+      },
+      "transportAcknowledged": [true, true, true, true, true],
+      "nativeFrames": [2, 2, 2, 2, 2],
+      "ownershipCensus": {
+        "handles": 10001,
+        "ranges": 2,
+        "listenerSlots": 20012,
+        "retainedHostRefs": 40028,
+        "recycledHandles": 0,
+        "recycledHostRefs": 0
+      },
+      "interpretation": "A fresh ET-only device lease completed five cold launches on the first attempt with exact state, ACK, two frames, and an identical ownership census. This supersedes the earlier one-success/one-timeout observation for the structural owner's 10,000-row stability decision, but it is a single-cell correctness and safety cohort rather than a paired latency comparison."
     }
   },
   "sourceReports": [
@@ -251,17 +267,21 @@
     {
       "role": "create10000-structural-element-template-correctness",
       "sha256": "6c36427442d7300e5e6d6a45a511d25d91cda6249b8d9babf5eb2d686e12fc7b"
+    },
+    {
+      "role": "create10000-structural-element-template-clean-device-stability",
+      "sha256": "67355b3d7e03461a456729c0ddafbc0c061024a63567a9aa7a2f78cf557d638d"
     }
   ],
   "sanitization": "This compact record excludes the raw device endpoint, local paths, per-event timestamps, process IDs, raw log lines, and generated row labels.",
   "decision": {
     "create3000": "semantic and registered ten-pair sample-count gates passed; structural Element Template improved nine of ten native pairs and all ten main-commit pairs",
     "create5000": "semantic and registered ten-pair sample-count gates passed; structural Element Template improved all ten pairs at both latency boundaries",
-    "create10000": "failed as a stable configuration gate: ordinary crashed at the Android JNI reference ceiling, while structural Element Template completed one retry only after one 180-second timeout",
+    "create10000": "structural Element Template passed the stable correctness and safety gate at n=5 on a fresh ET-only lease; ordinary remains a deterministic Android JNI reference-ceiling crash, so no paired latency rank is claimed",
     "defaultSwitch": "not authorized",
     "roadmapVerdict": "NO-GO remains unchanged",
     "remaining": [
-      "stable 10,000-row and higher-scale behavior",
+      "behavior above 10,000 rows within the resident native-node budget or through native-list virtualization",
       "fresh-process peak, settled, and after-clear native memory plus GC cycles on one Android 11+ device/runtime cohort",
       "registered non-create operations, native-list, no-JIT, and low-end Android matrix",
       "iOS correctness, latency, memory, and bytecode evidence",

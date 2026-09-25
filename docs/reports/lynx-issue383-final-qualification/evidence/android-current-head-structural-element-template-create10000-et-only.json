@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-25T08:23:12.728Z",
+  "scope": "One clean-device Android 10 / Lynx SDK 4.2 single-cell stability cohort for the immutable current-product structural Element Template bundle at 10,000-row native create. It is correctness and safety evidence at n=5, not a paired latency, memory, higher-scale, native-list, no-JIT, low-end, iOS, cross-framework, or default-switch claim.",
+  "candidate": {
+    "runnerCommit": "5c571c70ec7bd052b2c6d59ed1004bf06ff22ccc",
+    "artifactBuildCommit": "be7615df441519a99e7478d951a8f494feed6af4",
+    "branch": "feat/optimal-lynx-app-adoption",
+    "productGraphUnchangedSinceArtifactBuild": true,
+    "interveningFiles": [
+      "benchmarks/lynx-table/stages/issue291-m0-native-probe.test.mjs",
+      "docs/reports/lynx-issue383-final-qualification/README.md",
+      "docs/reports/lynx-issue383-final-qualification/evidence/android-current-head-structural-element-template-create-scale.json",
+      "docs/reports/lynx-issue383-final-qualification/evidence/android-current-head-structural-element-template-create1000-abba.json"
+    ]
+  },
+  "device": {
+    "model": "aries_10",
+    "product": "aries",
+    "android": "10",
+    "abi": "arm64-v8a",
+    "identity": "sha256:02b28dbfddd6b398625c3c8c43cd126b8b44f77121dd6e405c19a6e691b17adc",
+    "rawIdentityRetained": false,
+    "packageVersion": "1.0",
+    "lynxSdk": "4.2",
+    "batteryTemperatureTenthsC": {
+      "min": 350,
+      "max": 350
+    },
+    "thermalStatuses": [0]
+  },
+  "protocol": {
+    "runner": "octane-issue194-device-v1",
+    "nativeReceipt": "lynx-native-bench-v2",
+    "nativeBoundary": "native-input-handler-to-second-native-frame",
+    "mainReceipt": "octane-issue194-compact-main-v1",
+    "mainBoundary": "compact product receiver frame application through ACK and complete dispatch",
+    "ordering": "single-cell repeated cold launches",
+    "coldLaunchPerAttempt": true,
+    "devtool": "disabled by a background-only preflight before every attempt; no CDP connection used",
+    "input": "native ADB taps at the registered create control",
+    "semanticOracle": "0 to 10,000 rows, ids 1/2/3/999, transport ACK, two native frames, and no observed error",
+    "wireShape": {
+      "encodedBytes": 18,
+      "messages": 2,
+      "ackMessages": 1
+    }
+  },
+  "instrumentedBundles": {
+    "structuralElementTemplate": {
+      "engine": "3.2",
+      "bytes": 245584,
+      "sha256": "c00df02fdd6da746ac787a196da4b5df064af3a3834bdcce79765e0b0a703f9c"
+    },
+    "disableDevtool": {
+      "bytes": 272537,
+      "sha256": "06a471fd03bb2ba58859726e24a41c2fba602c8ee8da624558bbbf957a46b020"
+    }
+  },
+  "cohort": {
+    "scale": 10000,
+    "targetAcceptedSamples": 5,
+    "acceptedSamples": 5,
+    "attempts": 5,
+    "invalidAttempts": 0,
+    "semanticOraclePassed": true,
+    "nativeLatencyMs": {
+      "values": [20547, 21702, 21306, 21025, 20739],
+      "min": 20547,
+      "median": 21025,
+      "mean": 21063.8,
+      "max": 21702
+    },
+    "mainCommitWallMs": {
+      "values": [19904, 21063, 20657, 20379, 20099],
+      "min": 19904,
+      "median": 20379,
+      "mean": 20420.4,
+      "max": 21063
+    },
+    "frameBytes": {
+      "values": [338887, 338711, 338170, 339179, 338640],
+      "min": 338170,
+      "median": 338711,
+      "mean": 338717.4,
+      "max": 339179
+    },
+    "loadToFirstScreenMs": {
+      "values": [12, 12, 13, 12, 10],
+      "min": 10,
+      "median": 12,
+      "mean": 11.8,
+      "max": 13
+    },
+    "transportAcknowledged": [true, true, true, true, true],
+    "nativeFrames": [2, 2, 2, 2, 2],
+    "ownershipCensus": {
+      "handles": 10001,
+      "ranges": 2,
+      "listenerSlots": 20012,
+      "retainedHostRefs": 40028,
+      "recycledHandles": 0,
+      "recycledHostRefs": 0
+    }
+  },
+  "sourceReport": {
+    "role": "create10000-structural-element-template-clean-device-stability",
+    "sha256": "67355b3d7e03461a456729c0ddafbc0c061024a63567a9aa7a2f78cf557d638d"
+  },
+  "sanitization": "This compact record excludes the raw device endpoint, local paths, per-event timestamps, process IDs, raw log lines, and generated row labels.",
+  "decision": {
+    "create10000StructuralElementTemplate": "stable correctness and safety gate passed at n=5: every cold start completed on the first attempt with exact state, ACK, two frames, and an identical ownership census",
+    "latencyComparison": "not claimed because this is a single-cell cohort and the ordinary owner is a known native-crash outcome at this scale",
+    "defaultSwitch": "not authorized",
+    "roadmapVerdict": "NO-GO remains unchanged",
+    "remaining": [
+      "behavior above 10,000 rows within the resident native-node budget or through native-list virtualization",
+      "fresh-process peak, settled, and after-clear native memory plus GC cycles on one Android 11+ device/runtime cohort",
+      "registered non-create operations, native-list, no-JIT, and low-end Android matrix",
+      "iOS correctness, latency, memory, and bytecode evidence",
+      "cross-framework and latest-upstream comparison with a shared supported receipt"
+    ]
+  }
+}
