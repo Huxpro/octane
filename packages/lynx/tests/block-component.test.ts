@@ -1334,6 +1334,46 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		expect(profileAfter.blockRenderQueueMaxDepth).toBeGreaterThanOrEqual(1);
 	});
 
+	it('keeps flushTransport open for a render scheduled by an accepted passive effect', async () => {
+		const EffectUpdate = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function EffectUpdate() {
+			const [count, setCount] = useState(0, 'count');
+			useEffect(
+				() => {
+					if (count === 0) setCount(1);
+				},
+				[count],
+				'increment-after-accept',
+			);
+			return universalValue(CARD_PLAN, [
+				'card',
+				TALLY[count] ?? 'many',
+				'card-meta',
+				noop,
+				'detail',
+			]);
+		});
+		const block = blockColumn<Record<string, never>>();
+		const mounting = block.background.renderAsync(EffectUpdate as never, {});
+		const flushing = block.background.flushTransport();
+		let flushed = false;
+		void flushing.then(() => {
+			flushed = true;
+		});
+
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(1);
+		block.acknowledgePending();
+		for (let guard = 0; guard < 5 && block.main.commits.length < 2; guard++) {
+			await flushMicrotasks();
+		}
+		expect(block.main.commits).toHaveLength(2);
+		expect(flushed).toBe(false);
+
+		block.acknowledgePending();
+		await Promise.all([mounting, flushing]);
+		expect(paint(block.main.commits).tree).toContain('once');
+	});
+
 	it('drains a prepared scalar draft before teardown requested during acknowledgement', async () => {
 		let computationRuns = 0;
 		let setCount!: (value: number | ((previous: number) => number)) => void;
@@ -1393,6 +1433,44 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		await flushMicrotasks();
 		expect(block.main.commits).toHaveLength(4);
 		expect(computationRuns).toBe(2);
+	});
+
+	it('does not let updates arriving after teardown overtake an in-flight unmount', async () => {
+		let setCount!: (value: number | ((previous: number) => number)) => void;
+		const Direct = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Direct() {
+			const [count, updateCount] = useState(0, 'count');
+			setCount = updateCount;
+			return universalValue(CARD_PLAN, [
+				'card',
+				TALLY[count] ?? 'many',
+				'card-meta',
+				noop,
+				'detail',
+			]);
+		});
+		const block = blockColumn<Record<string, never>>();
+		await block.render(Direct as LynxComponent<Record<string, never>>, {});
+
+		setCount((previous) => previous + 1);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(2);
+
+		const unmounting = block.background.unmountAsync();
+		setCount((previous) => previous + 1);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(2);
+
+		block.acknowledgePending();
+		for (let guard = 0; guard < 5 && block.main.commits.length < 3; guard++) {
+			await flushMicrotasks();
+		}
+		expect(block.main.commits).toHaveLength(3);
+		block.acknowledgePending();
+		await unmounting;
+		expect(JSON.parse(paint(block.main.commits).tree)).toMatchObject({
+			type: 'page',
+			children: [],
+		});
 	});
 
 	it.each([

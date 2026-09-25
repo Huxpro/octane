@@ -414,6 +414,16 @@ The linearization points are:
    attempt. Duplicate, stale, or foreign ACKs remain protocol errors, and
    teardown waits for both the sent frame and the bounded logical draft.
 
+`flushTransport()` follows the accepted-publication chain, not merely the work
+that was pending when it was called. This includes a render scheduled by an
+effect after the frame that published that effect is accepted, while a retry
+scheduled after rejection remains a distinct scheduler-owned attempt. An
+unmount request takes its own position in the same render queue: work already
+queued drains first, while updates arriving after the request cannot overtake
+teardown or publish another host frame. The host commit itself, accepted
+effect/ref/listener publication, and teardown remain irreducible ACK waits; only
+detached compiler-proved scalar calculation advances beside them.
+
 Profile builds expose blockRenderQueueMaxDepth, blockRenderMerges,
 blockRenderPrepares, blockRenderPreparesWhileAck, and blockAckRoundTrips. The
 Lynx benchmark reports those beside commit/message counts. Native storm receipts

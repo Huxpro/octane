@@ -186,6 +186,7 @@ export function createLynxBlockBackgroundCore(
 	let afterAbortTasks: (() => void)[] = [];
 	let passiveTasks: (() => void)[] = [];
 	let passiveScheduled = false;
+	let acceptedPublicationGeneration = 0;
 	let attemptActive = false;
 	let commitsInFlight = 0;
 	let renderQueueDepth = 0;
@@ -219,6 +220,7 @@ export function createLynxBlockBackgroundCore(
 		options.scheduleMicrotask(flushPassiveTasks);
 	};
 	const publishAccepted = (): void => {
+		acceptedPublicationGeneration++;
 		afterAbortTasks = [];
 		let hasError = false;
 		let firstError: unknown;
@@ -486,23 +488,43 @@ export function createLynxBlockBackgroundCore(
 		},
 
 		async flushTransport() {
-			await pending;
+			// An accepted lifecycle callback may append another render while the frame
+			// that published it is settling. Follow work across accepted publication
+			// boundaries, but do not absorb a retry queued after rejection: that retry
+			// is a distinct attempt whose failure remains owned by its scheduler path.
+			let publication = acceptedPublicationGeneration;
+			while (true) {
+				const tail = pending;
+				await tail;
+				if (publication === acceptedPublicationGeneration) return;
+				publication = acceptedPublicationGeneration;
+			}
 		},
 
 		async unmountAsync() {
-			await pending;
-			flushPassiveTasks();
-			if (mounted !== null && typeof mounted.unmount === 'function') {
-				try {
-					await mounted.unmount(context);
-					afterCommitTasks.unshift(() => {
-						mounted = null;
-					});
-				} catch (error) {
-					return resumeAfterFailure(error);
+			// Teardown is a render-queue operation, not a snapshot wait on `pending`.
+			// Taking a queue position here is the linearization point: work already
+			// queued drains before teardown, while a state notification arriving after
+			// the request queues behind it and observes the program's accepted disposal.
+			const run = renderQueue.then(async () => {
+				flushPassiveTasks();
+				if (mounted !== null && typeof mounted.unmount === 'function') {
+					try {
+						await mounted.unmount(context);
+						afterCommitTasks.unshift(() => {
+							mounted = null;
+						});
+					} catch (error) {
+						return resumeAfterFailure(error);
+					}
+					await commitAccepted();
 				}
-				await commitAccepted();
-			}
+			});
+			renderQueue = run.then(
+				() => undefined,
+				() => undefined,
+			);
+			return track(run);
 		},
 
 		dispatchTransportEvent(message: UniversalTransportEventMessage): readonly unknown[] {
