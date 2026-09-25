@@ -3858,61 +3858,61 @@ function dirtyComponentCandidate(render, hooks, state) {
 	const replacements = [];
 	for (const statement of render.setup ?? []) {
 		if (typeOnlySetupStatement(statement)) continue;
-		if (
-			statement.type !== 'VariableDeclaration' ||
-			statement.kind !== 'const' ||
-			statement.declarations?.length !== 1
-		) {
+		if (statement.type !== 'VariableDeclaration' || statement.kind !== 'const') {
 			return null;
 		}
-		const declaration = statement.declarations[0];
-		const value = unwrapFirstScreenExpression(declaration.init);
-		const hookName =
-			value?.type === 'CallExpression' && value.callee?.type === 'Identifier'
-				? state.runtimeImports.get(value.callee.name)
-				: null;
-		if (hookName === 'useState' || hookName === 'useLinkedState' || hookName === 'useReducer') {
-			const pattern = declaration.id;
-			const elements = pattern?.type === 'ArrayPattern' ? (pattern.elements ?? []) : [];
+		for (const declaration of statement.declarations ?? []) {
+			const value = unwrapFirstScreenExpression(declaration.init);
+			const hookName =
+				value?.type === 'CallExpression' && value.callee?.type === 'Identifier'
+					? state.runtimeImports.get(value.callee.name)
+					: null;
+			if (hookName === 'useState' || hookName === 'useLinkedState' || hookName === 'useReducer') {
+				const pattern = declaration.id;
+				const elements = pattern?.type === 'ArrayPattern' ? (pattern.elements ?? []) : [];
+				if (
+					pattern?.type !== 'ArrayPattern' ||
+					elements[0]?.type !== 'Identifier' ||
+					elements.slice(3).some((element) => element !== null) ||
+					elements.some((element) => element?.type === 'RestElement') ||
+					(elements[2] !== null && elements[2] !== undefined && elements[2].type !== 'Identifier')
+				) {
+					return null;
+				}
+				const getter =
+					elements[2]?.name ??
+					allocName(state, `${state.planPrefix || '__octane'}Get${sources.length}`);
+				if (elements[2] == null) {
+					const nextElements = [
+						elements[0],
+						elements[1] ?? null,
+						generatedIdentifier(getter, pattern),
+					];
+					replacements.push([
+						pattern,
+						inheritGeneratedOrigin({ ...pattern, elements: nextElements }, pattern),
+					]);
+				}
+				sources.push({ value: elements[0].name, getter, hook: hookName, origin: declaration });
+				continue;
+			}
 			if (
-				pattern?.type !== 'ArrayPattern' ||
-				elements[0]?.type !== 'Identifier' ||
-				elements.slice(3).some((element) => element !== null) ||
-				elements.some((element) => element?.type === 'RestElement') ||
-				(elements[2] !== null && elements[2] !== undefined && elements[2].type !== 'Identifier')
+				declaration.id?.type !== 'Identifier' ||
+				declaration.init == null ||
+				!dirtyPureExpression(declaration.init)
 			) {
 				return null;
 			}
-			const getter =
-				elements[2]?.name ??
-				allocName(state, `${state.planPrefix || '__octane'}Get${sources.length}`);
-			if (elements[2] == null) {
-				const nextElements = [
-					elements[0],
-					elements[1] ?? null,
-					generatedIdentifier(getter, pattern),
-				];
-				replacements.push([
-					pattern,
-					inheritGeneratedOrigin({ ...pattern, elements: nextElements }, pattern),
-				]);
-			}
-			sources.push({ value: elements[0].name, getter, hook: hookName, origin: declaration });
-			continue;
+			derived.push({
+				name: declaration.id.name,
+				statement:
+					statement.declarations.length === 1
+						? statement
+						: inheritGeneratedOrigin({ ...statement, declarations: [declaration] }, statement),
+				refs: dirtyExpressionReferences(declaration.init),
+				deps: null,
+			});
 		}
-		if (
-			declaration.id?.type !== 'Identifier' ||
-			declaration.init == null ||
-			!dirtyPureExpression(declaration.init)
-		) {
-			return null;
-		}
-		derived.push({
-			name: declaration.id.name,
-			statement,
-			refs: dirtyExpressionReferences(declaration.init),
-			deps: null,
-		});
 	}
 	if (
 		sources.length === 0 ||

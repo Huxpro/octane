@@ -2,8 +2,8 @@
 import { useLinkedState, useState } from 'octane';
 
 export function BranchReplay() @{
-	const [mode, setMode] = useState<'then' | 'case' | 'default'>('then');
-	const [linked, setLinked] = useLinkedState('source', () => 'initial');
+	const [mode, setMode] = useState<'then' | 'case' | 'default'>('then'), [linked, setLinked] =
+		useLinkedState('source', () => 'initial');
 	<view class="branch-replay">
 		<text
 			class="branch-mode"

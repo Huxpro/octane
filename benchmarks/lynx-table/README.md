@@ -47,6 +47,9 @@ control, advances it through two state changes, and performs one local
 model, while the painted mode, both branch labels, and linked value are checked
 at every step. The counter sits in an external wrapper, so observation cannot
 make the compiled component ineligible for structural or scalar replay.
+The two hook tuples intentionally share one `const` statement, covering the
+compiler's per-declarator dependency proof rather than only one declaration per
+statement.
 
 On 2026-09-15, `LYNX_TABLE_SCALES=1000 node run.mjs 1` measured **3** owner
 entries with the compiler authorization removed and **1** with descriptor

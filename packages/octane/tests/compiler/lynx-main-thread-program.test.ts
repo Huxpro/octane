@@ -698,6 +698,71 @@ export function Card() @{
 		expect(value.computations!.flatMap((group) => group.run()).sort()).toEqual(['left', 'right']);
 	});
 
+	it('replays hooks and derived values declared in one const statement', () => {
+		const value = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+export function Card() @{
+	const [left, setLeft] = useState('left'),
+		[right, setRight] = useState('right'),
+		leftLabel = 'L:' + left,
+		combined = leftLabel + ':' + right;
+	<view class={leftLabel}>
+		<text bindtap={() => { setLeft('LEFT'); setRight('RIGHT'); }}>{combined as string}</text>
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/MultiDeclaratorCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			),
+		).card({});
+
+		expect(value.computations).toHaveLength(2);
+		const tap = value.values.find((entry) => typeof entry === 'function');
+		expect(tap).toEqual(expect.any(Function));
+		(tap as () => void)();
+		expect(value.computations!.flatMap((group) => group.run())).toEqual(
+			expect.arrayContaining(['L:LEFT', 'L:LEFT:RIGHT']),
+		);
+	});
+
+	it('keeps a grouped opaque derivation on the owning-component path', () => {
+		const code = compiled(
+			`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+function format(value: number): string {
+	return String(value);
+}
+
+export function Card() @{
+	const [count] = useState(0),
+		label = format(count);
+	<view><text>{label as string}</text></view>
+}
+`,
+			{
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/OpaqueMultiDeclaratorCard.lynx.tsrx',
+				backgroundProgram: true,
+			},
+		);
+		expect(code).not.toContain('__useStateWithGetter as');
+
+		const value = evaluate(code).card({});
+		expect(value.computations).toEqual([]);
+		expect(value.values).toEqual(['0']);
+	});
+
 	it('replays useReducer state through the same dirty binding path', () => {
 		const value = evaluate(
 			compiled(
