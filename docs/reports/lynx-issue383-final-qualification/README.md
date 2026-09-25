@@ -427,6 +427,9 @@ AB/BA pairs with cold Explorer launches, DevTool disabled before each sample,
 native ADB taps, a 35 °C / thermal-status-0 gate, and the existing strict state,
 transport-ACK, and second-native-frame receipt.
 
+The implementation and this qualification update are reviewed together in
+[Huxpro/octane#395](https://github.com/Huxpro/octane/pull/395).
+
 All 20 attempts passed on their first try. Ordinary tap-to-second-frame latency
 had a 587 ms median; structural Element Template had a 533 ms median. The
 paired structural-minus-ordinary values ranged from −85 to −40 ms, so
