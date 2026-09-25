@@ -10,7 +10,11 @@ import {
 
 const commits = [
 	'e82160fc0e663f52848e2181d83c6203d633bc86',
-	'184631809c8eb61f5bbf15fa23b2470c1d38eea6',
+	// These App/index sources are byte-identical to the upstream M0 pin
+	// 184631809c8eb61f5bbf15fa23b2470c1d38eea6. Use the origin-reachable mirror
+	// for this source-shape unit test because Actions fetches origin refs only;
+	// issue291-m0-native-build.mjs still requires the exact upstream commit.
+	'7378d00477a09ed33db28f5578e5c6b674b83f9e',
 ];
 
 function show(commit, file) {
