@@ -1,0 +1,271 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-25T07:50:47.007Z",
+  "scope": "One Android 10 / Lynx SDK 4.2 continuation window over the immutable current-product ordinary and structural Element Template bundles. It contains formal ten-pair native create cells at 3,000 and 5,000 rows, plus fail-closed 10,000-row safety probes. It is not a memory, native-list, no-JIT, low-end, iOS, cross-framework, or default-switch claim.",
+  "candidate": {
+    "runnerCommit": "947b1e541a17891e52486617b211af71c6e448c5",
+    "artifactBuildCommit": "be7615df441519a99e7478d951a8f494feed6af4",
+    "branch": "feat/optimal-lynx-app-adoption",
+    "productGraphUnchangedSinceArtifactBuild": true,
+    "interveningFiles": [
+      "benchmarks/lynx-table/stages/issue291-m0-native-probe.test.mjs",
+      "docs/reports/lynx-issue383-final-qualification/README.md",
+      "docs/reports/lynx-issue383-final-qualification/evidence/android-current-head-structural-element-template-create1000-abba.json"
+    ]
+  },
+  "device": {
+    "model": "aries_10",
+    "product": "aries",
+    "android": "10",
+    "abi": "arm64-v8a",
+    "identity": "sha256:24ab544e036a591dacf6c1bcc785ddb368a731035006165abbc8e7deba7c85e0",
+    "rawIdentityRetained": false,
+    "packageVersion": "1.0",
+    "lynxSdk": "4.2",
+    "batteryTemperatureTenthsC": {
+      "min": 350,
+      "max": 350
+    },
+    "thermalStatuses": [0]
+  },
+  "protocol": {
+    "runner": "octane-issue194-device-v1",
+    "nativeReceipt": "lynx-native-bench-v2",
+    "nativeBoundary": "native-input-handler-to-second-native-frame",
+    "mainReceipt": "octane-issue194-compact-main-v1",
+    "mainBoundary": "compact product receiver frame application through ACK and complete dispatch",
+    "ordering": "AB/BA (A,B,B,A repeating) for the 3,000- and 5,000-row formal cells",
+    "coldLaunchPerAttempt": true,
+    "devtool": "disabled by a background-only preflight before every attempt; no CDP connection used",
+    "input": "native ADB taps at the registered create controls",
+    "semanticOracle": "0 to the requested row count, ids 1/2/3/999, transport ACK, two native frames, and no observed error",
+    "wireShape": {
+      "encodedBytes": 18,
+      "messages": 2,
+      "ackMessages": 1
+    }
+  },
+  "instrumentedBundles": {
+    "ordinary": {
+      "engine": "3.9",
+      "bytes": 228746,
+      "sha256": "d7ef78c0c7a4f61c2912200452b3b926797b2fa8eb66e44743c5decabe8517fd"
+    },
+    "structuralElementTemplate": {
+      "engine": "3.2",
+      "bytes": 245584,
+      "sha256": "c00df02fdd6da746ac787a196da4b5df064af3a3834bdcce79765e0b0a703f9c"
+    },
+    "disableDevtool": {
+      "bytes": 272537,
+      "sha256": "06a471fd03bb2ba58859726e24a41c2fba602c8ee8da624558bbbf957a46b020"
+    }
+  },
+  "formalCells": {
+    "create3000": {
+      "targetAcceptedSamplesPerCell": 10,
+      "acceptedSamples": 20,
+      "attempts": 20,
+      "invalidAttempts": 0,
+      "semanticOraclePassed": true,
+      "nativeLatencyMs": {
+        "ordinary": {
+          "values": [2582, 2614, 2656, 2674, 2520, 2530, 2642, 2631, 2672, 2707],
+          "min": 2520,
+          "median": 2636.5,
+          "mean": 2622.8,
+          "p90": 2677.3,
+          "max": 2707
+        },
+        "structuralElementTemplate": {
+          "values": [2521, 2419, 2415, 2455, 2492, 2534, 2469, 2483, 2440, 2461],
+          "min": 2415,
+          "median": 2465,
+          "mean": 2468.9,
+          "p90": 2522.3,
+          "max": 2534
+        },
+        "pairedStructuralMinusOrdinary": {
+          "values": [-61, -195, -241, -219, -28, 4, -173, -148, -232, -246],
+          "median": -184,
+          "mean": -153.9,
+          "p90": -24.8,
+          "improvedPairs": 9,
+          "totalPairs": 10
+        }
+      },
+      "mainCommitWallMs": {
+        "ordinaryMedian": 2409,
+        "structuralElementTemplateMedian": 2237,
+        "pairedStructuralMinusOrdinary": {
+          "values": [-60, -180, -230, -210, -29, -19, -184, -130, -243, -241],
+          "median": -182,
+          "mean": -152.6,
+          "p90": -28,
+          "improvedPairs": 10,
+          "totalPairs": 10
+        }
+      },
+      "frameBytes": {
+        "ordinaryMedian": 100859,
+        "structuralElementTemplateMedian": 100879.5,
+        "pairedStructuralMinusOrdinaryMedian": 82
+      },
+      "ownershipCensus": {
+        "ordinary": {
+          "handles": 3001,
+          "ranges": 2,
+          "listenerSlots": 6012,
+          "retainedHostRefs": 12014
+        },
+        "structuralElementTemplate": {
+          "handles": 3001,
+          "ranges": 2,
+          "listenerSlots": 6012,
+          "retainedHostRefs": 12028
+        }
+      }
+    },
+    "create5000": {
+      "targetAcceptedSamplesPerCell": 10,
+      "acceptedSamples": 20,
+      "attempts": 20,
+      "invalidAttempts": 0,
+      "semanticOraclePassed": true,
+      "nativeLatencyMs": {
+        "ordinary": {
+          "values": [5968, 6264, 5906, 6018, 6064, 6146, 6015, 5953, 6114, 6307],
+          "min": 5906,
+          "median": 6041,
+          "mean": 6075.5,
+          "p90": 6268.3,
+          "max": 6307
+        },
+        "structuralElementTemplate": {
+          "values": [5752, 5831, 5736, 5758, 5794, 5590, 5581, 5638, 5648, 5940],
+          "min": 5581,
+          "median": 5744,
+          "mean": 5726.8,
+          "p90": 5841.9,
+          "max": 5940
+        },
+        "pairedStructuralMinusOrdinary": {
+          "values": [-216, -433, -170, -260, -270, -556, -434, -315, -466, -367],
+          "median": -341,
+          "mean": -348.7,
+          "p90": -211.4,
+          "improvedPairs": 10,
+          "totalPairs": 10
+        }
+      },
+      "mainCommitWallMs": {
+        "ordinaryMedian": 5695.5,
+        "structuralElementTemplateMedian": 5407.5,
+        "pairedStructuralMinusOrdinary": {
+          "values": [-214, -412, -154, -251, -265, -554, -402, -294, -458, -362],
+          "median": -328,
+          "mean": -336.6,
+          "p90": -208,
+          "improvedPairs": 10,
+          "totalPairs": 10
+        }
+      },
+      "frameBytes": {
+        "ordinaryMedian": 168843.5,
+        "structuralElementTemplateMedian": 168812.5,
+        "pairedStructuralMinusOrdinaryMedian": -73
+      },
+      "ownershipCensus": {
+        "ordinary": {
+          "handles": 5001,
+          "ranges": 2,
+          "listenerSlots": 10012,
+          "retainedHostRefs": 20014
+        },
+        "structuralElementTemplate": {
+          "handles": 5001,
+          "ranges": 2,
+          "listenerSlots": 10012,
+          "retainedHostRefs": 20028
+        }
+      }
+    }
+  },
+  "create10000Safety": {
+    "ordinary": {
+      "expectedOutcome": "native-crash",
+      "acceptedCrashReceipts": 1,
+      "attempts": 1,
+      "loadToCrashMs": 24048,
+      "signal": "SIGABRT",
+      "reason": "JNI global reference table overflow",
+      "globalReferenceLimit": 51200,
+      "referenceTableSummary": {
+        "com.lynx.tasm.behavior.PaintingContext$a": 30000,
+        "w9.w": 20474
+      },
+      "semanticStateProduced": false
+    },
+    "structuralElementTemplate": {
+      "expectedOutcome": "completed",
+      "acceptedSamples": 1,
+      "attempts": 2,
+      "invalidAttempts": [
+        {
+          "outcome": "timeout",
+          "timeoutMs": 180000,
+          "rejectionReasons": ["attribution", "state"],
+          "nativeCrashObserved": false
+        }
+      ],
+      "acceptedSample": {
+        "semanticOraclePassed": true,
+        "nativeLatencyMs": 21525,
+        "mainCommitWallMs": 20908,
+        "frameBytes": 338667,
+        "transportAcknowledged": true,
+        "nativeFrames": 2,
+        "ownershipCensus": {
+          "handles": 10001,
+          "ranges": 2,
+          "listenerSlots": 20012,
+          "retainedHostRefs": 40028
+        }
+      },
+      "interpretation": "The accepted retry proves one correct completion and avoids the ordinary owner's JNI crash, but the preceding 180-second timeout makes this an unstable safety result rather than a qualified latency cell."
+    }
+  },
+  "sourceReports": [
+    {
+      "role": "create3000-formal",
+      "sha256": "2267a92010c8997dffe44e68b48266caaf182e732a82e8d13137f83e68a222b0"
+    },
+    {
+      "role": "create5000-formal",
+      "sha256": "5f297d5893107d1d61a85f3f7804aa0f9d6f4e6f9ffda2644968babc37683594"
+    },
+    {
+      "role": "create10000-ordinary-native-crash",
+      "sha256": "378a266e38d48d28055972ebd3980d2c009dbafb08b18175296035528618d8d2"
+    },
+    {
+      "role": "create10000-structural-element-template-correctness",
+      "sha256": "6c36427442d7300e5e6d6a45a511d25d91cda6249b8d9babf5eb2d686e12fc7b"
+    }
+  ],
+  "sanitization": "This compact record excludes the raw device endpoint, local paths, per-event timestamps, process IDs, raw log lines, and generated row labels.",
+  "decision": {
+    "create3000": "semantic and registered ten-pair sample-count gates passed; structural Element Template improved nine of ten native pairs and all ten main-commit pairs",
+    "create5000": "semantic and registered ten-pair sample-count gates passed; structural Element Template improved all ten pairs at both latency boundaries",
+    "create10000": "failed as a stable configuration gate: ordinary crashed at the Android JNI reference ceiling, while structural Element Template completed one retry only after one 180-second timeout",
+    "defaultSwitch": "not authorized",
+    "roadmapVerdict": "NO-GO remains unchanged",
+    "remaining": [
+      "stable 10,000-row and higher-scale behavior",
+      "fresh-process peak, settled, and after-clear native memory plus GC cycles on one Android 11+ device/runtime cohort",
+      "registered non-create operations, native-list, no-JIT, and low-end Android matrix",
+      "iOS correctness, latency, memory, and bytecode evidence",
+      "cross-framework and latest-upstream comparison with a shared supported receipt"
+    ]
+  }
+}
