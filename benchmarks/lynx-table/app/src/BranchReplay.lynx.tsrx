@@ -1,14 +1,18 @@
 /** @jsxImportSource @octanejs/lynx/intrinsics */
-import { useState } from 'octane';
+import { useLinkedState, useState } from 'octane';
 
 export function BranchReplay() @{
 	const [mode, setMode] = useState<'then' | 'case' | 'default'>('then');
+	const [linked, setLinked] = useLinkedState('source', () => 'initial');
 	<view class="branch-replay">
 		<text
 			class="branch-mode"
 			bindtap={() => setMode(mode === 'then' ? 'case' : mode === 'case' ? 'default' : 'then')}
 		>
 			{'mode:' + mode}
+		</text>
+		<text class="linked-state" bindtap={() => setLinked((value) => value + '!')}>
+			{'linked:' + linked}
 		</text>
 		<view class="branch-if">
 			@if (mode === 'then') {

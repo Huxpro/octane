@@ -240,7 +240,7 @@ try {
 		modelOps.branch_owner_renders = countStat(1, iterations);
 		meta.branchReplay = branchReplay;
 		console.log(
-			`branch-replay=${branchReplay.ownerRenders} owner render (${branchReplay.states.join(' -> ')})`,
+			`branch-replay=${branchReplay.ownerRenders} owner render (${branchReplay.states.join(' -> ')}; ${branchReplay.linkedStates.join(' -> ')})`,
 		);
 	}
 

@@ -325,6 +325,17 @@ function evaluate(code: string): EvaluatedModule {
 		let value = initial;
 		return [value, (action: unknown) => (value = reducer(value, action)), () => value] as const;
 	};
+	const useLinkedState = (
+		source: unknown,
+		reconcile: (source: unknown, previous: undefined) => unknown,
+	) => {
+		let value = reconcile(source, undefined);
+		return [
+			value,
+			(next: unknown) => (value = typeof next === 'function' ? (next as any)(value) : next),
+			() => value,
+		] as const;
+	};
 
 	const renderer = {
 		universalPlan: (_renderer: string, root: unknown, address?: unknown) => {
@@ -361,8 +372,10 @@ function evaluate(code: string): EvaluatedModule {
 			computations: readonly any[] = [],
 		) => ({ program, values, computations }),
 		useState,
+		useLinkedState,
 		useReducer,
 		__useStateWithGetter: useState,
+		__useLinkedStateWithGetter: useLinkedState,
 		defineUniversalComponent: (_renderer: string, render: unknown, metadata: unknown) => {
 			componentMetadata.push(metadata);
 			return render;
@@ -718,6 +731,41 @@ export function Card() @{
 		expect(tap).toEqual(expect.any(Function));
 		(tap as () => void)();
 		expect(computation.run()).toEqual(['2']);
+	});
+
+	it('emits replayable computations for local linked-state edits', () => {
+		const value = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useLinkedState } from 'octane';
+
+export function Card({ source }: { source: string }) @{
+	const [label, setLabel] = useLinkedState(source, (next) => 'initial:' + next);
+	<view><text bindtap={() => setLabel((current) => current + '!')}>{label as string}</text></view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/LinkedStateCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			),
+		).card({ source: 'one' });
+
+		expect(value.computations).toHaveLength(1);
+		const computation = value.computations![0];
+		expect(computation).toMatchObject({
+			kind: 'scalar',
+			purity: 'pure',
+			escape: 'component-render',
+		});
+		expect(computation.run()).toEqual(expect.arrayContaining(['initial:one']));
+		const tap = value.values.find((entry) => typeof entry === 'function');
+		expect(tap).toEqual(expect.any(Function));
+		(tap as () => void)();
+		expect(computation.run()).toEqual(expect.arrayContaining(['initial:one!']));
 	});
 
 	it('keeps scalar replay separate from structural invalidation', () => {

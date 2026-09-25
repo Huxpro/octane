@@ -21,6 +21,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	__useLinkedStateWithGetter,
 	createContext,
 	createUniversalHookScope,
 	startTransition,
@@ -230,7 +231,7 @@ describe('universal hook scope', () => {
 		let update!: (value: string | ((previous: string) => string)) => void;
 		const render = (source: string): string =>
 			scope.render(() => {
-				const [value, setValue] = useLinkedState(
+				const [value, setValue] = useLinkedState<string, string>(
 					source,
 					(next, previous) =>
 						previous === undefined ? `initial:${next}` : `${next}<-${previous.value}`,
@@ -255,6 +256,73 @@ describe('universal hook scope', () => {
 		scope.abort();
 		expect(pass('alpha')).toBe('initial:alpha!');
 		expect(pass('beta')).toBe('beta<-initial:alpha!');
+		scope.dispose();
+	});
+
+	it('projects local linked-state edits while preserving source reconciliation', () => {
+		const scheduled: unknown[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				scheduled.push(slot);
+			},
+		});
+		let update!: (value: string | ((previous: string) => string)) => void;
+		let getValue!: () => string;
+		const render = (source: string): string =>
+			scope.render(() => {
+				const [value, setValue, get] = __useLinkedStateWithGetter<string, string>(
+					source,
+					(next, previous) =>
+						previous === undefined ? `initial:${next}` : `${next}<-${previous.value}`,
+					undefined,
+					'linked',
+				);
+				update = setValue;
+				getValue = get;
+				return value;
+			});
+
+		expect(render('alpha')).toBe('initial:alpha');
+		scope.commit();
+		update((value) => value + '!');
+		expect(scheduled).toEqual(['linked']);
+
+		let projected = '';
+		expect(
+			scope.renderDirty(['linked'], (sources) => {
+				projected = sources[0]!() as string;
+			}),
+		).toBe(true);
+		expect(projected).toBe('initial:alpha!');
+		scope.abort();
+
+		expect(
+			scope.renderDirty(['linked'], (sources) => {
+				projected = sources[0]!() as string;
+			}),
+		).toBe(true);
+		scope.commit();
+		expect(getValue()).toBe('initial:alpha!');
+
+		expect(render('beta')).toBe('beta<-initial:alpha!');
+		scope.commit();
+		scope.dispose();
+	});
+
+	it('declines linked-state projection when no current-value getter exists', () => {
+		const scope = createUniversalHookScope({ renderer: 'test', scheduleRender() {} });
+		scope.render(() =>
+			useLinkedState<string, string>('alpha', (source) => `initial:${source}`, undefined, 'linked'),
+		);
+		scope.commit();
+		let ran = false;
+		expect(
+			scope.renderDirty(['linked'], () => {
+				ran = true;
+			}),
+		).toBe(false);
+		expect(ran).toBe(false);
 		scope.dispose();
 	});
 

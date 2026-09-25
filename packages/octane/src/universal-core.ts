@@ -6574,7 +6574,7 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			for (const slot of slots) {
 				const hook = record.hooks.get(slot);
 				if (hook?.kind === 'reducer') sources.push(hook.get);
-				else if (hook?.kind === 'state' && !('linked' in hook)) sources.push(hook.get);
+				else if (hook?.kind === 'state' && typeof hook.get === 'function') sources.push(hook.get);
 				else return false;
 			}
 			const owner = draftOwner(record, null, HOOK_SCOPE_REPLAY);

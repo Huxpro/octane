@@ -42,17 +42,23 @@ node benchmarks/bench.mjs --only lynx-table --ratios
 ```
 
 The same deterministic run also mounts a small authored `@if` + `@switch`
-control and advances it through two state changes. Its owner-render ratio is
-gated at 1× against a one-mount model, while the painted mode and both branch
-labels are checked at every step. The counter sits in an external wrapper, so
-observation cannot make the compiled component ineligible for structural
-replay.
+control, advances it through two state changes, and performs one local
+`useLinkedState` edit. Its owner-render ratio is gated at 1× against a one-mount
+model, while the painted mode, both branch labels, and linked value are checked
+at every step. The counter sits in an external wrapper, so observation cannot
+make the compiled component ineligible for structural or scalar replay.
 
 On 2026-09-15, `LYNX_TABLE_SCALES=1000 node run.mjs 1` measured **3** owner
 entries with the compiler authorization removed and **1** with descriptor
 replay enabled. Both arms painted the same
 `then/default → else/case → else/default` sequence; the ordinary table control
 also stayed at 2 selection commands, 256 serialized bytes, and 2 Row renders.
+
+On 2026-09-25, the same one-iteration control measured **2** owner entries when
+local linked-state edits were excluded from dirty projection and **1** after
+getter-backed `useLinkedState` cells joined the compiled scalar path. Both arms
+painted `linked:initial → linked:initial!`; the ordinary 1,000-row control stayed
+at 2 selection commands, 256 serialized bytes, and 2 Row renders.
 
 ### Who asks about a mounted node
 

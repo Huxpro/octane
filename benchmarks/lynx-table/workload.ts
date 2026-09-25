@@ -672,6 +672,7 @@ async function tapButton(harness: Harness, label: string): Promise<void> {
 export interface BranchReplayResult {
 	readonly ownerRenders: number;
 	readonly states: readonly [initial: string, caseState: string, defaultState: string];
+	readonly linkedStates: readonly [initial: string, edited: string];
 	readonly diagnostics: readonly string[];
 }
 
@@ -701,6 +702,10 @@ export async function runBranchReplay(): Promise<BranchReplayResult> {
 					value.startsWith('mode:') || value.startsWith('if:') || value.startsWith('switch:'),
 			)
 			.join('|');
+	const linkedState = (): string =>
+		findAll(harness.papi, (node) => node.type === 'text')
+			.map(textContentOf)
+			.find((value) => value.startsWith('linked:')) ?? '';
 	try {
 		await harness.root.render(CountedBranchReplay, {});
 		await until(
@@ -709,6 +714,7 @@ export async function runBranchReplay(): Promise<BranchReplayResult> {
 			'initial branch',
 		);
 		const initial = branchState();
+		const linkedInitial = linkedState();
 
 		await tapButton(harness, 'mode:then');
 		await until(harness, () => branchState() === 'mode:case|if:else|switch:case', 'case branch');
@@ -720,9 +726,12 @@ export async function runBranchReplay(): Promise<BranchReplayResult> {
 			() => branchState() === 'mode:default|if:else|switch:default',
 			'default branch',
 		);
+		await tapButton(harness, linkedState());
+		await until(harness, () => linkedState() === 'linked:initial!', 'local linked-state edit');
 		return {
 			ownerRenders,
 			states: [initial, caseState, branchState()],
+			linkedStates: [linkedInitial, linkedState()],
 			diagnostics: harness.diagnostics.map((error) => error.message),
 		};
 	} finally {

@@ -3871,7 +3871,7 @@ function dirtyComponentCandidate(render, hooks, state) {
 			value?.type === 'CallExpression' && value.callee?.type === 'Identifier'
 				? state.runtimeImports.get(value.callee.name)
 				: null;
-		if (hookName === 'useState' || hookName === 'useReducer') {
+		if (hookName === 'useState' || hookName === 'useLinkedState' || hookName === 'useReducer') {
 			const pattern = declaration.id;
 			const elements = pattern?.type === 'ArrayPattern' ? (pattern.elements ?? []) : [];
 			if (
