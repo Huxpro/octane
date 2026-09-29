@@ -152,6 +152,7 @@ test('profiled first-screen rendering works without a stage-harness slice hook',
 		for (const relative of [
 			...sourceFiles,
 			'packages/lynx/src/resource.ts',
+			'packages/lynx/src/core/block-component-features.ts',
 			'packages/lynx/src/core/first-screen.ts',
 			'packages/lynx/src/core/program-abi.ts',
 			'packages/lynx/src/core/program-registry.ts',
