@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "recordedAt": "2026-09-14",
-  "scope": "One leased Android cohort running the experimental compiler-proved whole-root Element Template backend in official Lynx Explorer 4.1.0. The accepted samples prove this table workload and the recorded native boundaries only; they are not a general Android, iOS, parity, memory, or comparative-performance claim.",
+  "scope": "Leased Android cohorts running the experimental compiler-proved whole-root Element Template backend in official Lynx Explorer 4.1.0. The earlier samples prove the recorded safety boundary; the exact-head follow-up compares one 1,000-row create cell with 10 AB/BA pairs. Neither is a general Android, iOS, memory, list, no-JIT, cross-framework, or default-switch claim.",
   "explorer": {
     "release": "4.1.0",
     "asset": "LynxExplorer-noasan-release.apk",
@@ -75,6 +75,36 @@
       "explorerAliveAfterSample": true,
       "freshLogcatCrashMarkers": false,
       "interpretation": "The eager 30,000-row table exceeds the resident native-node budget and is rejected before Android's weak-global-reference table. A virtualized native list is the supported architecture for this scale."
+    },
+    "exactHeadCreate1000Comparison": {
+      "evidence": "../../../docs/reports/lynx-issue383-final-qualification/evidence/android-structural-element-template-create1000-abba.json",
+      "candidateCommit": "54f2ac806e4aabe57d9a177ccd1ca7d73f99a7f9",
+      "protocol": "octane-issue194-device-v1 with lynx-native-bench-v2 and octane-issue194-compact-main-v1 receipts",
+      "ordering": "AB/BA",
+      "accepted": 20,
+      "attempted": 20,
+      "errors": 0,
+      "nativeLatencyMedianMs": {
+        "ordinary": 585.5,
+        "structuralElementTemplate": 524.5,
+        "pairedDelta": -64,
+        "improvedPairs": 10,
+        "totalPairs": 10
+      },
+      "mainCommitWallMedianMs": {
+        "ordinary": 485.5,
+        "structuralElementTemplate": 424.5,
+        "pairedDelta": -70,
+        "improvedPairs": 10,
+        "totalPairs": 10
+      },
+      "shippingBundleDelta": {
+        "bytes": 16678,
+        "percent": 6.34,
+        "gzipBytes": 6672,
+        "brotliBytes": 5676
+      },
+      "interpretation": "The complete structural Element Template configuration won this exact-head create cell at both boundaries while retaining exact semantic state. App-bundle engine 3.2 versus ordinary 3.9 is an inherent configuration difference, frame bytes were effectively unchanged, and the larger shipping bundle is a recorded cost."
     }
   },
   "rejectedCandidates": [
@@ -102,6 +132,6 @@
     "nativeProcessSurvivesSupportedAndRejectedFinalSamples": "passed",
     "androidGeneralRendererMatrix": "not-run",
     "ios": "not-run",
-    "comparativePerformance": "not-measured"
+    "comparativePerformance": "passed for the exact-head 1,000-row create configuration comparison only; the registered broader matrix remains open"
   }
 }

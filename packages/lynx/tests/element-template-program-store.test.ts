@@ -316,8 +316,47 @@ describe('whole-root Element Template program store', () => {
 		expect(creates[1]!.attributes[2]).toBe(false);
 	});
 
+	it('reuses detached native templates with fresh values and event identities', () => {
+		const { creates, page, papi } = fakePAPI();
+		const store = createLynxElementTemplateProgramStore(papi, page, 73);
+		applyLynxCompiledProgramFrame(store, store.page, resolver, firstFrame());
+
+		applyLynxCompiledProgramFrame(
+			store,
+			store.page,
+			resolver,
+			encodeLynxDeltaMessage([{ op: 'remove', firstInstance: 3, count: 2 }]),
+		);
+		expect(store.size()).toBe(1);
+		expect(creates[0]!.children.get(0)).toEqual([]);
+
+		applyLynxCompiledProgramFrame(
+			store,
+			store.page,
+			resolver,
+			encodeLynxDeltaMessage([
+				{
+					op: 'run',
+					templateId: 2,
+					parent: { instance: 2, slot: 7 },
+					before: null,
+					firstInstance: 5,
+					count: 2,
+					values: ['row-5', 'row-6'],
+				},
+			]),
+		);
+
+		expect(creates).toHaveLength(3);
+		const mounted = creates[0]!.children.get(0)!;
+		expect(mounted.map((handle) => handle.attributes[0])).toEqual(['row-5', 'row-6']);
+		expect(
+			mounted.map((handle) => decodeLynxNativeEventToken(handle.attributes[1] as string).id),
+		).toEqual([5, 6]);
+	});
+
 	it('rolls back native handles, definitions, and listener identity after a rejected frame', () => {
-		const { page, papi } = fakePAPI();
+		const { creates, page, papi } = fakePAPI();
 		const store = createLynxElementTemplateProgramStore(papi, page, 73);
 		expect(() =>
 			applyLynxCompiledProgramFrame(store, store.page, resolver, [...firstFrame(), 99, 0]),
@@ -328,6 +367,7 @@ describe('whole-root Element Template program store', () => {
 
 		applyLynxCompiledProgramFrame(store, store.page, resolver, firstFrame());
 		expect(store.size()).toBe(3);
+		expect(creates).toHaveLength(3);
 	});
 
 	it('adopts an already-painted template tree and keeps rejection retryable', () => {

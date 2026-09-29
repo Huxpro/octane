@@ -9,6 +9,7 @@ import { emitLynxMainThreadProgram } from '../src/compiler/emit-main-thread-prog
 import { installLynxCompiledProgramProductReceiver } from '../src/core/compiled-program-product-receiver.js';
 import { createLynxCompiledProgramTransport } from '../src/core/compiled-program-transport.js';
 import { decodeLynxDeltaMessage, encodeLynxDeltaMessage } from '../src/core/delta-protocol.js';
+import { LynxMainThreadElement } from '../src/core/main-thread-element.js';
 import type { LynxElementPAPI } from '../src/core/papi.js';
 import type { LynxContextProxy, LynxContextProxyEvent } from '../src/core/protocol.js';
 import {
@@ -164,7 +165,7 @@ describe('@octanejs/lynx compact product worklets', () => {
 				runWorklet(value: LynxActivatedMainThreadWorklet, args?: readonly unknown[]): unknown;
 			}
 		).runWorklet;
-		expect(runWorklet(active)).toBe(node);
+		expect(runWorklet(active)).toBeInstanceOf(LynxMainThreadElement);
 		await expect(runWorklet(active, ['background']) as Promise<unknown>).resolves.toEqual({
 			id: 'compact-product:background',
 			value: 'payload',

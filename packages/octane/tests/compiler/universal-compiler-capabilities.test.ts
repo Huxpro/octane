@@ -297,6 +297,33 @@ describe('component-owned Lynx template rows', () => {
 	});
 
 	it.each([
+		['strict inequality', 'selected !== row.id'],
+		['a negated predicate', '!(selected === row.id)'],
+		['a conditional prop', "selected === row.id ? 'active' : 'idle'"],
+		['a logical prop', "selected === row.id && 'active'"],
+		['a template prop', '`${selected === row.id}`'],
+	])('certifies keyed selection through %s', (_label, expression) => {
+		const args = compiledUniversalForArguments(
+			source.replace('selected={selected === row.id}', `selected={${expression}}`),
+			{ renderer: resolvedLynxRenderer },
+		);
+
+		expect(args[10]).toMatchObject({
+			type: 'ArrayExpression',
+			elements: [
+				{ type: 'Identifier', name: 'selected' },
+				{
+					type: 'ArrayExpression',
+					elements: [{ type: 'Identifier', name: 'onSelect' }],
+				},
+				{ type: 'Literal', value: 'row' },
+				{ type: 'Literal', value: true },
+				{ type: 'Literal', value: 'id' },
+			],
+		});
+	});
+
+	it.each([
 		['development compilation', source, { dev: true }],
 		['profiling compilation', source, { profile: true }],
 		['disabled automatic memoization', source, { autoMemo: false }],
@@ -313,6 +340,16 @@ describe('component-owned Lynx template rows', () => {
 		[
 			'a selection that does not compare with the key',
 			source.replace('selected === row.id', 'selected === row.label'),
+			{},
+		],
+		[
+			'more than one key predicate',
+			source.replace('selected === row.id', 'selected === row.id || selected !== row.id'),
+			{},
+		],
+		[
+			'an opaque selection call',
+			source.replace('selected === row.id', 'isSelected(selected, row.id)'),
 			{},
 		],
 		['a computed key property', source.replace('key row.id', "key row['id']"), {}],

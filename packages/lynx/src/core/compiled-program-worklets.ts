@@ -248,7 +248,7 @@ export function createLynxCompiledProgramWorkletStore<Node extends LynxElementRe
 		if (next !== null) {
 			registry.retainRef(next, null);
 			try {
-				registry.updateRef(next, node);
+				registry.mountRef(next, node);
 			} catch (error) {
 				registry.releaseRef(next);
 				throw error;

@@ -36,6 +36,13 @@ export interface LynxBlockProgramContext {
 	 */
 	afterCommit(task: () => void): void;
 	/**
+	 * Queue accepted insertion-effect work ahead of every layout phase. Lynx runs
+	 * this after native acknowledgement rather than synchronously blocking paint.
+	 */
+	afterInsertionCommit(task: () => void): void;
+	/** Queue accepted layout-effect work after every insertion phase. */
+	afterLayoutCommit(task: () => void): void;
+	/**
 	 * Queue passive lifecycle work after the current commit is acknowledged and
 	 * after its synchronous layout work. The owning background core schedules the
 	 * task on its explicit Lynx microtask scheduler and flushes pending passive

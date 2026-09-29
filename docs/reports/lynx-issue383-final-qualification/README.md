@@ -18,7 +18,7 @@ Element Template owner. It does not change the NO-GO decision or the default,
 but it replaces the earlier unbounded ordinary-Element creation path for the
 eligible opt-in slice and adds a narrowly qualified Android safety boundary.
 
-## Current-head status (2026-09-15)
+## Current-head status (2026-09-25)
 
 The frozen campaign below still describes code candidate `b62a642a1`, not the
 newer local product line. The later product head passed complete Lynx and
@@ -27,13 +27,13 @@ background program by 6,794 raw / 2,080 gzip bytes through compiler-proved
 feature pruning; its decoded main-thread program stayed byte-identical. See the
 [R10 current-head addendum](../lynx-issue382-release-candidate/README.md#post-candidate-current-head-graph-requalification).
 
-No qualified Android or iOS client is connected in the current environment;
-the only available runtime is the built-in headless Linux client, which cannot
-stand in for native latency, memory/GC, no-JIT, device bytecode, or AB/BA
-evidence. The latest #383 follow-up also leaves Element Template fail-closed
-pending same-runtime fresh-process memory and the powered full matrix. The
-release decision therefore remains **NO-GO**, and neither the default switch nor
-old-path retirement is authorized.
+A qualified leased Android client subsequently became available for one narrow
+exact-head window. It completed 10 AB/BA pairs for the 1,000-row create cell,
+but no iOS client or registered fresh-process memory lane became available.
+That result closes one configuration-level Android latency cell only; it cannot
+stand in for memory/GC, no-JIT, native list, device bytecode, cross-framework,
+or the powered full matrix. The release decision therefore remains **NO-GO**,
+and neither the default switch nor old-path retirement is authorized.
 
 The latest authoritative #383 correction invalidates the earlier `6.5655x`
 Element Template/latest-upstream Native-heap ratio because timeout recovery had
@@ -56,6 +56,78 @@ the reduced slot arity and metadata shape, and a real production Element
 Template build retains the structural feature module. This proves one fewer
 native attribute slot per live template instance; it does not establish the
 Native heap delta without a new qualified-device cohort.
+
+The exact-head Android follow-up at `54f2ac806` compared the automatic ordinary
+compiled-program owner with the compiler-proved structural Element Template
+owner in one cold-launch AB/BA window. All 20 samples were accepted on their
+first attempt, retained the exact 0-to-1,000-row state oracle, kept DevTool
+disabled, and reported no errors. The Native input-to-second-frame median moved
+from 585.5 ms to 524.5 ms; Element Template won all 10 pairs, with a paired
+median delta of -64 ms. Compact main-thread frame application through ACK and
+complete moved from 485.5 ms to 424.5 ms and also won all 10 pairs, with a
+paired median delta of -70 ms. The compact frame payload median was effectively
+unchanged, so transport bytes do not explain the result.
+
+This is a complete-configuration comparison, not a single-primitive causal
+claim: both cells ran on Lynx SDK 4.1, but the ordinary bundle declares engine
+3.9 while the current Element Template encoder declares 3.2. The uninstrumented
+production Element Template bundle is also 16,678 raw bytes (+6.34%), 6,672
+gzip bytes (+7.24%), and 5,676 Brotli bytes (+7.13%) larger. The result is
+positive evidence for this admitted app shape, while the engine-version
+difference, bundle cost, missing native memory cohort, and broader matrix remain
+explicit acceptance inputs.
+
+The same immutable structural Element Template product bundle later completed
+five fresh Android 10 cold launches of the registered 10k mutation sequence:
+create, update every tenth row, select the second row, swap rows 2 and 999, a
+50-tick update storm, a 30-tick select storm, and remove the current second row.
+All 35 operations passed on their first attempt. Every operation carried one
+Native ContextProxy ACK, one `complete` message, and two native frames; the
+storms additionally carried all 50/30 tick ACKs and render barriers. Their
+latest main versions were exactly 55 and 85 in every run, proving that the
+runner attributed the final storm commits instead of consuming the next input.
+
+The Native input-to-second-frame medians were 21,717 ms create, 220 ms update,
+43 ms select, 75 ms swap, 8,792 ms for all 50 update ticks, 1,436 ms for all 30
+select ticks, and 145 ms remove. Update-storm first feedback was 177 ms median;
+select-storm first feedback was 19 ms. Pure mutations retained the populated
+owner census exactly. Remove changed it by precisely one live handle, two
+listener slots, and four retained host references, all represented by one
+recycled handle and four recycled host references. This closes the narrow 10k
+semantic/owner gate for those operations at `n=5`; it is one serialized
+single-cell cohort, not a powered AB/BA comparison or 100 independent inputs,
+and it does not close append, list, process-memory/GC, or platform coverage.
+
+The next five-sample cold-launch cohort exercised the missing 10k append cell.
+All five 10,000-row creates passed on their first attempt with the populated
+10,001-handle / 40,028-retained-host-ref census. None of the following
+append-1,000 operations reached 11,000 rows. Each deterministically raised
+`RangeError: Octane Lynx OL512` because the projected 44,028 resident plan nodes
+exceed the registered 40,960 structural Element Template live limit. The
+runner's normal growth oracle therefore fails this cell on
+correctness/reachability; it is not an unmeasured performance comparison.
+
+The rejection itself was atomic in all five launches: there was no accepted
+main commit, all sampled row identity/label/selection fields remained at the
+10,000-row pre-state, and the Native receipt still carried its ACK and two
+frames. The rejection-receipt latency was 844–887 ms (875 ms median), but that
+is failure-path timing, not successful append latency. This closes the
+question of what happens at 10k append for the structural owner: it fails
+safely and confirms that >10k table work must move to the virtualized
+native-list architecture. It does not close the native-list gate.
+
+A later native-list investigation separated that gate into correctness and
+performance. The historical list observer admitted a descendant whose class
+was `bench-list-cell-body` when searching for `bench-list-cell`; it could then
+report an undefined `item-key` even though the real `list-item` had the valid
+`row-N` key. The repaired observer now requires both `localName=list-item` and
+an exact class token. Current Octane bundles mounted and scrolled at 1k and 10k,
+and a dedicated current-head Android lifecycle fixture proved physical-node
+reuse, keyed state isolation and re-entry, background events, main-thread refs
+and events, computed-style reads, attribute/style writes, and
+main-to-background callbacks. This closes the recorded Android semantic slice,
+not the performance gate: no formal repeated timing, fling, memory, peer, or
+platform cohort was run, so R11 remains **NO-GO**.
 
 ## Frozen cohort
 
@@ -180,17 +252,55 @@ cross-framework performance comparison. It also cannot establish candidate
 list correctness, recycling, fling smoothness, or wire cost. A repaired
 fixture/observer and stable DevTool lifecycle are prerequisites for a rerun.
 
+### 2026-09-25 observer correction and semantic rerun
+
+The historical DNF attribution above was traced to the observer rather than an
+Octane list-key defect. Its substring search matched both the real
+`list-item.bench-list-cell` and the descendant
+`view.bench-list-cell-body`. The correction in
+[Huxpro/lynx-js-framework-benchmark#71](https://github.com/Huxpro/lynx-js-framework-benchmark/pull/71)
+describes candidates before selecting them, admits only `list-item` plus the
+exact class token, and continues to reject a malformed exact cell. Its full
+suite passed 219/219 tests and revalidated all 50 frozen evidence entries.
+
+On Lynx Sandbox, ordinary Octane list bundles then mounted and scrolled at both
+1,000 and 10,000 rows. One physical text node was observed as `row-0`, then
+`row-22`, then `row-0`, establishing actual native reuse rather than merely a
+large static tree.
+
+The dedicated 100-row lifecycle fixture exposed and fixed a separate real
+device defect: Octane had published the opaque Element PAPI handle directly to
+`main-thread:ref`. JSDOM masked this because its raw node already implements
+`setAttribute`; real Lynx correctly failed because the handle is not a
+`MainThread.Element`. Host ref mounts now wrap the native handle with the Lynx
+Element API while ordinary ref-value updates remain unchanged.
+
+The rebuilt fixture passed the full row-0 → row-15 → row-0 sequence. Background
+tap state advanced independently to 1 for both keys and row 0 retained 1 after
+re-entry. Native node IDs 17 and 20 changed owners from row 0 to row 15. The
+main-thread handler read the pre-write native color, wrote a supported
+`aria-label` and a distinct color, and called the background thread with the
+current owner. The callbacks arrived as row 0, row 15, row 0; after reuse, node
+20 changed from `main-owner:row-0` / `#d6efc7` to
+`main-owner:row-15` / `#c7ddef`. Together with the unit stale-activation checks,
+this proves the current handler/ref replaced the retired owner rather than
+calling it.
+
+This rerun is deliberately classified as correctness evidence. It collected no
+registered latency repetitions or fling-frame distribution and therefore makes
+no native-list performance or ranking claim.
+
 ## Release-gate disposition
 
 | Gate inherited from #290/#291/#383 | Result | Evidence or gap |
 | --- | --- | --- |
-| Android output, identity, events/effects, real input | **Partial / fail** | Smaller table cells passed semantic state checks and native taps; large creation, high-scale startup, and all list cells failed. |
+| Android output, identity, events/effects, real input | **Partial / fail** | Current-product structural create cells at 1k, 3k, and 5k passed their paired semantic samples and native taps. Fresh ET-only 10k create and create-clear-recreate cohorts each passed 5/5 cold starts; a separate 5/5 10k sequence passed update-every-tenth, select, swap, 50/30-tick storms, and remove with exact state, ACK, two frames, and strict ownership census. The 10k→11k append cell failed 5/5 at the explicit OL512 live-capacity boundary while atomically preserving its 10k pre-state. The ordinary owner still crashes at the JNI global-reference ceiling, and higher-scale startup plus all list cells remain failed or unqualified. |
 | Latest upstream strict win, weighted geometric mean, CI upper bound `< 1.0` | **Inconclusive / fail** | Upstream lacks the Native producer; no valid full scorecard exists. |
 | Peer strict win and per-cell non-inferiority CI upper bound `<= 1.05` | **Fail** | Candidate creation is materially slower and becomes DNF at 10k while every peer completes. |
-| At least 10 independent AB/BA pairs | **Missing** | The diagnostic Native matrix used 5 table and 3 startup repetitions; it is not relabeled as formal AB/BA. |
-| Ready/first-tap/steady p95 from at least 100 valid interactions | **Missing** | No cell has the required 100 valid samples; list has none. |
+| At least 10 independent AB/BA pairs | **Partial** | The current-product ordinary/structural Element Template 1k, 3k, and 5k create cells each completed 10 pairs; the 10k mutation sequence is a single-cell `n=5` correctness cohort, and the 10k+ performance, memory, list, upstream, and peer matrix has not completed. |
+| Ready/first-tap/steady p95 from at least 100 valid interactions | **Missing** | The mutation cohort has five serialized sequences / 35 registered inputs, not 100 independent samples; list has none. |
 | Peak/settled/after-clear heap and 20 create-clear-recreate GC cycles | **Missing** | No current-candidate Native memory campaign was completed. |
-| Native list reuse, recycle, fling, and stable identity | **Fail** | 640/640 Native attempts DNF across the lane. |
+| Native list reuse, recycle, fling, and stable identity | **Partial** | The historical 640-attempt lane is invalid because of observer/transport failure. A current-head Android semantic run now passes 1k/10k reachability, physical reuse, keyed state re-entry, refs, events, Element API mutation/measurement, and current-owner callbacks. Formal repeated performance, fling, memory, peer, and platform cohorts remain missing. |
 | Android no-JIT and retained low-end device | **Missing** | The Android 10 cohort is recorded, but a no-JIT policy and a separate retained low-end lane were not established. |
 | iOS correctness/performance, separately reported | **Externally blocked** | Qualification host is Linux x86_64 and has no `xcrun`/Simulator or leased iOS device. Android cannot substitute. |
 | Native bytecode/chunk-load and bundle budget | **Incomplete** | R10 records source/encoded/gzip/Brotli inventories; device VM bytecode and native chunk-load latency remain unmeasured. |
@@ -209,6 +319,40 @@ them as final qualification. They are not counted as R11 passes.
 - [`android-native-list.json`](evidence/android-native-list.json) is the failed
   80-record list result; SHA-256
   `c4e2065aa51ff629d4c0860b3100ad5dbadbf24e1fe3be1d947f7b4d106d6a89`.
+- [`android-structural-element-template-create1000-abba.json`](evidence/android-structural-element-template-create1000-abba.json)
+  is the sanitized exact-head 10-pair ordinary/structural configuration record;
+  SHA-256
+  `459f88ef8244499e38733b53e3f89b733c8bbd2853caafb27c366df1bc539df4`.
+- [`android-current-head-structural-element-template-create1000-abba.json`](evidence/android-current-head-structural-element-template-create1000-abba.json)
+  is the sanitized current-head 10-pair cell-gate record on
+  `be7615df441519a99e7478d951a8f494feed6af4`; SHA-256
+  `17d4576f488a30f4fca089c87ecce71a57352ba156748c69bbfbcc2449a143d3`.
+- [`android-current-head-structural-element-template-create-scale.json`](evidence/android-current-head-structural-element-template-create-scale.json)
+  is the sanitized current-product 3k/5k ten-pair continuation, ordinary 10k
+  native-capacity failure, and structural ET 10k stability result at runner head
+  `5c571c70ec7bd052b2c6d59ed1004bf06ff22ccc`; SHA-256
+  `279f04381513836afd151e5558664315d3a32dce92210f935533f5f3f3201325`.
+- [`android-current-head-structural-element-template-create10000-et-only.json`](evidence/android-current-head-structural-element-template-create10000-et-only.json)
+  is the sanitized clean-device structural ET-only 10k five-sample cohort;
+  SHA-256
+  `01137d3243d23025dce498d2d59bafbcbf5e7b123248bed5efd4d2a5365641f3`.
+- [`android-current-head-structural-element-template-create10000-lifecycle.json`](evidence/android-current-head-structural-element-template-create10000-lifecycle.json)
+  is the sanitized five-sample 10k create-clear-recreate lifecycle cohort;
+  SHA-256
+  `d99bf205ef6cab2165a900f689d7660119a5e71ff680cdcf3470136c5be9fecd`.
+- [`android-current-head-structural-element-template-10000-mutations.json`](evidence/android-current-head-structural-element-template-10000-mutations.json)
+  is the sanitized five-sample 10k registered mutation-sequence cohort;
+  SHA-256
+  `a33d81f9bb1c8ef666a6aa189f84febc0dee1ad878ce5a239fbdd70bfe1b193c`.
+- [`android-current-head-structural-element-template-10000-append-capacity.json`](evidence/android-current-head-structural-element-template-10000-append-capacity.json)
+  is the sanitized five-sample 10k→11k append capacity-rejection cohort;
+  SHA-256
+  `e8cca3ebe642e183edc98605662bbf5f2a907d01a53d60aa19f3d841193e2502`.
+- [`android-current-head-native-list-lifecycle.json`](evidence/android-current-head-native-list-lifecycle.json)
+  is the sanitized native-list observer diagnosis, 1k/10k reachability check,
+  and current-head row lifecycle acceptance record. It qualifies correctness
+  only and explicitly leaves performance unqualified; SHA-256
+  `d68a2ecd67bc1a9d3cd1c4b8d441aceac8c7d1160c490e6173b26f8096944896`.
 - [`../lynx-issue382-release-candidate/README.md`](../lynx-issue382-release-candidate/README.md)
   records the source/build, external-consumer, semantic, graph-retention, and
   bundle inventory qualification inherited from R10.
@@ -383,6 +527,108 @@ rejected. The immutable hashes and exact scope are recorded in
 [`packages/lynx/audit/android-element-template-evidence.json`](../../../packages/lynx/audit/android-element-template-evidence.json).
 These single-sample checks qualify a correctness and fail-closed boundary, not a
 cross-framework A/B, general Android support, memory result, or iOS release gate.
+
+The later exact-head 1,000-row create follow-up adds the 10-pair
+ordinary/structural configuration comparison summarized above. It does not
+broaden the earlier 10,000/30,000 safety qualification, and it does not replace
+the missing fresh-process native-memory or full release matrix evidence.
+
+### 2026-09-25 current-head continuity check
+
+After the background publication and teardown serialization fixes, commit
+`be7615df441519a99e7478d951a8f494feed6af4` was rebuilt from source in both the
+ordinary automatic configuration and the experimental structural Element
+Template configuration. A fresh Android 10 Sandbox lease ran 10 adjacent
+AB/BA pairs with cold Explorer launches, DevTool disabled before each sample,
+native ADB taps, a 35 °C / thermal-status-0 gate, and the existing strict state,
+transport-ACK, and second-native-frame receipt.
+
+The implementation and this qualification update are reviewed together in
+[Huxpro/octane#395](https://github.com/Huxpro/octane/pull/395).
+
+All 20 attempts passed on their first try. Ordinary tap-to-second-frame latency
+had a 587 ms median; structural Element Template had a 533 ms median. The
+paired structural-minus-ordinary values ranged from −85 to −40 ms, so
+structural Element Template won all 10 pairs with a −56 ms paired median. Main
+commit wall time moved from a 500 ms ordinary median to 438.5 ms, again winning
+all 10 pairs with a −62 ms paired median. Median frame bytes were effectively
+unchanged at 32,987 versus 32,942.5.
+
+The shipping Element Template bundle remained larger: 243,769 versus 226,542
+raw bytes (+7.60%), 85,628 versus 78,431 gzip bytes (+9.18%), and 73,951 versus
+67,942 Brotli bytes (+8.84%). The run used Lynx SDK 4.2, whereas the earlier
+ten-pair record used SDK 4.1, so the two windows are continuity evidence rather
+than one merged statistical cohort. This current-head 1,000-row create cell
+satisfies the registered 10-pair sample count and semantic checks, but the
+result still preserves the **NO-GO** verdict and does not authorize the default
+switch; memory/GC, broader operations and scales, native list, no-JIT/low-end
+Android, iOS, bytecode, latest-upstream, and peer qualification remain open.
+
+### 2026-09-25 current-product scale continuation
+
+The same immutable ordinary and structural Element Template bundle cohort was
+then exercised at 3,000 and 5,000 rows on another Android 10 / Lynx SDK 4.2
+lease. The final runner head was `5c571c70ec7bd052b2c6d59ed1004bf06ff22ccc`;
+the only changes since the bundle build were the M0 test mirror and this report's
+documentation/evidence, so no product or build input changed. Each formal cell used 10 cold
+AB/BA pairs with DevTool disabled, native taps, the 0-to-scale state oracle,
+transport ACK, two native frames, and a 35 °C / thermal-status-0 gate. All 40
+formal attempts were accepted on the first try.
+
+| create scale | ordinary median | structural ET median | paired ET−ordinary median | native pair wins | main-commit pair wins |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 3,000 | 2,636.5 ms | 2,465 ms | −184 ms | 9/10 | 10/10 |
+| 5,000 | 6,041 ms | 5,744 ms | −341 ms | 10/10 | 10/10 |
+
+The encoded frame sizes stayed effectively level: the paired median was +82
+bytes at 3k and −73 bytes at 5k. The 3k result is positive in aggregate but does
+not satisfy an all-pairs strict-win reading because one native pair was 4 ms
+slower. The 5k result won every pair at both registered latency boundaries.
+
+The first 10k safety window did not qualify. The ordinary owner hit an
+Android ART `SIGABRT` after 24,048 ms because the JNI global-reference table
+reached its 51,200-entry ceiling; the captured summary contained 30,000
+`PaintingContext$a` and 20,474 `w9.w` references. The structural Element
+Template owner avoided that crash and one retry completed with exact 10,000-row
+state, ACK, and two frames in 21,525 ms, but its preceding attempt produced no
+state or attribution before the 180-second cutoff. One valid retry after one
+timeout was correctness/safety evidence, not a stable result.
+
+A fresh lease then ran only the structural owner, with no ordinary crash before
+it. All five cold starts completed on their first attempt with zero invalid
+samples and the exact state, transport ACK, and two-frame oracle. Native
+tap-to-second-frame values were 20,547 / 21,702 / 21,306 / 21,025 / 20,739 ms
+(median 21,025 ms); main commit walls were 19,904 / 21,063 / 20,657 / 20,379 /
+20,099 ms (median 20,379 ms). Every sample reported 10,001 handles, two ranges,
+20,012 listener slots, and 40,028 retained host refs. This supersedes the
+earlier unstable observation for the structural 10k stability decision. It does
+not establish why the earlier attempt timed out, and it is not a paired latency
+rank because the ordinary owner cannot complete this scale.
+
+This continuation narrows the Android creation gap through 5k and demonstrates
+that the structural owner crosses a native capacity boundary the ordinary owner
+does not. The ET-specific 10k correctness/stability blocker is closed, but
+ordinary 10k, behavior above 10k, memory/GC, the non-create/list matrix, and the
+other release gates remain open. The **NO-GO** verdict, ordinary/Universal
+compatibility paths, and default selection therefore remain unchanged.
+
+The same immutable bundle then completed five independent cold-launch
+create→clear→recreate samples on a fresh lease. All 15 operations passed on the
+first attempt with exact pre/post state, one transport ACK, two native frames,
+and the required lifecycle census. Median native input-to-second-frame latency
+was 21,342 ms for the first create, 2,585 ms for clear, and 2,934 ms for
+recreate; corresponding main commit medians were 20,721 / 2,512 / 2,371 ms.
+Clear returned live ownership to the rows-0 baseline of one handle, one range,
+12 listener slots, and 28 retained host refs while retaining a bounded recycle
+pool of 10,000 handles and 40,000 host refs. Recreate consumed that pool and
+restored the populated 10,001 / 2 / 20,012 / 40,028 census exactly in every
+sample.
+
+This closes the single-cycle 10k owner-lifecycle correctness/stability slice and
+adds registered clear/recreate operation timings. It does not prove a causal
+latency benefit from recycling, does not replace the required 20-cycle Android
+11+ peak/settled/after-clear/post-GC memory campaign, and does not cover sparse
+updates, selection, swapping, removal, storms, or native-list behavior.
 
 ## Upstream alignment and remaining owner work
 
