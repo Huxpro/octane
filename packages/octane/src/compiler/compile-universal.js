@@ -3856,6 +3856,9 @@ function dirtyComponentCandidate(render, hooks, state) {
 	const sources = [];
 	const derived = [];
 	const replacements = [];
+	// Every name the setup has bound so far. A linked source is re-read by each
+	// component render, so one that reads these would drift under replay.
+	const setupBindings = new Set();
 	for (const statement of render.setup ?? []) {
 		if (typeOnlySetupStatement(statement)) continue;
 		if (statement.type !== 'VariableDeclaration' || statement.kind !== 'const') {
@@ -3878,6 +3881,17 @@ function dirtyComponentCandidate(render, hooks, state) {
 					(elements[2] !== null && elements[2] !== undefined && elements[2].type !== 'Identifier')
 				) {
 					return null;
+				}
+				if (
+					hookName === 'useLinkedState' &&
+					(value.arguments ?? []).some((argument) =>
+						dirtyExpressionReferences(argument).some((name) => setupBindings.has(name)),
+					)
+				) {
+					return null;
+				}
+				for (const element of elements) {
+					if (element?.type === 'Identifier') setupBindings.add(element.name);
 				}
 				const getter =
 					elements[2]?.name ??
@@ -3903,6 +3917,7 @@ function dirtyComponentCandidate(render, hooks, state) {
 			) {
 				return null;
 			}
+			setupBindings.add(declaration.id.name);
 			derived.push({
 				name: declaration.id.name,
 				statement:
