@@ -967,7 +967,10 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		if (faulted || closing) return fallback;
 		if (journal !== null) listCallbackDuringFrame = true;
 		try {
-			return callback();
+			const result = callback();
+			// Outside a frame no commit follows to reject a ref two cells claim.
+			if (journal === null) workletStore?.settle();
+			return result;
 		} catch (error) {
 			// Reentrant callbacks still belong to the frame journal.
 			if (journal !== null) throw error;
@@ -2066,11 +2069,15 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 		},
 		prepareCommit() {
 			requireJournal();
+			workletStore?.settle();
 			if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) prepareDirtyLists();
 		},
 		commit() {
 			requireHealthy();
 			if (journal === null) fail(StoreFailure.Commit);
+			// A ref may pass between hosts within a frame, but not stay on two;
+			// throwing before publication leaves the frame for `rollback()`.
+			workletStore?.settle();
 			if (LYNX_COMPILED_PROGRAM_NATIVE_LIST) {
 				prepareDirtyLists();
 				try {
