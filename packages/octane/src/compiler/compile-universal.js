@@ -379,6 +379,162 @@ function firstScreenEventHelper(state) {
 	return (state.helpers.firstScreenEvent ??= allocName(state, '__octaneFirstScreenEvent'));
 }
 
+function collectMainThreadFirstScreenEventExpressions(ast, state) {
+	const erasedFunctions = new WeakSet();
+	const erasedFunctionRoots = [];
+	const directLeaves = new WeakSet();
+	const collectValue = (expression) => {
+		const value = unwrapFirstScreenExpression(expression);
+		if (value?.type === 'ArrowFunctionExpression' || value?.type === 'FunctionExpression') {
+			erasedFunctions.add(value);
+			erasedFunctionRoots.push(expression);
+			return;
+		}
+		if (value?.type === 'ConditionalExpression') {
+			collectValue(value.consequent);
+			collectValue(value.alternate);
+			return;
+		}
+		if (value && typeof value === 'object') directLeaves.add(value);
+	};
+	const seen = new WeakSet();
+	const visit = (node) => {
+		if (!node || typeof node !== 'object' || seen.has(node)) return;
+		seen.add(node);
+		if (Array.isArray(node)) {
+			for (const child of node) visit(child);
+			return;
+		}
+		if ((node.type === 'JSXElement' || node.type === 'Element') && !isComponentElement(node)) {
+			for (const attribute of node.openingElement?.attributes ?? node.attributes ?? []) {
+				if (
+					attribute.type === 'JSXSpreadAttribute' ||
+					attribute.type === 'SpreadAttribute' ||
+					!isFirstScreenEvent(hostAttributeName(attribute, state), state)
+				) {
+					continue;
+				}
+				const value = attribute.value;
+				if (
+					value?.type === 'JSXExpressionContainer' &&
+					value.expression &&
+					value.expression.type !== 'JSXEmptyExpression'
+				) {
+					collectValue(value.expression);
+				}
+			}
+		}
+		forEachRuntimeAstChild(node, visit);
+	};
+	visit(ast);
+	return { directLeaves, erasedFunctions, erasedFunctionRoots };
+}
+
+function eraseMainThreadEventOnlyCallbacks(ast, state, lexicalAnalysis, erasedArguments) {
+	const { nodeScopes, resolveBinding, rootScope } = lexicalAnalysis;
+	const { directLeaves, erasedFunctions, erasedFunctionRoots } =
+		collectMainThreadFirstScreenEventExpressions(ast, state);
+	erasedArguments.push(...erasedFunctionRoots);
+	const candidates = [];
+	const seen = new WeakSet();
+	const collect = (node) => {
+		if (!node || typeof node !== 'object' || seen.has(node)) return;
+		seen.add(node);
+		if (Array.isArray(node)) {
+			for (const child of node) collect(child);
+			return;
+		}
+		if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier') {
+			const direct = unwrapFirstScreenExpression(node.init);
+			const call =
+				node.init?.type === 'CallExpression' &&
+				node.init.callee?.type === 'Identifier' &&
+				state.runtimeImports.get(node.init.callee.name) === 'useCallback' &&
+				resolveBinding(nodeScopes.get(node.init.callee) ?? rootScope, node.init.callee.name)
+					?.importSource?.value === 'octane'
+					? node.init
+					: null;
+			const callback = unwrapFirstScreenExpression(call === null ? direct : call.arguments?.[0]);
+			const binding = resolveBinding(nodeScopes.get(node.id) ?? rootScope, node.id.name);
+			if (
+				(callback?.type === 'ArrowFunctionExpression' || callback?.type === 'FunctionExpression') &&
+				binding !== null
+			) {
+				candidates.push({
+					name: node.id.name,
+					scope: binding.scope,
+					initializer: node.init,
+					call,
+					callback: call === null ? callback : call.arguments[0],
+					direct: call === null,
+				});
+			}
+		}
+		forEachRuntimeAstChild(node, collect);
+	};
+	collect(ast);
+
+	for (const candidate of candidates) {
+		let unsafe = false;
+		const directEventReferences = [];
+		const visited = new WeakSet();
+		const visit = (node, eventExpression = null, parent = null, parentKey = null) => {
+			if (!node || typeof node !== 'object' || visited.has(node) || unsafe) return;
+			visited.add(node);
+			if (node === candidate.callback) return;
+			if (Array.isArray(node)) {
+				for (const child of node) visit(child, eventExpression, parent, parentKey);
+				return;
+			}
+			const event = erasedFunctions.has(node) ? node : eventExpression;
+			if (
+				node.type === 'Identifier' &&
+				node.name === candidate.name &&
+				isIdentifierReference(node, parent, parentKey, lexicalAnalysis) &&
+				resolveBinding(nodeScopes.get(node) ?? rootScope, node.name)?.scope === candidate.scope
+			) {
+				if (event !== null) {
+					// The whole function value becomes the first-screen sentinel, so
+					// neither its body nor anything captured by it is evaluated here.
+				} else if (directLeaves.has(node)) {
+					directEventReferences.push(node);
+				} else {
+					unsafe = true;
+				}
+				return;
+			}
+			for (const [key, child] of Object.entries(node)) {
+				if (AST_SKIP_KEYS.has(key)) continue;
+				visit(child, event, node, key);
+			}
+		};
+		visit(ast);
+		if (unsafe) continue;
+		const trailingArguments = candidate.call?.arguments?.slice(1) ?? [];
+		const canEraseInitializer =
+			candidate.direct || trailingArguments.every((argument) => argument?.type !== 'SpreadElement');
+		if (canEraseInitializer) {
+			const replacement =
+				trailingArguments.length === 0
+					? b.id('undefined')
+					: b.sequence([...trailingArguments, b.id('undefined')]);
+			state.astNodeReplacements.set(
+				candidate.initializer,
+				inheritGeneratedOrigin(replacement, candidate.initializer),
+			);
+			erasedArguments.push(candidate.callback);
+		} else {
+			state.astNodeReplacements.set(
+				candidate.callback,
+				inheritGeneratedOrigin(b.id('undefined'), candidate.callback),
+			);
+			erasedArguments.push(candidate.callback);
+		}
+		const proven = (state.provenFirstScreenEventExpressions ??= new WeakSet());
+		for (const expression of directEventReferences) proven.add(expression);
+	}
+}
+
 function universalError(filename, node, message) {
 	const start = node?.loc?.start;
 	const at = start ? ` at ${filename}:${start.line}:${start.column}` : '';
@@ -1290,6 +1446,7 @@ function prepareMainThreadRenderOnlyAstReplacements(ast, state) {
 		}
 	};
 	visit(ast);
+	eraseMainThreadEventOnlyCallbacks(ast, state, lexicalAnalysis, erasedArguments);
 	const prunedStatements = pruneMainThreadEffectHelpers(
 		ast,
 		state,
@@ -4088,6 +4245,9 @@ function dynamicExpressionAst(node, state) {
 
 function firstScreenEventValueAst(expression, state) {
 	const value = unwrapFirstScreenExpression(expression);
+	if (state.provenFirstScreenEventExpressions?.has(value)) {
+		return generatedIdentifier(firstScreenEventHelper(state), expression);
+	}
 	if (value?.type === 'ArrowFunctionExpression' || value?.type === 'FunctionExpression') {
 		return generatedIdentifier(firstScreenEventHelper(state), expression);
 	}

@@ -1362,6 +1362,89 @@ export function Scene({ onTap, handlers }) @{
 		expect(values[2]).toMatchObject({ type: 'Identifier', name: firstScreenEvent });
 	});
 
+	it('erases callback graphs used only by first-screen events', () => {
+		const source = `
+import { useCallback } from 'octane';
+
+function erasedEventHelper(value) {
+  return 'erased-event-only-helper:' + value;
+}
+function erasedDirectEventHelper(value) {
+  return 'erased-direct-event-only-helper:' + value;
+}
+function erasedInlineEventHelper(value) {
+  return 'erased-inline-event-only-helper:' + value;
+}
+function observeDependency(value) {
+  console.log('retained-dependency-evaluation', value);
+  return value;
+}
+function evaluateEvent(value) {
+  console.log('retained-event-evaluation');
+  return value;
+}
+
+export function Scene({ id }) @{
+	const tap = useCallback(() => erasedEventHelper(id), [observeDependency(id)]);
+	const directTap = () => erasedDirectEventHelper(id);
+	const retained = useCallback(() => 'retained-non-event-callback', []);
+	const evaluated = useCallback(() => 'retained-evaluated-event-callback', []);
+  <view
+    id={retained.name}
+    bindtap={() => erasedInlineEventHelper(id, tap)}
+    bindlongpress={directTap}
+		catchtap={evaluateEvent(evaluated)}
+  />
+}`;
+		const firstScreenRenderer = {
+			...renderer,
+			capabilities: ['main-thread-render-only'],
+			firstScreenEvents: ['bind*', 'catch*'],
+		} as const;
+		const background = compile(source, '/src/CallbackEvents.object.tsrx', {
+			hmr: false,
+			renderer: firstScreenRenderer,
+			universalRuntime: { runtime: 'object', thread: 'background' },
+		});
+		const mainThread = compile(source, '/src/CallbackEvents.object.tsrx', {
+			hmr: false,
+			renderer: firstScreenRenderer,
+			universalRuntime: { runtime: 'object', thread: 'main-thread' },
+		});
+
+		expect(background.code).toContain('erased-event-only-helper');
+		expect(background.code).toContain('erased-direct-event-only-helper');
+		expect(background.code).toContain('erased-inline-event-only-helper');
+		expect(mainThread.code).not.toContain('erased-event-only-helper');
+		expect(mainThread.code).not.toContain('erased-direct-event-only-helper');
+		expect(mainThread.code).not.toContain('erased-inline-event-only-helper');
+		expect(mainThread.code).not.toContain('erasedEventHelper');
+		expect(mainThread.code).not.toContain('erasedDirectEventHelper');
+		expect(mainThread.code).not.toContain('erasedInlineEventHelper');
+		expect(mainThread.code).toContain('retained-dependency-evaluation');
+		expect(mainThread.code).toContain('observeDependency');
+		expect(mainThread.code).toContain('retained-non-event-callback');
+		expect(mainThread.code).toContain('retained-event-evaluation');
+		expect(mainThread.code).toContain('retained-evaluated-event-callback');
+		expect(() => parseModule(mainThread.code, '/dist/CallbackEvents.js')).not.toThrow();
+
+		const calls = callsByImportedName(mainThread.code, 'octane/universal');
+		const callbacks = calls.get('useCallback') ?? [];
+		expect(callbacks).toHaveLength(2);
+		expect(callbacks[0].arguments[0]).toMatchObject({ type: 'ArrowFunctionExpression' });
+		const firstScreenEvent = importedLocalName(
+			mainThread.code,
+			'octane/universal',
+			'firstScreenEvent',
+		);
+		expect(firstScreenEvent).toBeDefined();
+		const values = calls.get('universalValue')?.[0]?.arguments[1]?.elements;
+		expect(values).toContainEqual(
+			expect.objectContaining({ type: 'Identifier', name: firstScreenEvent }),
+		);
+		expect(values?.at(-1)).toMatchObject({ type: 'ConditionalExpression' });
+	});
+
 	it('prunes module-local helper chains used only by main-thread-erased effects', () => {
 		const source = `
 import { useEffect, useState } from 'octane';
