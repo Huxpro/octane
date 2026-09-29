@@ -1781,6 +1781,48 @@ export function decideLynxCompiledProgramHostRefFeature(
 	});
 }
 
+function formatReasonDetail(value) {
+	if (Array.isArray(value)) return `[${value.map(formatReasonDetail).join('; ')}]`;
+	if (value !== null && typeof value === 'object') {
+		return typeof value.code === 'string' ? formatReason(value) : JSON.stringify(value);
+	}
+	return String(value);
+}
+
+function formatReason({ code, ...details }) {
+	const entries = Object.entries(details);
+	return entries.length === 0
+		? code
+		: `${code} (${entries.map(([key, value]) => `${key}: ${formatReasonDetail(value)}`).join(', ')})`;
+}
+
+/**
+ * The explicit Element Template option selects one whole-root owner and has no
+ * general fallback: name every reason the application proof declined it, and
+ * expand an ineligible entry into its compiled-program reasons.
+ */
+function elementTemplateRefusal(decision, reports) {
+	const lines = [];
+	for (const item of decision.reasons) {
+		lines.push(`  - ${formatReason(item)}`);
+		if (item.code === 'compiled-program-selection-requires-one-shot-production') {
+			lines.push(
+				"    `experimentalElementTemplate` requires a one-shot production build (mode 'production', no watch or dev server).",
+			);
+		}
+		if (item.code === 'entry-ineligible') {
+			for (const cause of reports.get(item.entry)?.compiledProgramSelection.reasons ?? []) {
+				lines.push(`    - ${formatReason(cause)}`);
+			}
+		}
+	}
+	if (lines.length === 0) lines.push('  - no application entry was collected');
+	return [
+		'@octanejs/rspeedy-plugin: `experimentalElementTemplate` could not select the whole-root Element Template application, and it never falls back to the general application:',
+		...lines,
+	].join('\n');
+}
+
 /** Attach versioned proofs and specialize the one-core production graph. */
 export class LynxProgramCoveragePlugin {
 	constructor(
@@ -1925,6 +1967,12 @@ export class LynxProgramCoveragePlugin {
 				explicitRootReasons,
 				this.elementTemplate,
 			);
+			if (
+				this.elementTemplate &&
+				state.applicationDecision.selected !== 'compiled-program-element-template'
+			) {
+				throw new Error(elementTemplateRefusal(state.applicationDecision, state.reports));
+			}
 			state.blockComponentFeatures = decideLynxBlockComponentFeatures(
 				compiler,
 				this.entries,
