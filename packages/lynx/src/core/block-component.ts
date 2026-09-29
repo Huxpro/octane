@@ -844,10 +844,52 @@ export function lynxBlockProgramForComponent<Props>(
 			useEffect(create, deps);
 		},
 	});
-	const renderHookScope = <T>(cells: UniversalHookScope, setup: () => T): T =>
-		!LYNX_BLOCK_TRANSITIONS || activeTransitionAttempt === null
+	/**
+	 * The root's `useId` namespace, shared by every scope this program owns.
+	 *
+	 * The main thread paints the first screen as the first Universal root of its
+	 * isolated realm: one root counter, advanced in tree order, Cantor-paired
+	 * with root 1 (`main-renderer*.ts`, `UniversalRootImpl.formatId`). Scopes
+	 * here mount in that same order, so drawing from one counter in the same
+	 * namespace gives each instance the id it was painted with — the way
+	 * `hydrateRoot` keeps the server's prefix and counter rather than minting its
+	 * own. A scope keeps its id as a cell once accepted; the index advances only
+	 * when an attempt commits, so an aborted attempt, like a discarded try arm,
+	 * hands the same positions to whatever mounts next.
+	 */
+	let acceptedUniversalId = 1;
+	let draftUniversalId = 1;
+	let universalIdAttempt: LynxBlockProgramContext | null = null;
+	const openUniversalIdAttempt = (context: LynxBlockProgramContext): void => {
+		if (universalIdAttempt === context) return;
+		// The root admits one attempt at a time, and each settles before the next.
+		universalIdAttempt = context;
+		draftUniversalId = acceptedUniversalId;
+		context.afterCommit(() => {
+			if (universalIdAttempt !== context) return;
+			acceptedUniversalId = draftUniversalId;
+			universalIdAttempt = null;
+		});
+		context.afterAbort(() => {
+			if (universalIdAttempt === context) universalIdAttempt = null;
+		});
+	};
+	const allocateUniversalId = (): string => {
+		const index = draftUniversalId++;
+		const sum = 1 + index;
+		const paired = (sum * (sum + 1)) / 2 + index;
+		return `:octane-u${paired.toString(36)}:`;
+	};
+	const renderHookScope = <T>(
+		context: LynxBlockProgramContext,
+		cells: UniversalHookScope,
+		setup: () => T,
+	): T => {
+		openUniversalIdAttempt(context);
+		return !LYNX_BLOCK_TRANSITIONS || activeTransitionAttempt === null
 			? cells.render(setup)
 			: cells.renderTransition(setup);
+	};
 	const publishHookScope = (
 		context: LynxBlockProgramContext,
 		cells: UniversalHookScope,
@@ -1095,6 +1137,7 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 		const cells = (scope ??= createUniversalHookScope({
 			renderer: LYNX_TRANSPORT_RENDERER,
+			allocateId: allocateUniversalId,
 			scheduleRender: queueStateRender,
 			scheduleTransitionRender: LYNX_BLOCK_TRANSITIONS
 				? (): void => {
@@ -1125,7 +1168,7 @@ export function lynxBlockProgramForComponent<Props>(
 		}));
 		let rendered: RenderedPlan;
 		try {
-			rendered = renderHookScope(cells, () => renderPlanValue(subject, props));
+			rendered = renderHookScope(context, cells, () => renderPlanValue(subject, props));
 		} catch (error) {
 			cells.abort();
 			liveContext = previousContext;
@@ -1551,6 +1594,7 @@ export function lynxBlockProgramForComponent<Props>(
 				let owner: ScopedRowState;
 				rowScope = createUniversalHookScope({
 					renderer: LYNX_TRANSPORT_RENDERER,
+					allocateId: allocateUniversalId,
 					scheduleRender(): void {
 						queueScopedRowStateRender(owner);
 					},
@@ -1597,7 +1641,9 @@ export function lynxBlockProgramForComponent<Props>(
 				if (created) cells.dispose();
 			});
 			try {
-				rendered = renderHookScope(cells, () => renderPlanValue(component, props, contexts));
+				rendered = renderHookScope(context, cells, () =>
+					renderPlanValue(component, props, contexts),
+				);
 			} catch (error) {
 				// A surrounding Block boundary may accept its fallback, so the root
 				// attempt itself will not abort. Drop this arm's draft here; a fresh
@@ -3211,6 +3257,8 @@ export function lynxBlockProgramForComponent<Props>(
 		if (tryState.thenable !== null) {
 			return renderPending(tryState.suspension, tryState.thenable);
 		}
+		openUniversalIdAttempt(context);
+		const universalIdCheckpoint = draftUniversalId;
 		try {
 			const body = renderArm(TRY_BODY_BRANCH!, boundary.body);
 			const bodyKey = body.keys[0] ?? null;
@@ -3232,6 +3280,9 @@ export function lynxBlockProgramForComponent<Props>(
 					}
 				: body;
 		} catch (error) {
+			// The body never joins the tree. Its fallback takes the same positions,
+			// as it does on the main thread that painted this boundary.
+			draftUniversalId = universalIdCheckpoint;
 			const thenable = universalSuspensionThenable(error);
 			return thenable === null ? renderCatch(error) : renderPending(error, thenable);
 		}
