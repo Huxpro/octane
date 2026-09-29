@@ -704,6 +704,83 @@ export function Card() @{
 		expect(computation.run()).toEqual(['2']);
 	});
 
+	it('keeps a reducer that captures replayable state on the component path', () => {
+		for (const setup of [
+			`const [t, dispatch] = useReducer((acc: string, x: string) => acc + x + n, '');`,
+			`const suffix = 'z' + n;
+	const [t, dispatch] = useReducer((acc: string, x: string) => acc + x + suffix, '');`,
+			`const reduce = (acc: string, x: string) => acc + x + n;
+	const [t, dispatch] = useReducer(reduce, '');`,
+			`const [t, dispatch] = useReducer((acc: string, x: string) => acc + x + later, '');
+	const later = 'z' + n;`,
+			`const [t, dispatch] = useReducer((acc: string, x: string) => acc + x + t.length, '');`,
+		]) {
+			const code = compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useReducer, useState } from 'octane';
+
+export function Card() @{
+	const [n, setN] = useState('a');
+	${setup}
+	<view>
+		<text bindtap={() => setN(n + 'b')}>{('n-' + n) as string}</text>
+		<text bindtap={() => dispatch('x')}>{('t-' + t) as string}</text>
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/ReducerClosureCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			);
+
+			// Dispatch reduces with the reducer from the last component render. A
+			// replay that skipped that render would reduce `t-xa` instead of `t-xab`.
+			expect(code, setup).not.toContain('component-render');
+		}
+	});
+
+	it('keeps a reducer that captures no replayable state on dirty replay', () => {
+		for (const setup of [
+			`const [t, dispatch] = useReducer((acc: string, x: string) => acc + x, '');`,
+			`const [t, dispatch] = useReducer((acc: string, x: string) => acc + x, n);`,
+			`const [t, dispatch] = useReducer(
+		(acc: string, x: string) => (setN('c'), acc + x),
+		n,
+		(initial: string) => initial + n,
+	);`,
+		]) {
+			const code = compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useReducer, useState } from 'octane';
+
+export function Card() @{
+	const [n, setN] = useState('a');
+	${setup}
+	<view>
+		<text bindtap={() => setN(n + 'b')}>{('n-' + n) as string}</text>
+		<text bindtap={() => dispatch('x')}>{('t-' + t) as string}</text>
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/ReducerPureCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			);
+
+			// The initial argument and init function run once, at mount, so only
+			// the retained reducer decides whether replay is safe.
+			expect(code, setup).toContain('component-render');
+		}
+	});
+
 	it('keeps scalar replay separate from structural invalidation', () => {
 		const code = compiled(
 			`/** @jsxImportSource @octanejs/lynx/intrinsics */
