@@ -227,6 +227,10 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 	const nativeBefore = (before: number | null): Handle | null =>
 		before === null ? null : instance(before).native;
 	const recycle = (value: TemplateInstance<Handle>): void => {
+		// Lynx 4.1 does not free a removed template instance on either platform:
+		// dropping the handle leaks it (on Android through TextShadowNode weak
+		// globals, on iOS as ~0.1 GB per 1,000-row create/clear cycle). A pooled
+		// handle therefore keeps its resident reservation.
 		let handles = recycled.get(value.plan);
 		if (handles === undefined) recycled.set(value.plan, (handles = []));
 		handles.push(value.native);
@@ -495,6 +499,13 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 		}
 		const created: TemplateInstance<Handle>[] = [];
 		let pending: TemplateInstance<Handle> | null = null;
+		// Reserve every row the pool cannot supply before any native call, so a
+		// run that would exceed the resident bound is refused before it creates,
+		// inserts, or lays out a partial tree.
+		const pool = recycled.get(input.plan);
+		const fresh = Math.max(0, input.count - (pool?.length ?? 0));
+		if (fresh !== 0) nativeBudget.reserveResident(fresh, fresh * input.plan.nodes);
+		let reservedUnused = fresh;
 		try {
 			for (let row = 0; row < input.count; row++) {
 				const handle = input.firstHandle + row;
@@ -520,18 +531,12 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 					);
 				}
 				if (template.visibilitySlot !== undefined) attributes[template.visibilitySlot] = false;
-				const pool = recycled.get(input.plan);
 				let native = pool?.pop();
 				if (native === undefined) {
-					nativeBudget.reserveResident(1, input.plan.nodes);
-					try {
-						native = nativeBudget.run(input.plan.nodes, () =>
-							papi.create(template.templateId, attributes, [], handle),
-						);
-					} catch (error) {
-						nativeBudget.releaseResident(1, input.plan.nodes);
-						throw error;
-					}
+					native = nativeBudget.run(input.plan.nodes, () =>
+						papi.create(template.templateId, attributes, [], handle),
+					);
+					reservedUnused--;
 				} else {
 					try {
 						for (let slot = 0; slot < attributes.length; slot++) {
@@ -565,6 +570,9 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 			}
 		} catch (error) {
 			const errors: unknown[] = [error];
+			if (reservedUnused !== 0) {
+				nativeBudget.releaseResident(reservedUnused, reservedUnused * input.plan.nodes);
+			}
 			if (pending !== null) {
 				try {
 					// Native insertion may mutate before throwing. Without crossing back
@@ -855,6 +863,11 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 			}
 			if (instances.size === 0) {
 				ranges.clear();
+				for (const [plan, handles] of recycled) {
+					if (handles.length !== 0) {
+						nativeBudget.releaseResident(handles.length, handles.length * plan.nodes);
+					}
+				}
 				recycled.clear();
 				pendingRecycled.length = 0;
 				templates.length = 1;
