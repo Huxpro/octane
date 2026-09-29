@@ -106,9 +106,18 @@ import {
 	type BlockConditionalProps,
 	BlockSwitchFixture,
 	type BlockSwitchProps,
+	BlockReplayFixture,
+	type BlockReplayProps,
 	BlockScopedRowsFixture,
 	type BlockScopedRowsProps,
-} from './_fixtures/block-scoped-rows.lynx.tsrx';
+} from './_fixtures/block-scoped-rows.block.lynx.tsrx';
+// The same authored source as a production `core: 'universal'` application
+// compiles it, for the parity oracle. See `vitest.config.js`.
+import {
+	BlockContextFixture as UniversalCoreContextFixture,
+	BlockReplayFixture as UniversalCoreReplayFixture,
+	BlockSwitchFixture as UniversalCoreSwitchFixture,
+} from './_fixtures/block-scoped-rows.block.lynx.tsrx?lynx-universal-core';
 import { FakeContextProxy, flushMicrotasks, installMainSide } from './_fixtures/fake-lynx-wire.js';
 import { paint } from './_fixtures/painted-commits.js';
 
@@ -515,6 +524,19 @@ function rowListener(
 	const label = rows.children[row]!.children[1]!;
 	const resolved = resolveLynxHostNativeEvent(host, [...label.events.values()][0]);
 	if (resolved === null) throw new Error(`row ${row} bound no event site`);
+	return resolved;
+}
+
+/** The tap site on the first child of the painted page root. */
+function firstChildListener(
+	commits: readonly LynxTransportCommitMessage[],
+): LynxResolvedNativeEvent {
+	const papi = createFakePAPI();
+	const host = createLynxHostContainer(papi, { root: 1 });
+	for (const commit of commits) prepareLynxHostBatch(host, commit.batch).apply();
+	const target = papi.pages[0]!.children[0]!.children[0]!;
+	const resolved = resolveLynxHostNativeEvent(host, [...target.events.values()][0]);
+	if (resolved === null) throw new Error('the first child bound no event site');
 	return resolved;
 }
 
@@ -1951,13 +1973,13 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 
 	it('runs ordinary compiled keyed row hooks with inferred and explicit dependencies', async () => {
 		const metadata = Symbol.for('octane.universal.component');
-		// This Vitest project compiles with HMR. Its wrapper must stay conservative
-		// because a hot replacement may add hooks; the hmr:false compiler test pins
-		// the production page's hookScope:false proof.
+		// The fixture compiles as a production Block application does, without HMR,
+		// so the hookless page is proved to need no hook scope while its stateful
+		// row still gets one.
 		expect(
 			(BlockScopedRowsFixture as never as Record<PropertyKey, unknown>)[metadata],
 		).toMatchObject({
-			hookScope: true,
+			hookScope: false,
 		});
 		expect((BlockScopedRow as never as Record<PropertyKey, unknown>)[metadata]).toMatchObject({
 			hookScope: true,
@@ -2110,7 +2132,9 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		const one = { id: 1, label: 'one' };
 		const two = { id: 2, label: 'two' };
 		const component = BlockContextFixture as never as LynxComponent<BlockContextProps>;
-		const universal = universalColumn(component);
+		const universal = universalColumn(
+			UniversalCoreContextFixture as never as LynxComponent<BlockContextProps>,
+		);
 		const block = blockColumn<BlockContextProps>();
 		const props = (
 			rows: BlockContextProps['rows'],
@@ -3162,6 +3186,44 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 
 		await block.settle(block.background.unmountAsync());
 	});
+	it('replays an authored .tsrx state change without re-running the component body', async () => {
+		// Guards the fixture compile itself (see `vitest.config.js`): an authored
+		// `*.block.lynx.tsrx` module has to take the compiler's dirty replay as a
+		// production Block build does, or every Block test written against one
+		// silently measures a full re-render instead. The same source compiled
+		// for the universal core is the control that shows the read counter sees a
+		// body run at all.
+		for (const [component, bodyRuns] of [
+			[BlockReplayFixture, [1, 1, 1]],
+			[UniversalCoreReplayFixture, [1, 2, 3]],
+		] as const) {
+			let reads = 0;
+			const props: BlockReplayProps = {
+				get label() {
+					reads++;
+					return 'alpha';
+				},
+			};
+			const block = blockColumn<BlockReplayProps>(undefined, residentRunProgram);
+			await block.render(component as never as LynxComponent<BlockReplayProps>, props);
+			await flushMicrotasks();
+			expect(paint(block.main.commits).tree).toContain('none:even');
+			const observed = [reads];
+
+			for (const painted of ['once:odd', 'twice:even']) {
+				deliverTo(block, firstChildListener(block.main.commits));
+				await block.settle(Promise.resolve());
+				await flushMicrotasks();
+				const tree = paint(block.main.commits).tree;
+				expect(tree).toContain(painted);
+				expect(tree).toContain('alpha');
+				observed.push(reads);
+			}
+			expect(observed).toEqual(bodyRuns);
+			await block.settle(block.background.unmountAsync());
+		}
+	});
+
 	it('adopts an authored .tsrx @if branch without resetting its surviving component', async () => {
 		const lifecycle: string[] = [];
 		const block = blockColumn<BlockConditionalProps>();
@@ -3225,7 +3287,9 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		const lifecycle: string[] = [];
 		const component = BlockSwitchFixture as never as LynxComponent<BlockSwitchProps>;
 		const block = blockColumn<BlockSwitchProps>();
-		const universal = universalColumn(component);
+		const universal = universalColumn(
+			UniversalCoreSwitchFixture as never as LynxComponent<BlockSwitchProps>,
+		);
 		const props = (mode: BlockSwitchProps['mode'], label: string): BlockSwitchProps => ({
 			mode,
 			label,
@@ -3283,7 +3347,9 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		for (const count of [2, 128]) {
 			const observations: string[] = [];
 			const core = createLynxBlockCore();
-			const block = blockColumn<BlockScopedRowsProps>(core);
+			// Addressed row runs resolve against the programs the fixture's
+			// main-thread layer registered, as a production main thread's do.
+			const block = blockColumn<BlockScopedRowsProps>(core, residentRunProgram);
 			const rows = Array.from({ length: count }, (_, index) => ({
 				id: index + 1,
 				label: `row ${index + 1}`,

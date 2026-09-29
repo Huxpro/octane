@@ -1,14 +1,20 @@
 import { realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { playwright } from '@vitest/browser-playwright';
 import { configDefaults, defineConfig } from 'vitest/config';
+import { cleanModuleId, createOctaneCompiler } from './packages/octane/src/compiler/bundler.js';
 import { octane } from './packages/octane/src/compiler/vite.js';
 import { octaneMdx } from './packages/mdx/src/vite.js';
 import { stylex } from './packages/stylex/src/vite.js';
-import { lynxRspeedyRenderers } from './packages/lynx/src/config.runtime.js';
+import {
+	lynxBlockRspeedyBackgroundRenderers,
+	lynxRspeedyBackgroundRenderers,
+	lynxRspeedyMainThreadRenderers,
+	lynxRspeedyRenderers,
+} from './packages/lynx/src/config.runtime.js';
 import { opentuiRenderers as OPENTUI_RENDERERS } from './packages/opentui/src/config.ts';
 import { threeRenderers as THREE_RENDERERS } from './packages/three/src/config.ts';
 import { inkRenderers as INK_RENDERERS } from './packages/ink/src/config.ts';
@@ -264,6 +270,119 @@ const LYNX_ALIASES = [
 		replacement: `${LYNX_SOURCE}/$1.ts`,
 	},
 ];
+// An authored Lynx fixture named `*.block.lynx.tsrx` compiles exactly as the
+// two layers of a production `core: 'block'` Rspeedy application compile it:
+// the background layer takes the Block renderer preset (with
+// `compiler-program-ir`), and both layers take their universal runtime, the
+// default main-thread program backend, program addressing, and no HMR or dev
+// instrumentation. The background module imports its main-thread layer, so
+// this single test realm holds the addressed programs a production main thread
+// would, and the two layers' program digests are cross-checked as the build
+// does. Importing the fixture with `?lynx-universal-core` instead yields the
+// background layer of a production `core: 'universal'` application, which is
+// what a Block-versus-Universal parity test compares against. Every other
+// `.lynx.tsrx` fixture keeps the general background compile. Without this
+// split, a Block-core test written against an authored fixture exercised full
+// component re-render and never the compiler's dirty replay.
+const LYNX_BLOCK_FIXTURE_SUFFIX = '.block.lynx.tsrx';
+const LYNX_BLOCK_FIXTURE_LAYERS = new Map([
+	['', 'block'],
+	['?lynx-main-thread', 'mainThread'],
+	['?lynx-universal-core', 'universal'],
+]);
+function lynxBlockApplicationFixtures() {
+	let root = import.meta.dirname;
+	let compilers = null;
+	// Two application builds, each checking its own layers' program addresses.
+	const builds = { block: {}, universal: {} };
+	const createCompilers = async () => {
+		// Imported at run time rather than bundled into this config, so the
+		// production modules resolve their own requests exactly as Rspeedy does.
+		const source = (path) => pathToFileURL(resolve(import.meta.dirname, path)).href;
+		const [
+			{ LYNX_BACKGROUND_RUNTIME, LYNX_MAIN_THREAD_RUNTIME },
+			{ DEFAULT_MAIN_THREAD_PROGRAM_BACKEND: backend },
+			{ crossCheckProgramAddresses },
+		] = await Promise.all([
+			import(source('packages/rspeedy-plugin-octane/src/layers.js')),
+			import(source('packages/rspeedy-plugin-octane/src/program-backends.js')),
+			import(source('packages/rspack-plugin-octane/src/program-addresses.js')),
+		]);
+		// The production Rspack loader also loads the backend request through tsx.
+		const { require: requireTypeScript } = createRequire(
+			resolve(import.meta.dirname, 'packages/rspack-plugin-octane/package.json'),
+		)('tsx/cjs/api');
+		const mainThreadProgramBackend = requireTypeScript(backend.request, import.meta.url);
+		if (mainThreadProgramBackend.signature !== backend.signature) {
+			throw new Error(
+				`Lynx Block fixtures: backend signature ${mainThreadProgramBackend.signature} ` +
+					`does not match ${backend.signature}.`,
+			);
+		}
+		const layer = (renderers, universalRuntime) =>
+			createOctaneCompiler({
+				root,
+				renderers,
+				universalRuntime,
+				mainThreadProgramBackend,
+				programAddressing: true,
+			});
+		// Mirrors `lynxProductMainThreadRenderers` in @octanejs/rspeedy-plugin.
+		const mainThreadRenderers = {
+			...lynxRspeedyMainThreadRenderers,
+			registry: {
+				...lynxRspeedyMainThreadRenderers.registry,
+				lynx: {
+					...lynxRspeedyMainThreadRenderers.registry.lynx,
+					module: '@octanejs/lynx/main-renderer-product',
+				},
+			},
+		};
+		return {
+			block: layer(lynxBlockRspeedyBackgroundRenderers, LYNX_BACKGROUND_RUNTIME),
+			universal: layer(lynxRspeedyBackgroundRenderers, LYNX_BACKGROUND_RUNTIME),
+			mainThread: layer(mainThreadRenderers, LYNX_MAIN_THREAD_RUNTIME),
+			crossCheck: crossCheckProgramAddresses,
+		};
+	};
+	return {
+		name: 'octane:lynx-block-application-fixtures',
+		enforce: 'pre',
+		configResolved(config) {
+			root = config.root;
+		},
+		async transform(code, id) {
+			const file = cleanModuleId(id);
+			if (!file.endsWith(LYNX_BLOCK_FIXTURE_SUFFIX)) return null;
+			const layer = LYNX_BLOCK_FIXTURE_LAYERS.get(id.slice(file.length));
+			if (layer === undefined) {
+				throw new Error(`Lynx Block fixtures: unknown layer query in ${id}.`);
+			}
+			compilers ??= createCompilers();
+			const compiled = await compilers;
+			const result = compiled[layer].transform(code, file, {
+				environment: 'client',
+				hmr: false,
+				dev: false,
+				profile: false,
+			});
+			if (result?.kind !== 'compile') {
+				throw new Error(`Lynx Block fixtures: ${id} did not compile as an Octane module.`);
+			}
+			if (layer === 'mainThread') {
+				// Both applications pair with this one main-thread layer.
+				compiled.crossCheck(builds.block, result.programAddresses);
+				compiled.crossCheck(builds.universal, result.programAddresses);
+				return { code: result.code, map: result.map };
+			}
+			compiled.crossCheck(builds[layer], result.programAddresses);
+			return {
+				code: `${result.code}\nimport ${JSON.stringify(`${file}?lynx-main-thread`)};\n`,
+				map: result.map,
+			};
+		},
+	};
+}
 const VISX_SOURCE = resolve(import.meta.dirname, 'packages/visx/src');
 const VISX_ALIASES = [
 	{
@@ -4786,7 +4905,15 @@ export default defineConfig({
 				},
 				// Lynx has no server compilation mode; execute native fixtures through
 				// the client compiler even though Vitest itself runs them in Node.
-				plugins: [octane({ renderers: lynxRspeedyRenderers, ssr: false })],
+				// `*.block.lynx.tsrx` fixtures take the production Block compile.
+				plugins: [
+					lynxBlockApplicationFixtures(),
+					octane({
+						renderers: lynxRspeedyRenderers,
+						ssr: false,
+						exclude: [LYNX_BLOCK_FIXTURE_SUFFIX],
+					}),
+				],
 				resolve: { alias: LYNX_ALIASES },
 			},
 			{
