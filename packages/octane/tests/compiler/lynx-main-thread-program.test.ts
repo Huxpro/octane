@@ -797,6 +797,70 @@ export function Card() @{
 		expect(code).not.toContain('component-render');
 	});
 
+	it('keeps a provider whose value reads state on the component path', () => {
+		const code = compiled(
+			`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { createContext, useContext, useState } from 'octane';
+
+const Theme = createContext('none');
+
+function Consumer() @{
+	const theme = useContext(Theme);
+	<text>{('theme:' + theme) as string}</text>
+}
+
+export function Card() @{
+	const [word, setWord] = useState('a');
+	const theme = 't' + word;
+	<Theme.Provider value={theme}>
+		<view>
+			<text bindtap={() => setWord(word + 'b')}>{('word:' + word) as string}</text>
+			<Consumer />
+		</view>
+	</Theme.Provider>
+}
+`,
+			{
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/ProviderStateCard.lynx.tsrx',
+				backgroundProgram: true,
+			},
+		);
+
+		// A replay would repaint `word:ab` beside a consumer still reading `ta`.
+		expect(code).not.toContain('component-render');
+	});
+
+	it('keeps state replay inside a provider whose value reads no state', () => {
+		const code = compiled(
+			`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { createContext, useState } from 'octane';
+
+const Theme = createContext('none');
+
+export function Card() @{
+	const [word, setWord] = useState('a');
+	<Theme.Provider value="fixed">
+		<view>
+			<text bindtap={() => setWord(word + 'b')}>{('word:' + word) as string}</text>
+		</view>
+	</Theme.Provider>
+}
+`,
+			{
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/ProviderStaticCard.lynx.tsrx',
+				backgroundProgram: true,
+			},
+		);
+
+		expect(code).toContain('component-render');
+	});
+
 	it('does not specialize a local function that merely uses a built-in hook name', () => {
 		const code = compiled(
 			`/** @jsxImportSource @octanejs/lynx/intrinsics */
