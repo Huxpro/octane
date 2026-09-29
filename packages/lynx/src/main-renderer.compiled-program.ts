@@ -13,6 +13,7 @@ import type {
 } from 'octane/universal/native';
 
 import { encodeLynxProgramPropValue, encodeLynxProgramWireValue } from './core/host-prop-value.js';
+import { LYNX_PROGRAM_ABI_VERSION } from './core/program-abi.js';
 import { registerUniversalProgram } from './core/program-registry.js';
 import {
 	LYNX_BLOCK_ACTIVITY,
@@ -212,6 +213,16 @@ export function universalPlan(
 ): UniversalProgramPlan {
 	assertRenderer(renderer);
 	if (root.kind !== 'program') fail('received a non-program plan after complete addressing proof');
+	// The BTS and MTS halves of a program are emitted independently, so a plan
+	// from another program ABI would register under an address the background
+	// pairs with a differently shaped definition. An absent version is the
+	// legacy hand-written form `UniversalProgramPlan` still admits, and the
+	// general renderer accepts it the same way.
+	if (root.version !== undefined && root.version !== LYNX_PROGRAM_ABI_VERSION) {
+		fail(
+			`expected program ABI version ${LYNX_PROGRAM_ABI_VERSION}, received ${String(root.version)}`,
+		);
+	}
 	const plan = Object.freeze({
 		...root,
 		...(address === undefined ? null : { address: Object.freeze({ ...address }) }),
