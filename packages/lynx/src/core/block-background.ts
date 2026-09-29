@@ -496,6 +496,15 @@ export function createLynxBlockBackgroundCore(
 			while (true) {
 				const tail = pending;
 				await tail;
+				// Accepted passive effects run on the host scheduler, which may be
+				// serviced only after this promise chain settles (lynx.queueMicrotask).
+				// A render they request is tracked synchronously, so one host turn
+				// behind the queued flush is enough to observe it before re-reading
+				// `pending`.
+				if (passiveScheduled) {
+					await new Promise<void>((resolve) => options.scheduleMicrotask(resolve));
+					continue;
+				}
 				if (publication === acceptedPublicationGeneration) return;
 				publication = acceptedPublicationGeneration;
 			}
