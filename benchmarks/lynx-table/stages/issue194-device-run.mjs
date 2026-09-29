@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+	issue194CapacityOutcomeChecks,
 	issue194CollectionState,
 	issue194CompleteGroupSampleLimit,
 	issue194DeviceCompletionMode,
@@ -791,8 +792,14 @@ async function measure(cell, ordinal) {
 		devtoolStayedDisabled: parsed.devtoolEnabledEvidence.length === 0,
 	};
 	const completedAndValid = issue194RejectionReasons(completionChecks).length === 0;
-	const capacityTerminalOutcome =
-		parsed.loadStartMs !== null && (parsed.nativeCrashMs !== null || timedOut || capacityRejected);
+	const capacityChecks = issue194CapacityOutcomeChecks({
+		devtoolStayedDisabled: parsed.devtoolEnabledEvidence.length === 0,
+		completedAndValid,
+		loadStarted: parsed.loadStartMs !== null,
+		capacityRejected,
+		timedOut,
+		nativeCrash: parsed.nativeCrashMs !== null,
+	});
 	const nativeCrashChecks = {
 		devtoolStayedDisabled: parsed.devtoolEnabledEvidence.length === 0,
 		loadStart: parsed.loadStartMs !== null,
@@ -802,18 +809,19 @@ async function measure(cell, ordinal) {
 	const accepted =
 		parsed.devtoolEnabledEvidence.length === 0 &&
 		(capacityOutcome
-			? completedAndValid || capacityTerminalOutcome
+			? issue194RejectionReasons(capacityChecks).length === 0
 			: nativeCrashOutcome
 				? issue194RejectionReasons(nativeCrashChecks).length === 0
 				: completedAndValid);
 	const rejectionReasons = accepted
 		? []
 		: capacityOutcome
-			? capacityTerminalOutcome
-				? issue194RejectionReasons({
-						devtoolStayedDisabled: parsed.devtoolEnabledEvidence.length === 0,
-					})
-				: [...issue194RejectionReasons(completionChecks), 'capacityTerminalOutcome']
+			? capacityChecks.capacityTerminalOutcome
+				? issue194RejectionReasons(capacityChecks)
+				: [
+						...issue194RejectionReasons(completionChecks),
+						...issue194RejectionReasons(capacityChecks),
+					]
 			: issue194RejectionReasons(nativeCrashOutcome ? nativeCrashChecks : completionChecks);
 	return {
 		ordinal,

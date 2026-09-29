@@ -205,6 +205,11 @@ export function issue194Ol512CapacityRejectionChecks({
 		explicitOl512:
 			Array.isArray(errors) &&
 			errors.some((line) => /\bRangeError\b.*\bOctane Lynx OL512\b/.test(line)),
+		// The capacity boundary is the only failure this cell may contain; any other
+		// fatal marker in the window is a different defect, not a capacity outcome.
+		onlyOl512:
+			Array.isArray(errors) &&
+			errors.every((line) => /\bRangeError\b.*\bOctane Lynx OL512\b/.test(line)),
 		noAcceptedMainCommit: attribution === null,
 		inputScale: before?.rowCount === scale,
 		stateUnchanged: sameSnapshotFields(before, after, [
@@ -216,6 +221,29 @@ export function issue194Ol512CapacityRejectionChecks({
 		nativeFrames:
 			receipt?.renderEvidence?.kind === 'native-animation-frame' &&
 			receipt?.renderEvidence?.frames === 2,
+	};
+}
+
+/**
+ * Accept a `--capacity-outcome` sample only as a completed operation or as the
+ * exact, atomic OL512 rejection. A timeout or a native crash is never a capacity
+ * outcome: it carries no proof that the bound, rather than something else,
+ * stopped the operation.
+ */
+export function issue194CapacityOutcomeChecks({
+	devtoolStayedDisabled,
+	completedAndValid,
+	loadStarted,
+	capacityRejected,
+	timedOut,
+	nativeCrash,
+}) {
+	const terminal = completedAndValid || (loadStarted && capacityRejected);
+	return {
+		devtoolStayedDisabled,
+		capacityTerminalOutcome: terminal,
+		noTimeout: completedAndValid || !timedOut,
+		noNativeCrash: !nativeCrash,
 	};
 }
 
