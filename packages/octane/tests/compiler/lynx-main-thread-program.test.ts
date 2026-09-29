@@ -833,6 +833,39 @@ export function Card({ source }: { source: string }) @{
 		expect(computation.run()).toEqual(expect.arrayContaining(['initial:one!']));
 	});
 
+	it('keeps linked state whose source reads component state on the component path', () => {
+		for (const setup of [
+			`const [linked] = useLinkedState(word, (next: string) => 'linked:' + next);`,
+			`const source = 'x' + word;
+	const [linked] = useLinkedState(source, (next: string) => 'linked:' + next);`,
+		]) {
+			const code = compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useLinkedState, useState } from 'octane';
+
+export function Card() @{
+	const [word, setWord] = useState('a');
+	${setup}
+	<view>
+		<text bindtap={() => setWord(word + 'b')}>{('word:' + word) as string}</text>
+		<text>{linked as string}</text>
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/LinkedFollowCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			);
+
+			// A replay would repaint `word:ab` beside a linked value still reading `a`.
+			expect(code).not.toContain('component-render');
+		}
+	});
+
 	it('keeps scalar replay separate from structural invalidation', () => {
 		const code = compiled(
 			`/** @jsxImportSource @octanejs/lynx/intrinsics */
