@@ -10,6 +10,7 @@ import {
 	issue194DeviceResumeMismatch,
 	issue194LifecycleSequence,
 	issue194LogWindow,
+	issue194CapacityOutcomeChecks,
 	issue194Ol512CapacityRejectionChecks,
 	issue194MutationCensus,
 	issue194NativePostState,
@@ -43,7 +44,13 @@ function nestedBlock(source, anchor) {
 }
 
 test('Native benchmark source does not construct unavailable Web scheduling globals', () => {
-	assert.match(app, /typeof MessageChannel === 'function' \? new MessageChannel\(\) : null/);
+	assert.match(
+		app,
+		/_lynxForWeb && typeof MessageChannel === 'function' \? new MessageChannel\(\) : null/,
+	);
+	// iOS's background runtime defines MessageChannel too; only Lynx for Web may
+	// take the MessageChannel path, or Native receipts are skipped on iOS.
+	assert.match(app, /SystemInfo\?\.platform === 'web'/);
 	const nativeSchedule = nestedBlock(app, 'if (_stormChannel === null)');
 	assert.match(nativeSchedule, /lynx\.setTimeout\(cb, 0\)/);
 	assert.doesNotMatch(nativeSchedule, /(?<!\.)\bsetTimeout\(/);
@@ -673,6 +680,36 @@ test('issue #194 capacity mode accepts only an atomic OL512 append rejection', (
 			issue194Ol512CapacityRejectionChecks({ ...input, errors: ['some other error'] }),
 		).includes('explicitOl512'),
 	);
+	assert.deepEqual(
+		issue194RejectionReasons(
+			issue194Ol512CapacityRejectionChecks({
+				...input,
+				errors: [...input.errors, 'app::onAppJSError:{name:TypeError;message:boom}'],
+			}),
+		),
+		['onlyOl512'],
+	);
+});
+
+test('issue #194 capacity mode never accepts a timeout or a native crash', () => {
+	const base = {
+		devtoolStayedDisabled: true,
+		completedAndValid: false,
+		loadStarted: true,
+		capacityRejected: false,
+		timedOut: false,
+		nativeCrash: false,
+	};
+	const reasons = (overrides) =>
+		issue194RejectionReasons(issue194CapacityOutcomeChecks({ ...base, ...overrides }));
+	assert.deepEqual(reasons({ capacityRejected: true }), []);
+	assert.deepEqual(reasons({ completedAndValid: true }), []);
+	assert.deepEqual(reasons({ timedOut: true }), ['capacityTerminalOutcome', 'noTimeout']);
+	assert.deepEqual(reasons({ nativeCrash: true }), ['capacityTerminalOutcome', 'noNativeCrash']);
+	assert.deepEqual(reasons({ capacityRejected: true, nativeCrash: true }), ['noNativeCrash']);
+	assert.deepEqual(reasons({ capacityRejected: true, loadStarted: false }), [
+		'capacityTerminalOutcome',
+	]);
 });
 
 test('Native v2 receipts carry stable ordinals and lifecycle cycles reset populated pages', () => {
