@@ -6337,6 +6337,16 @@ export interface UniversalHookScopeServices {
 	readonly scheduleTransitionRender?: () => void;
 	/** Queue transition promotion on the adopting renderer's resolved microtask service. */
 	readonly scheduleMicrotask?: (task: () => void) => void;
+	/**
+	 * Allocate the opaque value for a `useId` cell this scope is mounting, from
+	 * the adopting core's root namespace. A core that shares one allocator across
+	 * its scopes and calls it in tree order reproduces a root's positional ids,
+	 * which is what lets it adopt a tree another thread already painted. The
+	 * value becomes the cell once the scope commits; an aborted draft allocates
+	 * again on its next render, so the core owns rewinding abandoned work.
+	 * Absence keeps the scope-local namespace.
+	 */
+	readonly allocateId?: () => string;
 }
 
 export interface UniversalHookScope {
@@ -6401,7 +6411,8 @@ const HOOK_SCOPE_BATCHES: ReadonlySet<UniversalTransitionBatch> =
 const HOOK_SCOPE_REPLAY_ENTRIES: readonly SuspendedMemoEntry[] = Object.freeze([]);
 // Keeps every scope's `useId` values distinct from every other scope's — and,
 // through the `h`/`u` prefix split, from every root's — the same promise
-// `UniversalRootImpl.formatId` makes across roots.
+// `UniversalRootImpl.formatId` makes across roots. A scope whose core supplies
+// `allocateId` draws from that core's namespace instead.
 let NEXT_HOOK_SCOPE_ID = 0;
 
 /**
@@ -6465,12 +6476,12 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			services.scheduleMicrotask?.(task);
 		},
 	} as unknown as UniversalRootImpl<any, any>;
-	const scopeId = (NEXT_HOOK_SCOPE_ID++).toString(36);
+	const allocateId = services.allocateId;
+	const scopeId = allocateId === undefined ? (NEXT_HOOK_SCOPE_ID++).toString(36) : '';
 	const hookRoot: KernelHookRootServices<UniversalContext<any>> = {
 		warmMemoToken: {},
-		formatId(index: number): string {
-			return `:octane-h${scopeId}-${index.toString(36)}:`;
-		},
+		formatId:
+			allocateId ?? ((index: number): string => `:octane-h${scopeId}-${index.toString(36)}:`),
 		// The adopting core owns the provider chain. Without an explicit reader,
 		// retain the old fail-closed contract instead of silently serving defaults
 		// to a component that may actually be under a provider.

@@ -2592,6 +2592,48 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		expect(observed.get(2)!.at(-1)).toBe(twoId);
 	});
 
+	it('draws keyed-row useId values from one root namespace that only accepted frames advance', async () => {
+		const [one, two, three] = [1, 2, 3].map((id) => ({ id, label: String(id) }));
+		const observed = new Map<number, string[]>();
+		const observeId = (row: number, id: string): void => {
+			const values = observed.get(row);
+			if (values === undefined) observed.set(row, [id]);
+			else values.push(id);
+		};
+		const block = blockColumn<BlockScopedRowsProps>();
+		const component = BlockScopedRowsFixture as never as LynxComponent<BlockScopedRowsProps>;
+		const props = (rows: readonly BlockScopedRowsProps['rows'][number][]) => ({
+			rows,
+			log: noop,
+			observe: noop,
+			observeId,
+		});
+
+		// The page's own scope draws nothing here, so row 1 takes the first root
+		// position the main thread would have painted for it.
+		await block.render(component, props([one]));
+		expect(observed.get(1)).toEqual([':octane-u4:']);
+
+		// A frame the host rejects commits nothing, so the positions it drew are
+		// handed to the rows the next accepted frame mounts.
+		const rejected = block.background.renderAsync(component as never, props([one, two]));
+		rejected.catch(() => undefined);
+		for (let guard = 0; guard < 5 && block.main.commits.length < 2; guard++) {
+			await flushMicrotasks();
+		}
+		const drawn = observed.get(2)![0]!;
+		block.main.reject(block.main.commits[1]!, 'injected useId rejection');
+		await expect(rejected).rejects.toThrow('injected useId rejection');
+		await block.render(component, props([one, two]));
+		expect(observed.get(2)!.at(-1)).toBe(drawn);
+
+		// Accepted frames advance: a later mount never reuses a live id.
+		await block.render(component, props([one, two, three]));
+		const live = [1, 2, 3].map((row) => observed.get(row)!.at(-1)!);
+		expect(new Set(live).size).toBe(3);
+		expect(live[0]).toBe(':octane-u4:');
+	});
+
 	it('reconciles compiled keyed-row linked state without losing local edits on moves', async () => {
 		const block = blockColumn<BlockLinkedStateProps>();
 		const component = BlockLinkedStateFixture as never as LynxComponent<BlockLinkedStateProps>;
