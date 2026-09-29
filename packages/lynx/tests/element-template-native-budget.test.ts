@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
 	createLynxElementTemplateNativeBudget,
+	lynxElementTemplateBudgetIsBounded,
 	LYNX_ELEMENT_TEMPLATE_PENDING_NATIVE_COST_LIMIT,
 	LYNX_ELEMENT_TEMPLATE_RESIDENT_INSTANCE_LIMIT,
 	LYNX_ELEMENT_TEMPLATE_RESIDENT_NATIVE_COST_LIMIT,
@@ -60,5 +61,38 @@ describe('Element Template native-operation budget', () => {
 		expect(() => budget.reserveResident(1, 1)).toThrow(/native nodes/);
 		budget.releaseResident(1, LYNX_ELEMENT_TEMPLATE_RESIDENT_NATIVE_COST_LIMIT);
 		expect(() => budget.reserveResident(1, 1)).not.toThrow();
+	});
+
+	it('leaves non-Android engines unbounded: no layout barrier and no resident cap', () => {
+		const flush = vi.fn();
+		const papi = { flush } as unknown as LynxElementTemplatePAPI<LynxElementTemplateHandle>;
+		const budget = createLynxElementTemplateNativeBudget(papi, { bounded: false });
+		expect(budget.bounded).toBe(false);
+		for (let index = 0; index < 4; index++) {
+			budget.run(LYNX_ELEMENT_TEMPLATE_PENDING_NATIVE_COST_LIMIT, () => undefined);
+		}
+		expect(flush).not.toHaveBeenCalled();
+		budget.reserveResident(
+			LYNX_ELEMENT_TEMPLATE_RESIDENT_INSTANCE_LIMIT + 1,
+			LYNX_ELEMENT_TEMPLATE_RESIDENT_NATIVE_COST_LIMIT + 1,
+		);
+		budget.releaseResident(
+			LYNX_ELEMENT_TEMPLATE_RESIDENT_INSTANCE_LIMIT + 1,
+			LYNX_ELEMENT_TEMPLATE_RESIDENT_NATIVE_COST_LIMIT + 1,
+		);
+		expect(() => budget.releaseResident()).toThrow(/unreserved resident count/);
+		budget.flush({});
+		expect(flush).toHaveBeenCalledWith(undefined, {});
+	});
+
+	it('bounds only the Android engine, whose JNI tables charge per native node', () => {
+		expect(createLynxElementTemplateNativeBudget({ flush: vi.fn() } as never).bounded).toBe(true);
+		expect(lynxElementTemplateBudgetIsBounded({ SystemInfo: { platform: 'Android' } })).toBe(true);
+		expect(
+			lynxElementTemplateBudgetIsBounded({ lynx: { SystemInfo: { platform: 'android' } } }),
+		).toBe(true);
+		expect(lynxElementTemplateBudgetIsBounded({ SystemInfo: { platform: 'iOS' } })).toBe(false);
+		expect(lynxElementTemplateBudgetIsBounded({ SystemInfo: { platform: 'web' } })).toBe(false);
+		expect(lynxElementTemplateBudgetIsBounded({})).toBe(false);
 	});
 });
