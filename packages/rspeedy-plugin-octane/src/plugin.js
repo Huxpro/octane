@@ -250,6 +250,7 @@ export function pluginOctane(value) {
 		setup(api) {
 			const root = resolve(api.context.rootPath);
 			assertLynxToolchain(root);
+			const customJsMinifierEnvironments = new Set();
 			const appliesToEnvironment = (environment) =>
 				(options.environments === undefined || options.environments.includes(environment.name)) &&
 				(!options.application || /^(?:lynx|web)(?:-|$)/.test(environment.name));
@@ -264,10 +265,46 @@ export function pluginOctane(value) {
 				);
 				api.modifyEnvironmentConfig?.((config, { name, mergeEnvironmentConfig }) => {
 					if (!appliesToEnvironment({ name })) return;
+					const configuredMinify = config.output?.minify;
+					if (
+						configuredMinify !== null &&
+						typeof configuredMinify === 'object' &&
+						configuredMinify.jsOptions !== undefined
+					) {
+						customJsMinifierEnvironments.add(name);
+					}
 					return mergeEnvironmentConfig(config, {
 						...(config.splitChunks === undefined ? { splitChunks: false } : null),
 						tools: { rspack: { output: { iife: false } } },
 					});
+				});
+				api.modifyRspackConfig?.((config, utils) => {
+					const environment = utils.environment.name;
+					if (
+						!/^web(?:-|$)/.test(environment) ||
+						!utils.isProd ||
+						customJsMinifierEnvironments.has(environment) ||
+						config.optimization?.minimize === false
+					) {
+						return;
+					}
+					const minimizers = config.optimization?.minimizer;
+					if (
+						!Array.isArray(minimizers) ||
+						minimizers[0]?.constructor?.name !== 'SwcJsMinimizerRspackPlugin'
+					) {
+						return;
+					}
+					config.optimization.minimizer = [
+						new utils.rspack.SwcJsMinimizerRspackPlugin({
+							minimizerOptions: {
+								compress: { passes: 3 },
+								mangle: { toplevel: true },
+								module: true,
+							},
+						}),
+						...minimizers.slice(1),
+					];
 				});
 			}
 			api.modifyBundlerChain((chain, { environment }) => {

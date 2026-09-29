@@ -181,7 +181,7 @@ class LynxElementTemplateMetadataPlugin {
 				const templates = collectLynxElementTemplates(
 					compilation,
 					args.chunkGroups,
-					selectedLynxBlockComponentFeatures(compiler) !== 'structural',
+					selectedLynxBlockComponentFeatures(compiler) === 'full',
 				);
 				args.encodeData.sourceContent.config.enableUnifyFixedBehavior = true;
 				args.encodeData.elementTemplate = templates;

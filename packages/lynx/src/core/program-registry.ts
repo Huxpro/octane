@@ -48,6 +48,7 @@
  */
 
 import type { UniversalHostTemplateProgram, UniversalProgramPlan } from 'octane/universal/native';
+import { LYNX_BLOCK_RESIDENT_WIRE } from './block-component-features.js';
 
 /** One address, as a run command carries it. */
 export interface LynxProgramAddress {
@@ -65,6 +66,7 @@ export interface LynxProgramAddress {
  */
 const RESIDENT_PROGRAMS = new Map<string, UniversalProgramPlan>();
 const RESIDENT_PROGRAM_ADDRESSES = new WeakMap<UniversalProgramPlan, LynxProgramAddress>();
+const RESIDENT_PROGRAM_DIGESTS = new WeakMap<UniversalProgramPlan, string>();
 
 /** One string key per address. A \u0000 cannot appear in a module path. */
 function addressKey(module: string, index: number): string {
@@ -91,15 +93,22 @@ export function registerUniversalProgram(
 	module: string,
 	index: number,
 	plan: UniversalProgramPlan,
+	digest?: string,
 ): void {
 	const key = addressKey(module, index);
 	const existing = RESIDENT_PROGRAMS.get(key);
 	if (existing !== undefined) {
-		if (existing === plan || sameWire(existing.wire, plan.wire)) {
+		if (
+			existing === plan ||
+			(LYNX_BLOCK_RESIDENT_WIRE
+				? sameWire(existing.wire, plan.wire)
+				: digest !== undefined && RESIDENT_PROGRAM_DIGESTS.get(existing) === digest)
+		) {
 			RESIDENT_PROGRAM_ADDRESSES.set(
 				plan,
 				RESIDENT_PROGRAM_ADDRESSES.get(existing) ?? Object.freeze({ module, index }),
 			);
+			if (digest !== undefined) RESIDENT_PROGRAM_DIGESTS.set(plan, digest);
 			return;
 		}
 		throw new TypeError(
@@ -110,11 +119,12 @@ export function registerUniversalProgram(
 	}
 	RESIDENT_PROGRAMS.set(key, plan);
 	RESIDENT_PROGRAM_ADDRESSES.set(plan, Object.freeze({ module, index }));
+	if (digest !== undefined) RESIDENT_PROGRAM_DIGESTS.set(plan, digest);
 	// The plan is what the first screen paints from; the wire is what a mount
 	// arriving over the command path walks. Both are this one program, and a
 	// chunk that registered a `bind` it could not also describe would accept an
 	// addressed run and then have nothing to apply it with.
-	if (plan.wire !== undefined) deepFreezeWire(plan.wire);
+	if (LYNX_BLOCK_RESIDENT_WIRE && plan.wire !== undefined) deepFreezeWire(plan.wire);
 }
 
 /** The module-scope address registered beside the exact plan the first screen paints. */

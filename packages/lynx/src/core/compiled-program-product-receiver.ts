@@ -322,11 +322,10 @@ export function installLynxCompiledProgramProductReceiver<Node extends object>(
 			report(CODE);
 			return;
 		}
-		if (message.type === 'call-background-result' || message.type === 'call-background-error') {
-			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
-				report(CODE);
-				return;
-			}
+		if (
+			LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS &&
+			(message.type === 'call-background-result' || message.type === 'call-background-error')
+		) {
 			const entry = pendingBackgroundCalls.get(message.call);
 			if (
 				entry === undefined ||
@@ -345,11 +344,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends object>(
 			}
 			return;
 		}
-		if (message.type === 'cancel-main') {
-			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
-				report(CODE);
-				return;
-			}
+		if (LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS && message.type === 'cancel-main') {
 			const running = runningMainCalls.get(message.call);
 			if (
 				running !== undefined &&
@@ -362,11 +357,7 @@ export function installLynxCompiledProgramProductReceiver<Node extends object>(
 			}
 			return;
 		}
-		if (message.type === 'call-main') {
-			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
-				report(CODE);
-				return;
-			}
+		if (LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS && message.type === 'call-main') {
 			if (active === null || !same(active, message) || runningMainCalls.has(message.call)) {
 				report(
 					DEVELOPMENT

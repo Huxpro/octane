@@ -130,7 +130,10 @@ import {
 import type { LynxBlockProgram, LynxBlockProgramContext } from './block-program.js';
 import {
 	LYNX_BLOCK_ACTIVITY,
+	LYNX_BLOCK_EMPTY_RANGES,
+	LYNX_BLOCK_NESTED_RANGES,
 	LYNX_BLOCK_PORTALS,
+	LYNX_BLOCK_SCOPED_ROWS,
 	LYNX_BLOCK_TRANSITIONS,
 	LYNX_BLOCK_TRY_BOUNDARIES,
 } from './block-component-features.js';
@@ -585,6 +588,7 @@ interface NestedRangeState {
 }
 
 function nestedStateNeedsRetry(state: NestedRangeState): boolean {
+	if (!LYNX_BLOCK_NESTED_RANGES) return false;
 	for (const range of state.ranges) {
 		if (range.tryState?.needsRetry === true || nestedStatesNeedRetry(range.nested)) return true;
 	}
@@ -592,6 +596,7 @@ function nestedStateNeedsRetry(state: NestedRangeState): boolean {
 }
 
 function nestedStatesNeedRetry(states: ReadonlyMap<unknown, NestedRangeState> | null): boolean {
+	if (!LYNX_BLOCK_NESTED_RANGES) return false;
 	if (states === null) return false;
 	for (const state of states.values()) {
 		if (nestedStateNeedsRetry(state)) return true;
@@ -1520,6 +1525,7 @@ export function lynxBlockProgramForComponent<Props>(
 		let scoped = previous?.scoped ?? null;
 		let rendered: RenderedPlan;
 		if (
+			LYNX_BLOCK_SCOPED_ROWS &&
 			component !== null &&
 			(componentMayNeedHookScope(component) || componentPropsMayNeedHookScope(props))
 		) {
@@ -1693,7 +1699,7 @@ export function lynxBlockProgramForComponent<Props>(
 		}
 		const definitions = templateState.ranges!;
 		const nestedState =
-			definitions.length === 0
+			!LYNX_BLOCK_NESTED_RANGES || definitions.length === 0
 				? null
 				: !replaceNested && previousNested?.template === templateState
 					? previousNested
@@ -1792,6 +1798,7 @@ export function lynxBlockProgramForComponent<Props>(
 		member: LynxBlock,
 		nested: NestedRangeRender,
 	): void => {
+		if (!LYNX_BLOCK_NESTED_RANGES) return;
 		if (nested.replaces !== undefined) clearNestedRanges(context, nested.replaces, false);
 		for (let index = 0; index < nested.state.ranges.length; index++) {
 			const range = nested.state.ranges[index]!;
@@ -1810,6 +1817,7 @@ export function lynxBlockProgramForComponent<Props>(
 		key: unknown,
 		row: RetainedRow,
 	): void => {
+		if (!LYNX_BLOCK_SCOPED_ROWS) return;
 		const owner = row.scoped;
 		if (owner === null) return;
 		context.afterCommit(() => {
@@ -1888,6 +1896,7 @@ export function lynxBlockProgramForComponent<Props>(
 
 	/** Queue one row-owned update without promoting it to the page scope. */
 	function queueScopedRowStateRender(owner: ScopedRowState): void {
+		if (!LYNX_BLOCK_SCOPED_ROWS) return;
 		if (owner.queued) return;
 		const context = liveContext;
 		const state = owner.state;
@@ -1927,6 +1936,7 @@ export function lynxBlockProgramForComponent<Props>(
 		previous: ReadonlyMap<unknown, RetainedRow | null> | null,
 		next: ReadonlyMap<unknown, RetainedRow | null>,
 	): void => {
+		if (!LYNX_BLOCK_SCOPED_ROWS) return;
 		if (previous === null) return;
 		for (const [key, prior] of previous) {
 			if (prior === null || prior.scope === null) continue;
@@ -1975,7 +1985,7 @@ export function lynxBlockProgramForComponent<Props>(
 		let nestedRenders: Map<unknown, NestedRangeRender> | null = null;
 		let materializedItems: unknown[] | null = null;
 		let materializedKeys: unknown[] | null = null;
-		if (list.empty !== null) {
+		if (LYNX_BLOCK_EMPTY_RANGES && list.empty !== null) {
 			materializedItems = Array.from(list.items as Iterable<unknown>);
 			if (materializedItems.length === 0) {
 				const produced = list.empty();
@@ -3232,6 +3242,7 @@ export function lynxBlockProgramForComponent<Props>(
 
 	/** Dispose semantic owners held below an outer member after its host leaves. */
 	const disposeNestedScopes = (context: LynxBlockProgramContext, state: NestedRangeState): void => {
+		if (!LYNX_BLOCK_NESTED_RANGES) return;
 		for (const range of state.ranges) {
 			disposeRangePortal(context, range);
 			if (range.tryState !== null) {
@@ -3266,6 +3277,7 @@ export function lynxBlockProgramForComponent<Props>(
 		state: NestedRangeState,
 		disposeScopes = true,
 	): void => {
+		if (!LYNX_BLOCK_NESTED_RANGES) return;
 		if (disposeScopes) disposeNestedScopes(context, state);
 		for (const range of state.ranges) {
 			if (range.site === null) continue;
@@ -3285,6 +3297,7 @@ export function lynxBlockProgramForComponent<Props>(
 
 	/** Disconnect a committed subtree while Suspense retains its physical identity. */
 	const hideNestedRanges = (context: LynxBlockProgramContext, state: NestedRangeState): void => {
+		if (!LYNX_BLOCK_NESTED_RANGES) return;
 		for (const range of state.ranges) {
 			const site = range.site;
 			if (site === null) continue;
@@ -3355,6 +3368,7 @@ export function lynxBlockProgramForComponent<Props>(
 			if (LYNX_COMPILED_PROGRAM_HOST_REFS) context.root.releaseRefs(member);
 		};
 		const applyNested = (): void => {
+			if (!LYNX_BLOCK_NESTED_RANGES) return;
 			for (const [key, nested] of render.nested) {
 				const member = state.site!.items.get(key);
 				if (member === undefined) {

@@ -63,6 +63,7 @@ type EnvironmentConfigCallback = (
 	config: Record<string, unknown>,
 	context: { name: string; mergeEnvironmentConfig: typeof mergeRsbuildConfig },
 ) => Record<string, unknown> | undefined;
+type RspackConfigCallback = (config: Record<string, any>, context: Record<string, any>) => void;
 
 function bundlerChainCallback(
 	value: BundlerChainCallback | { handler: BundlerChainCallback },
@@ -339,6 +340,93 @@ describe('@octanejs/rspeedy-plugin', () => {
 				},
 			},
 		});
+	});
+
+	it('leaves an application-owned JavaScript minimizer configuration unchanged', () => {
+		const root = createToolchainRoot();
+		const callbacks: EnvironmentConfigCallback[] = [];
+		const rspackCallbacks: RspackConfigCallback[] = [];
+		pluginOctane().setup({
+			context: { rootPath: root },
+			modifyEnvironmentConfig(callback: EnvironmentConfigCallback) {
+				callbacks.push(callback);
+			},
+			modifyRspackConfig(callback: RspackConfigCallback) {
+				rspackCallbacks.push(callback);
+			},
+			modifyBundlerChain() {},
+		} as never);
+		const jsOptions = { minimizerOptions: { compress: false, mangle: false } };
+		const config = callbacks.reduce<Record<string, any>>(
+			(current, callback) =>
+				callback(current, { mergeEnvironmentConfig: mergeRsbuildConfig, name: 'web' }) ?? current,
+			{ output: { minify: { js: true, jsOptions } } },
+		);
+		expect(config.output.minify.jsOptions).toEqual(jsOptions);
+		class SwcJsMinimizerRspackPlugin {}
+		const original = new SwcJsMinimizerRspackPlugin();
+		const rspackConfig = { optimization: { minimize: true, minimizer: [original] } };
+		for (const callback of rspackCallbacks) {
+			callback(rspackConfig, {
+				environment: { name: 'web' },
+				isProd: true,
+				rspack: { SwcJsMinimizerRspackPlugin },
+			});
+		}
+		expect(rspackConfig.optimization.minimizer[0]).toBe(original);
+	});
+
+	it('uses the browser-safe SWC defaults for production Web without changing Lynx', () => {
+		const root = createToolchainRoot();
+		const rspackCallbacks: RspackConfigCallback[] = [];
+		pluginOctane().setup({
+			context: { rootPath: root },
+			modifyEnvironmentConfig() {},
+			modifyRspackConfig(callback: RspackConfigCallback) {
+				rspackCallbacks.push(callback);
+			},
+			modifyBundlerChain() {},
+		} as never);
+		class SwcJsMinimizerRspackPlugin {
+			constructor(readonly options: unknown) {}
+		}
+		const css = { name: 'css' };
+		const createConfig = () => ({
+			optimization: {
+				minimize: true,
+				minimizer: [new SwcJsMinimizerRspackPlugin({ default: true }), css],
+			},
+		});
+		const utils = (name: string, isProd = true) => ({
+			environment: { name },
+			isProd,
+			rspack: { SwcJsMinimizerRspackPlugin },
+		});
+
+		const web = createConfig();
+		for (const callback of rspackCallbacks) callback(web, utils('web'));
+		expect(web.optimization.minimizer).toEqual([
+			expect.objectContaining({
+				options: {
+					minimizerOptions: {
+						compress: { passes: 3 },
+						mangle: { toplevel: true },
+						module: true,
+					},
+				},
+			}),
+			css,
+		]);
+
+		for (const [name, isProd] of [
+			['lynx', true],
+			['web', false],
+		] as const) {
+			const config = createConfig();
+			const original = config.optimization.minimizer[0];
+			for (const callback of rspackCallbacks) callback(config, utils(name, isProd));
+			expect(config.optimization.minimizer[0]).toBe(original);
+		}
 	});
 
 	it('installs one background compiler graph and preserves entry metadata', () => {

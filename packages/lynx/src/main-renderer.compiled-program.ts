@@ -12,8 +12,16 @@ import type {
 	UniversalRenderContext,
 } from 'octane/universal/native';
 
-import { encodeLynxProgramPropValue } from './core/host-prop-value.js';
+import { encodeLynxProgramPropValue, encodeLynxProgramWireValue } from './core/host-prop-value.js';
 import { registerUniversalProgram } from './core/program-registry.js';
+import {
+	LYNX_BLOCK_ACTIVITY,
+	LYNX_BLOCK_BRANCH_REGIONS,
+	LYNX_BLOCK_CHILD_REGIONS,
+	LYNX_BLOCK_CONTEXT_REGIONS,
+	LYNX_BLOCK_RESIDENT_WIRE,
+	LYNX_BLOCK_TRY_BOUNDARIES,
+} from './core/block-component-features.js';
 
 const UNIVERSAL_PLAN = Symbol.for('octane.universal.plan');
 const UNIVERSAL_VALUE = Symbol.for('octane.universal.value');
@@ -208,7 +216,9 @@ export function universalPlan(
 		...root,
 		...(address === undefined ? null : { address: Object.freeze({ ...address }) }),
 	}) as UniversalProgramPlan;
-	if (address !== undefined) registerUniversalProgram(address.module, address.index, plan);
+	if (address !== undefined) {
+		registerUniversalProgram(address.module, address.index, plan, address.digest);
+	}
 	return plan;
 }
 
@@ -450,6 +460,7 @@ interface ProgramValueSite {
 const PROGRAM_VALUE_SITES = new WeakMap<UniversalProgramPlan, readonly ProgramValueSite[]>();
 
 function programValueSites(plan: UniversalProgramPlan): readonly ProgramValueSite[] {
+	if (!LYNX_BLOCK_RESIDENT_WIRE) return [];
 	const cached = PROGRAM_VALUE_SITES.get(plan);
 	if (cached !== undefined) return cached;
 	const wire = plan.wire;
@@ -479,6 +490,27 @@ function selectedProgramValues(
 	plan: UniversalProgramPlan,
 	values: readonly unknown[],
 ): readonly (string | number | boolean | null)[] {
+	if (!LYNX_BLOCK_RESIDENT_WIRE) {
+		const kinds = plan.wireValueKinds;
+		if (kinds === undefined || kinds.length !== plan.values.length) {
+			fail('received a resident program without compact value encoders');
+		}
+		const selected: (string | number | boolean | null)[] = new Array(kinds.length);
+		for (let index = 0; index < kinds.length; index++) {
+			const value = encodeLynxProgramWireValue(kinds[index]!, values[plan.values[index]!]);
+			const type = typeof value;
+			if (
+				value !== null &&
+				type !== 'string' &&
+				type !== 'boolean' &&
+				(type !== 'number' || !Number.isFinite(value))
+			) {
+				fail(`cannot encode value slot ${index} for the compact transport`);
+			}
+			selected[index] = value as string | number | boolean | null;
+		}
+		return Object.freeze(selected);
+	}
 	const sites = programValueSites(plan);
 	const selected: (string | number | boolean | null)[] = new Array(sites.length);
 	for (let index = 0; index < sites.length; index++) {
@@ -552,17 +584,17 @@ function materialize(value: unknown, visibility: 'visible' | 'hidden' = 'visible
 	if (record?.$$kind === UNIVERSAL_COMPONENT_VALUE) {
 		return [renderComponent(value as unknown as ComponentValue, visibility)];
 	}
-	if (record?.$$kind === UNIVERSAL_CHILDREN) {
+	if (LYNX_BLOCK_CHILD_REGIONS && record?.$$kind === UNIVERSAL_CHILDREN) {
 		const children = value as unknown as ChildrenValue;
 		assertRenderer(children.renderer);
 		return materialize(children.render(), visibility);
 	}
-	if (record?.$$kind === UNIVERSAL_IF) {
+	if (LYNX_BLOCK_BRANCH_REGIONS && record?.$$kind === UNIVERSAL_IF) {
 		const branch = value as unknown as IfValue;
 		const body = branch.condition ? branch.then : branch.else;
 		return body === null ? [] : [range(materialize(body(), visibility))];
 	}
-	if (record?.$$kind === UNIVERSAL_SWITCH) {
+	if (LYNX_BLOCK_BRANCH_REGIONS && record?.$$kind === UNIVERSAL_SWITCH) {
 		const branch = value as unknown as SwitchValue;
 		let selected = branch.default;
 		for (const entry of branch.cases) {
@@ -587,7 +619,7 @@ function materialize(value: unknown, visibility: 'visible' | 'hidden' = 'visible
 		if (index === 0 && loop.empty !== null) return [range(materialize(loop.empty(), visibility))];
 		return output;
 	}
-	if (record?.$$kind === UNIVERSAL_TRY) {
+	if (LYNX_BLOCK_TRY_BOUNDARIES && record?.$$kind === UNIVERSAL_TRY) {
 		const boundary = value as unknown as TryValue;
 		try {
 			return [range(materialize(boundary.body(), visibility))];
@@ -600,7 +632,7 @@ function materialize(value: unknown, visibility: 'visible' | 'hidden' = 'visible
 			return [range(materialize(boundary.catch(error, NOOP_UPDATE), visibility))];
 		}
 	}
-	if (record?.$$kind === UNIVERSAL_CONTEXT) {
+	if (LYNX_BLOCK_CONTEXT_REGIONS && record?.$$kind === UNIVERSAL_CONTEXT) {
 		const provider = value as unknown as ContextValue;
 		const contexts = new Map(renderingContexts ?? []);
 		contexts.set(provider.context, provider.value);
@@ -613,7 +645,7 @@ function materialize(value: unknown, visibility: 'visible' | 'hidden' = 'visible
 			),
 		];
 	}
-	if (record?.$$kind === UNIVERSAL_ACTIVITY) {
+	if (LYNX_BLOCK_ACTIVITY && record?.$$kind === UNIVERSAL_ACTIVITY) {
 		const activity = value as unknown as ActivityValue;
 		const childVisibility =
 			visibility === 'hidden' || activity.mode === 'hidden' ? 'hidden' : 'visible';
@@ -627,96 +659,91 @@ function materialize(value: unknown, visibility: 'visible' | 'hidden' = 'visible
 	return fail('received an unaddressed renderable');
 }
 
-function assignProgramIds(node: CompactProgramNode, next: { id: number }): void {
+interface FinalizedNodeCounts {
+	readonly hosts: number;
+	readonly programs: number;
+}
+
+function finalizeProgram(
+	node: CompactProgramNode,
+	next: { id: number },
+	listeners: { listener: number },
+	events: LynxFirstScreenResultEvent[],
+): FinalizedNodeCounts {
 	const ranges = node.plan.ranges;
 	const ids = new Array<number>(node.plan.nodes);
 	const rangeIds = new Array<number | undefined>(ranges.length);
+	const sites = node.plan.events;
+	const visible = node.visibility === 'visible';
+	let hosts = node.plan.nodes;
+	let programs = 1;
 	let host = 0;
 	let hole = 0;
 	let member = 0;
+	let event = 0;
+	node.eventsAt = events.length;
 	for (let position = 0; position < node.plan.nodes + ranges.length; position++) {
 		if (hole < ranges.length && ranges[hole]!.id === position) {
 			if (node.texts[hole] !== undefined) {
 				rangeIds[hole++] = next.id++;
+				hosts++;
 				continue;
 			}
 			const end = member + node.spans[hole++]!;
 			for (; member < end; member++) {
 				const child = node.children[member]!;
 				child.id = next.id++;
-				assignIds(child.children, next);
+				const counts = finalizeNodes(child.children, next, listeners, events);
+				hosts += counts.hosts;
+				programs += counts.programs;
 			}
 			continue;
 		}
-		ids[host++] = next.id++;
+		ids[host] = next.id++;
+		while (event < sites.length && sites[event]!.node === host) {
+			const site = sites[event++]!;
+			const handler = node.values[site.slot];
+			const listener = listeners.listener++;
+			if (visible && (handler === FIRST_SCREEN_EVENT || typeof handler === 'function')) {
+				events.push({
+					id: ids[host]!,
+					type: site.type,
+					listener: { id: listener, priority: site.priority },
+				});
+			}
+		}
+		host++;
 	}
-	if (hole !== ranges.length || host !== node.plan.nodes)
+	if (hole !== ranges.length || host !== node.plan.nodes || event !== sites.length)
 		fail('received an invalid range position');
 	node.ids = ids;
 	node.rangeIds = rangeIds;
+	node.eventsCount = events.length - node.eventsAt;
+	return { hosts, programs };
 }
 
-function assignIds(nodes: readonly CompactNode[], next: { id: number }): void {
+function finalizeNodes(
+	nodes: readonly CompactNode[],
+	next: { id: number },
+	listeners: { listener: number },
+	events: LynxFirstScreenResultEvent[],
+): FinalizedNodeCounts {
+	let hosts = 0;
+	let programs = 0;
 	for (const node of nodes) {
 		if (node.kind === 'program') {
 			node.id = next.id;
-			assignProgramIds(node, next);
+			const counts = finalizeProgram(node, next, listeners, events);
+			hosts += counts.hosts;
+			programs += counts.programs;
 		} else {
 			node.id = next.id++;
-			assignIds(node.children, next);
+			const counts = finalizeNodes(node.children, next, listeners, events);
+			hosts += counts.hosts;
+			programs += counts.programs;
 		}
 	}
-}
-
-function collectEvents(
-	nodes: readonly CompactNode[],
-	next: { listener: number },
-	events: LynxFirstScreenResultEvent[],
-): number {
-	let hosts = 0;
-	for (const node of nodes) {
-		if (node.kind === 'range') {
-			hosts += collectEvents(node.children, next, events);
-			continue;
-		}
-		hosts += node.plan.nodes;
-		node.eventsAt = events.length;
-		const visible = node.visibility === 'visible';
-		const ranges = node.plan.ranges;
-		const sites = node.plan.events;
-		let hole = 0;
-		let member = 0;
-		let host = 0;
-		let event = 0;
-		for (let position = 0; position < node.plan.nodes + ranges.length; position++) {
-			if (hole < ranges.length && ranges[hole]!.id === position) {
-				if (node.texts[hole] !== undefined) hosts++;
-				else {
-					const end = member + node.spans[hole]!;
-					for (; member < end; member++) {
-						hosts += collectEvents([node.children[member]!], next, events);
-					}
-				}
-				hole++;
-				continue;
-			}
-			while (event < sites.length && sites[event]!.node === host) {
-				const site = sites[event++]!;
-				const handler = node.values[site.slot];
-				const listener = next.listener++;
-				if (visible && (handler === FIRST_SCREEN_EVENT || typeof handler === 'function')) {
-					events.push({
-						id: node.ids[host]!,
-						type: site.type,
-						listener: { id: listener, priority: site.priority },
-					});
-				}
-			}
-			host++;
-		}
-		node.eventsCount = events.length - node.eventsAt;
-	}
-	return hosts;
+	return { hosts, programs };
 }
 
 let rendering = false;
@@ -741,29 +768,19 @@ export function renderLynxFirstScreen<Props>(
 		rendering = false;
 	}
 	const ids = { id: 1 };
-	assignIds(nodes, ids);
 	const listeners = { listener: 1 };
 	const events: LynxFirstScreenResultEvent[] = [];
-	const hostCount = collectEvents(nodes, listeners, events);
+	const counts = finalizeNodes(nodes, ids, listeners, events);
 	return Object.freeze({
 		get batch(): never {
 			return fail('has no command batch');
 		},
 		nodes,
 		envelope: Object.freeze({ renderer: 'lynx' as const, version: 1 as const, events }),
-		hostCount,
-		programs: countPrograms(nodes),
+		hostCount: counts.hosts,
+		programs: counts.programs,
 		logicalCount: ids.id - 1,
 	});
-}
-
-function countPrograms(nodes: readonly CompactNode[]): number {
-	let count = 0;
-	for (const node of nodes) {
-		if (node.kind === 'program') count++;
-		count += countPrograms(node.children);
-	}
-	return count;
 }
 
 function requireRender(): void {

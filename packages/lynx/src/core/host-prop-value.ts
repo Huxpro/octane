@@ -47,3 +47,11 @@ export function encodeLynxProgramPropValue(type: string, name: string, value: un
 	if (type === 'text' && name === 'text') return typeof value === 'string' ? value : '';
 	return value === undefined ? null : value;
 }
+
+/** Encode one compiler-proved resident binding without retaining its host descriptor. */
+export function encodeLynxProgramWireValue(kind: string, value: unknown): unknown {
+	if (kind === 'c') return normalizeLynxClass(value);
+	if (kind === 'i') return value == null ? null : String(value);
+	if (kind === 't') return typeof value === 'string' ? value : '';
+	return value === undefined ? null : value;
+}

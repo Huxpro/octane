@@ -5991,6 +5991,22 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 	if (state.universalRuntime?.thread !== 'main-thread') return null;
 	const derived = deriveLynxProgramIROnce(state, plan.root);
 	if (derived === null) return null;
+	const compactFlatKeyed = backend.compactFlatKeyed === true;
+	if (
+		compactFlatKeyed &&
+		(!addressableMainThreadProgram(derived) ||
+			derived.refs !== undefined ||
+			derived.wire.nodes.some(
+				(node) =>
+					node.type === 'list' ||
+					node.type === 'list-item' ||
+					node.bindings?.some((binding) => binding.name.startsWith('main-thread:')),
+			))
+	) {
+		throw new TypeError(
+			'Octane flat-keyed Lynx backend received a program requiring resident wire metadata.',
+		);
+	}
 	// Not `plan.name`: the module already binds that, and the emission's name
 	// becomes a named function expression whose binding would shadow it.
 	const name = allocName(state, `${plan.name}Create`);
@@ -6114,6 +6130,25 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 							),
 						),
 					]),
+			...(compactFlatKeyed
+				? [
+						b.prop(
+							'init',
+							b.literal('wireValueKinds', '"wireValueKinds"'),
+							b.literal(
+								derived.values
+									.map((value) => {
+										if (value.name === 'class' || value.name === 'className') return 'c';
+										if (value.name === 'id') return 'i';
+										return derived.wire.nodes[value.node]?.type === 'text' && value.name === 'text'
+											? 't'
+											: 'v';
+									})
+									.join(''),
+							),
+						),
+					]
+				: []),
 			...(elementTemplate === null
 				? []
 				: [b.prop('init', b.literal('elementTemplate', '"elementTemplate"'), elementTemplate)]),
@@ -6131,7 +6166,9 @@ function lynxMainThreadProgramObjectAst(state, plan, origin) {
 			// Emitted only for an addressing build. Without one no command can name
 			// this program, so the field would be bytes in the main-thread chunk that
 			// nothing ever reads.
-			...(state.programModuleId === undefined || !addressableMainThreadProgram(derived)
+			...(compactFlatKeyed ||
+			state.programModuleId === undefined ||
+			!addressableMainThreadProgram(derived)
 				? []
 				: [b.prop('init', b.literal('wire', '"wire"'), jsonValueToAst(derived.wire, origin))]),
 			// `bind`, not `create`: the emission takes the host once per program and

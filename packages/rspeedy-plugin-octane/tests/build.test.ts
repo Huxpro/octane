@@ -439,7 +439,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				{ main: './src/block-ref.ts' },
 				'componentFeatures',
 			),
-		).toEqual([{ version: 1, selected: 'structural', reasons: [] }]);
+		).toEqual([{ version: 2, selected: 'structural', reasons: [] }]);
 	}, 120_000);
 
 	it('keeps an eligible development graph on universal with a diagnostic reason', async () => {
@@ -734,7 +734,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 				},
 				application: { version: 2, selected: 'compiled-program', reasons: [] },
 				componentFeatures: {
-					version: 1,
+					version: 2,
 					selected: 'full',
 					reasons: [
 						{
@@ -1417,7 +1417,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 						],
 					},
 					componentFeatures: {
-						version: 1,
+						version: 2,
 						selected: 'full',
 						reasons: [
 							{ code: 'feature-specialization-requires-block-core' },

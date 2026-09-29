@@ -17,10 +17,11 @@ export function installLynxBlockComponentFeatureReplacement(compiler, selectedFe
 	}
 	blockComponentFeatureSelectors.set(compiler, selectedFeatures);
 	new NormalModuleReplacementPlugin(BLOCK_COMPONENT_FEATURES_REQUEST, (resource) => {
-		if (selectedFeatures() !== 'structural') return;
+		const selected = selectedFeatures();
+		if (selected !== 'structural' && selected !== 'flat-keyed') return;
 		resource.request = resource.request.replace(
 			'block-component-features.js',
-			'block-component-features.structural.js',
+			`block-component-features.${selected}.js`,
 		);
 	}).apply(compiler);
 }

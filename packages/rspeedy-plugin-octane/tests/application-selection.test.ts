@@ -36,6 +36,29 @@ describe('Lynx application source specialization', () => {
 		expect(selectedLynxBlockComponentFeatures(compiler)).toBe('structural');
 	});
 
+	it('replaces the Block component feature seam with the proved flat-keyed module', () => {
+		const replacements: Array<{
+			test: RegExp;
+			callback: (resource: { request: string }) => void;
+		}> = [];
+		const compiler = {
+			webpack: {
+				NormalModuleReplacementPlugin: class {
+					constructor(test: RegExp, callback: (resource: { request: string }) => void) {
+						replacements.push({ test, callback });
+					}
+					apply() {}
+				},
+			},
+		};
+		installLynxBlockComponentFeatureReplacement(compiler, () => 'flat-keyed');
+		const resource = { request: './core/block-component-features.js' };
+		for (const replacement of replacements) {
+			if (replacement.test.test(resource.request)) replacement.callback(resource);
+		}
+		expect(resource.request).toBe('./core/block-component-features.flat-keyed.js');
+	});
+
 	it('replaces compact thread-function support only after a proved selection', () => {
 		const replacements: Array<{
 			test: RegExp;
