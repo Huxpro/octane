@@ -360,7 +360,7 @@ describe('whole-root Element Template program store', () => {
 		).toEqual([5, 6]);
 	});
 
-	it('releases removed templates and skips layout barriers on an unbounded engine', () => {
+	it('skips layout barriers and resident caps on an unbounded engine but still pools', () => {
 		const { creates, flush, page, papi } = fakePAPI();
 		const store = createLynxElementTemplateProgramStore(
 			papi,
@@ -413,11 +413,10 @@ describe('whole-root Element Template program store', () => {
 			encodeLynxDeltaMessage([{ op: 'remove', firstInstance: 3, count }]),
 		);
 		applyLynxCompiledProgramFrame(store, store.page, resolver, run(3 + count));
-		// No recycle pool: the second table is created fresh rather than kept alive
-		// through a pool that only exists to avoid an Android weak-reference leak.
-		expect(creates.filter((handle) => handle.template === '_octane_et_row')).toHaveLength(
-			count * 2,
-		);
+		// Removed templates are still pooled: Lynx 4.1 leaks a dropped template
+		// instance on iOS as well as Android, so the second table reuses them.
+		expect(creates.filter((handle) => handle.template === '_octane_et_row')).toHaveLength(count);
+		expect(flush).not.toHaveBeenCalled();
 		expect(store.size()).toBe(count + 1);
 	});
 

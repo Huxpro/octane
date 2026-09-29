@@ -227,13 +227,10 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 	const nativeBefore = (before: number | null): Handle | null =>
 		before === null ? null : instance(before).native;
 	const recycle = (value: TemplateInstance<Handle>): void => {
-		// Only a bounded (Android) engine needs the pool: dropping the handle there
-		// leaks its TextShadowNode weak globals, so a pooled handle still holds its
-		// resident reservation. Everywhere else a removed template is released.
-		if (!nativeBudget.bounded) {
-			nativeBudget.releaseResident(1, value.plan.nodes);
-			return;
-		}
+		// Lynx 4.1 does not free a removed template instance on either platform:
+		// dropping the handle leaks it (on Android through TextShadowNode weak
+		// globals, on iOS as ~0.1 GB per 1,000-row create/clear cycle). A pooled
+		// handle therefore keeps its resident reservation.
 		let handles = recycled.get(value.plan);
 		if (handles === undefined) recycled.set(value.plan, (handles = []));
 		handles.push(value.native);
