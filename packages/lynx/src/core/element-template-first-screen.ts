@@ -131,8 +131,9 @@ export function paintLynxElementTemplateFirstScreen<Handle extends LynxElementTe
 	nativeBudget: LynxElementTemplateNativeBudget = createLynxElementTemplateNativeBudget(papi),
 ): LynxElementTemplateFirstScreenSource<Handle> {
 	if (
+		nativeBudget.bounded &&
 		firstScreenNativeCost(result.nodes as readonly FirstScreenNode[]) >
-		LYNX_ELEMENT_TEMPLATE_FIRST_SCREEN_NATIVE_COST_LIMIT
+			LYNX_ELEMENT_TEMPLATE_FIRST_SCREEN_NATIVE_COST_LIMIT
 	) {
 		return deferLynxElementTemplateFirstScreen();
 	}

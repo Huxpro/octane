@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { applyLynxCompiledProgramFrame } from '../src/core/compiled-program-frame.js';
 import { encodeLynxDeltaMessage } from '../src/core/delta-protocol.js';
+import { createLynxElementTemplateNativeBudget } from '../src/core/element-template-native-budget.js';
 import {
 	createLynxElementTemplateProgramStore,
 	type LynxElementTemplateAddress,
@@ -228,7 +229,7 @@ describe('whole-root Element Template program store', () => {
 	});
 
 	it('rejects an oversized resident tree before exhausting native weak references', () => {
-		const { page, papi } = fakePAPI();
+		const { creates, flush, page, papi } = fakePAPI();
 		const store = createLynxElementTemplateProgramStore(papi, page, 73);
 		const expensiveRow = { ...ROW, nodes: 8_192 } satisfies UniversalProgramPlan;
 		const expensiveResolver = (module: string, index: number): UniversalProgramPlan | undefined =>
@@ -260,6 +261,10 @@ describe('whole-root Element Template program store', () => {
 		expect(() =>
 			applyLynxCompiledProgramFrame(store, store.page, expensiveResolver, frame),
 		).toThrow(/native nodes/);
+		// The whole run is reserved before any row reaches native code, so a
+		// rejected frame never creates, inserts, or lays out a partial table.
+		expect(creates.filter((handle) => handle.template === '_octane_et_row')).toEqual([]);
+		expect(flush).not.toHaveBeenCalledWith(undefined, { triggerLayout: true });
 		expect(store.size()).toBe(0);
 		expect(store.isFaulted()).toBe(false);
 		expect(page.children.get(0)).toEqual([]);
@@ -353,6 +358,67 @@ describe('whole-root Element Template program store', () => {
 		expect(
 			mounted.map((handle) => decodeLynxNativeEventToken(handle.attributes[1] as string).id),
 		).toEqual([5, 6]);
+	});
+
+	it('releases removed templates and skips layout barriers on an unbounded engine', () => {
+		const { creates, flush, page, papi } = fakePAPI();
+		const store = createLynxElementTemplateProgramStore(
+			papi,
+			page,
+			73,
+			undefined,
+			undefined,
+			createLynxElementTemplateNativeBudget(papi, { bounded: false }),
+		);
+		const count = 12_000;
+		const run = (firstInstance: number) =>
+			encodeLynxDeltaMessage([
+				{
+					op: 'run',
+					templateId: 2,
+					parent: { instance: 2, slot: 7 },
+					before: null,
+					firstInstance,
+					count,
+					values: Array.from({ length: count }, (_, index) => `row-${index}`),
+				},
+			]);
+		applyLynxCompiledProgramFrame(
+			store,
+			store.page,
+			resolver,
+			encodeLynxDeltaMessage(
+				[
+					{
+						op: 'run',
+						templateId: 1,
+						parent: { instance: 1, slot: 0 },
+						before: null,
+						firstInstance: 2,
+						count: 1,
+						values: [],
+					},
+				],
+				addresses,
+			),
+		);
+		applyLynxCompiledProgramFrame(store, store.page, resolver, run(3));
+		expect(store.size()).toBe(count + 1);
+		expect(flush).not.toHaveBeenCalled();
+
+		applyLynxCompiledProgramFrame(
+			store,
+			store.page,
+			resolver,
+			encodeLynxDeltaMessage([{ op: 'remove', firstInstance: 3, count }]),
+		);
+		applyLynxCompiledProgramFrame(store, store.page, resolver, run(3 + count));
+		// No recycle pool: the second table is created fresh rather than kept alive
+		// through a pool that only exists to avoid an Android weak-reference leak.
+		expect(creates.filter((handle) => handle.template === '_octane_et_row')).toHaveLength(
+			count * 2,
+		);
+		expect(store.size()).toBe(count + 1);
 	});
 
 	it('rolls back native handles, definitions, and listener identity after a rejected frame', () => {

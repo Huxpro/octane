@@ -28,16 +28,45 @@ function fail(message: string): never {
 }
 
 export interface LynxElementTemplateNativeBudget {
+	/**
+	 * Whether this engine charges native template work against bounded tables.
+	 * Only Android does; an unbounded budget still counts residents so the
+	 * accounting stays symmetric, but never flushes early or refuses work.
+	 */
+	readonly bounded: boolean;
 	run<T>(cost: number, operation: () => T): T;
 	reserveResident(count?: number, nativeCost?: number): void;
 	releaseResident(count?: number, nativeCost?: number): void;
 	flush(options?: Readonly<Record<string, unknown>>): void;
 }
 
+export interface LynxElementTemplateNativeBudgetOptions {
+	/** Defaults to true, the conservative choice for a caller that cannot tell. */
+	readonly bounded?: boolean;
+}
+
+/**
+ * Whether the running engine needs the JNI-derived bounds. Mirrors the general
+ * receiver's painted-element ceiling: the native main thread exposes the
+ * platform as `lynx.SystemInfo` (and authored code reads a bare `SystemInfo`);
+ * anything that is not Android — iOS, web, a JavaScript host under test, or an
+ * engine too old to say — has no per-node global-reference table to protect.
+ */
+export function lynxElementTemplateBudgetIsBounded(target: object): boolean {
+	const environment = target as {
+		readonly SystemInfo?: { readonly platform?: unknown };
+		readonly lynx?: { readonly SystemInfo?: { readonly platform?: unknown } };
+	};
+	const platform = (environment.SystemInfo ?? environment.lynx?.SystemInfo)?.platform;
+	return typeof platform === 'string' && platform.toLowerCase() === 'android';
+}
+
 /** Bound queued painting work and live template handles before they reach JNI. */
 export function createLynxElementTemplateNativeBudget<Handle extends LynxElementTemplateHandle>(
 	papi: LynxElementTemplatePAPI<Handle>,
+	configuration: LynxElementTemplateNativeBudgetOptions = {},
 ): LynxElementTemplateNativeBudget {
+	const bounded = configuration.bounded ?? true;
 	let pendingCost = 0;
 	let residents = 0;
 	let residentNativeCost = 0;
@@ -47,7 +76,9 @@ export function createLynxElementTemplateNativeBudget<Handle extends LynxElement
 		pendingCost = 0;
 	};
 	return Object.freeze({
+		bounded,
 		run<T>(cost: number, operation: () => T): T {
+			if (!bounded) return operation();
 			if (
 				!Number.isSafeInteger(cost) ||
 				cost <= 0 ||
@@ -74,6 +105,11 @@ export function createLynxElementTemplateNativeBudget<Handle extends LynxElement
 				nativeCost <= 0
 			) {
 				fail('requires positive resident instance and native-node counts');
+			}
+			if (!bounded) {
+				residents += count;
+				residentNativeCost += nativeCost;
+				return;
 			}
 			if (residents + count > LYNX_ELEMENT_TEMPLATE_RESIDENT_INSTANCE_LIMIT) {
 				fail(`cannot retain more than ${LYNX_ELEMENT_TEMPLATE_RESIDENT_INSTANCE_LIMIT} instances`);

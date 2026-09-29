@@ -1,6 +1,8 @@
 import type { UniversalProgramPlan } from 'octane/universal/native';
 import { describe, expect, it, vi } from 'vitest';
 
+import { createLynxElementTemplateNativeBudget } from '../src/core/element-template-native-budget.js';
+
 import {
 	LYNX_ELEMENT_TEMPLATE_FIRST_SCREEN_NATIVE_COST_LIMIT,
 	paintLynxElementTemplateFirstScreen,
@@ -156,6 +158,59 @@ describe('Element Template first-screen ownership', () => {
 		source.dispose();
 	});
 
+	it('paints a large synchronous tree on an engine without JNI bounds', () => {
+		const quietRow = {
+			...ROW,
+			slots: ['p:id'],
+			events: [],
+			elementTemplate: { templateId: 'row', attributeSlots: 2, childSlots: 0, visibilitySlot: 1 },
+		} satisfies UniversalProgramPlan;
+		const rows = LYNX_ELEMENT_TEMPLATE_FIRST_SCREEN_NATIVE_COST_LIMIT;
+		const oversized = {
+			nodes: [
+				{
+					kind: 'program' as const,
+					id: 1,
+					plan: SHELL,
+					selectedValues: [],
+					ids: [1],
+					spans: [rows],
+					children: Array.from({ length: rows }, (_, index) => ({
+						kind: 'program' as const,
+						id: index + 2,
+						plan: quietRow,
+						selectedValues: [`row-${index}`],
+						ids: [index + 2],
+						spans: [],
+						children: [],
+					})),
+				},
+			],
+			envelope: { renderer: 'lynx' as const, version: 1 as const, events: [] },
+			hostCount: rows + 1,
+			programs: rows + 1,
+			logicalCount: rows + 1,
+			get batch(): never {
+				throw new Error('unused');
+			},
+		};
+		const bounded = host();
+		const deferred = paintLynxElementTemplateFirstScreen(oversized, bounded.papi, bounded.page);
+		expect(bounded.created).toEqual([]);
+		deferred.dispose();
+
+		// The synchronous-paint bound exists only for Android's JNI callback queue.
+		const unbounded = host();
+		const painted = paintLynxElementTemplateFirstScreen(
+			oversized,
+			unbounded.papi,
+			unbounded.page,
+			createLynxElementTemplateNativeBudget(unbounded.papi, { bounded: false }),
+		);
+		expect(unbounded.created).toHaveLength(rows + 1);
+		painted.dispose();
+	});
+
 	it('defers an unsafe synchronous tree intact to the first background frame', () => {
 		const { created, page, papi } = host();
 		const oversized = {
@@ -266,6 +321,7 @@ describe('Element Template first-screen ownership', () => {
 
 		expect(() =>
 			paintLynxElementTemplateFirstScreen(result(), papi, page, {
+				bounded: true,
 				run: (_cost, operation) => operation(),
 				reserveResident,
 				releaseResident,
