@@ -261,4 +261,120 @@ describe('@octanejs/lynx compact compiled-program worklets', () => {
 		store.dispose();
 		baseRegistry.close();
 	});
+
+	describe('a main-thread ref moving between hosts', () => {
+		// `<view main-thread:ref={c ? r : null} /><view main-thread:ref={c ? null : r} />`
+		// as two rows of one program: toggling `c` moves `r` in one frame, and the
+		// frame's slot writes may name the new owner before they clear the old one.
+		function setup() {
+			const ref = createLynxMainThreadRefDescriptor('compact:moving-ref');
+			const registry = createLynxMainThreadWorkletRegistry();
+			const cell = registry.retainOwner(ref);
+			const papi = emittedHost();
+			const page = papi.createPage('entry', 0);
+			const store = createLynxCompiledProgramStore(
+				papi,
+				papi.getUniqueId(page),
+				47,
+				1,
+				undefined,
+				undefined,
+				undefined,
+				registry,
+			);
+			store.begin();
+			store.mount({
+				firstHandle: 1,
+				count: 2,
+				parent: page,
+				before: null,
+				plan: plan(),
+				values: ['a', null, ref, 'b', null, null],
+			});
+			store.commit();
+			const [a, b] = page.children as [FakeNode, FakeNode];
+			const close = () => {
+				store.dispose();
+				expect(cell.current).toBeNull();
+				registry.releaseOwner(ref);
+				registry.close();
+			};
+			return { ref, cell, store, a, b, close };
+		}
+
+		it('hands the ref over in either direction whichever slot the frame writes first', () => {
+			const { ref, cell, store, a, b, close } = setup();
+			expect(cell.current).toBe(a);
+
+			store.begin();
+			expect(store.set(2, 2, ref)).toBe(true);
+			expect(store.set(1, 2, null)).toBe(true);
+			store.commit();
+			expect(cell.current).toBe(b);
+
+			store.begin();
+			expect(store.set(1, 2, ref)).toBe(true);
+			expect(store.set(2, 2, null)).toBe(true);
+			store.commit();
+			expect(cell.current).toBe(a);
+
+			store.begin();
+			expect(store.set(1, 2, null)).toBe(true);
+			expect(store.set(2, 2, ref)).toBe(true);
+			store.commit();
+			expect(cell.current).toBe(b);
+
+			// The previous owner no longer holds the ref: tearing it down leaves the
+			// new owner's target in place.
+			store.begin();
+			store.visibility(1, false);
+			store.commit();
+			expect(cell.current).toBe(b);
+			store.begin();
+			store.remove(1);
+			store.commit();
+			expect(cell.current).toBe(b);
+			close();
+		});
+
+		it('restores the previous owner when a frame that moved the ref is rejected', () => {
+			const { ref, cell, store, a, close } = setup();
+
+			store.begin();
+			expect(store.set(2, 2, ref)).toBe(true);
+			store.rollback();
+			expect(cell.current).toBe(a);
+
+			store.begin();
+			expect(store.set(2, 2, ref)).toBe(true);
+			expect(store.set(1, 2, null)).toBe(true);
+			store.rollback();
+			expect(cell.current).toBe(a);
+
+			// Ownership, not just the cell, was restored: the original host still
+			// releases the ref, and the other host never kept a claim on it.
+			store.begin();
+			expect(store.set(1, 2, null)).toBe(true);
+			store.commit();
+			expect(cell.current).toBeNull();
+			close();
+		});
+
+		it('rejects a frame that leaves the ref on two live hosts', () => {
+			const { ref, cell, store, a, close } = setup();
+
+			store.begin();
+			expect(store.set(2, 2, ref)).toBe(true);
+			expect(() => store.commit()).toThrow(/ref "compact:moving-ref" is already mounted/);
+			store.rollback();
+			expect(cell.current).toBe(a);
+
+			store.begin();
+			expect(store.set(2, 2, ref)).toBe(true);
+			expect(() => store.prepareCommit()).toThrow(/ref "compact:moving-ref" is already mounted/);
+			store.rollback();
+			expect(cell.current).toBe(a);
+			close();
+		});
+	});
 });
