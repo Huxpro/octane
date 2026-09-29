@@ -43,6 +43,7 @@ import {
 	useSyncExternalStore,
 	useTransition,
 	type UniversalContext,
+	type UniversalHookScope,
 } from 'octane/universal/native';
 
 /** A scope plus the schedule calls it made, which is half of what is asserted. */
@@ -1072,6 +1073,37 @@ describe('universal hook scope', () => {
 		expect(a).not.toBe(b);
 		scope.dispose();
 		other.scope.dispose();
+	});
+
+	it('draws useId values from the adopting core namespace and keeps them once accepted', () => {
+		const issued: string[] = [];
+		const allocateId = (): string => {
+			const id = `:root-${issued.length}:`;
+			issued.push(id);
+			return id;
+		};
+		const scopes = [0, 1].map(() =>
+			createUniversalHookScope({ renderer: 'test', scheduleRender() {}, allocateId }),
+		);
+		const [page, row] = scopes as [UniversalHookScope, UniversalHookScope];
+
+		// Mounting instances in tree order draws their ids in that order, so a
+		// core that allocates positionally reproduces another thread's first tree.
+		expect(page.render(() => [useId('first'), useId('second')])).toEqual([':root-0:', ':root-1:']);
+		page.commit();
+		expect(row.render(() => useId('id'))).toBe(':root-2:');
+		// An abandoned draft keeps nothing; the next render asks the core again.
+		row.abort();
+		expect(row.render(() => useId('id'))).toBe(':root-3:');
+		row.commit();
+
+		// Accepted ids are cells: later renders reuse them without allocating.
+		expect(page.render(() => [useId('first'), useId('second')])).toEqual([':root-0:', ':root-1:']);
+		page.commit();
+		expect(row.render(() => useId('id'))).toBe(':root-3:');
+		row.commit();
+		expect(issued).toHaveLength(4);
+		for (const scope of scopes) scope.dispose();
 	});
 
 	it('runs a committed setter urgently inside startTransition instead of staging it', () => {
