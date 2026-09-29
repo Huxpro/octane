@@ -1086,7 +1086,7 @@ describe('Lynx compiled-program application eligibility', () => {
 		expect(Object.isFrozen(report.reasons)).toBe(true);
 	});
 
-	it('accepts paired thread-function and main-thread-prop sites in the compact application', () => {
+	function threadFunctionRequirements(withMainThreadProps: boolean) {
 		const { proofs, featureRequirements: compactRequirements } = compactFeatureRequirements();
 		const featureModule = compactRequirements.modules[0]!;
 		const requirements = {
@@ -1104,7 +1104,7 @@ describe('Lynx compiled-program application eligibility', () => {
 								captures: [],
 							},
 						],
-						mainThreadProps: [site('main-thread:background-ref', 12, 4)],
+						mainThreadProps: withMainThreadProps ? [site('main-thread:background-ref', 12, 4)] : [],
 					}),
 					mainThread: featureRequirements({
 						threadFunctions: [
@@ -1116,11 +1116,16 @@ describe('Lynx compiled-program application eligibility', () => {
 								captures: ['selected'],
 							},
 						],
-						mainThreadProps: [site('main-thread:main-ref', 22, 6)],
+						mainThreadProps: withMainThreadProps ? [site('main-thread:main-ref', 22, 6)] : [],
 					}),
 				},
 			],
 		};
+		return { proofs, requirements };
+	}
+
+	it('accepts paired thread-function sites in the compact application', () => {
+		const { proofs, requirements } = threadFunctionRequirements(false);
 		const blockSelection = evaluateLynxBlockEligibility({
 			...proofs,
 			featureRequirements: requirements,
@@ -1133,6 +1138,45 @@ describe('Lynx compiled-program application eligibility', () => {
 				featureRequirements: requirements,
 			}),
 		).toEqual({ version: 2, eligible: true, reasons: [] });
+	});
+
+	it('keeps authored main-thread props on the general Block application', () => {
+		// The compact client has no `main-thread:*` host-prop lane: such a graph
+		// would build, then fail its first mount on device.
+		const { proofs, requirements } = threadFunctionRequirements(true);
+		const blockSelection = evaluateLynxBlockEligibility({
+			...proofs,
+			featureRequirements: requirements,
+		});
+
+		expect(blockSelection.eligible).toBe(true);
+		expect(
+			evaluateLynxCompiledProgramEligibility({
+				blockSelection,
+				featureRequirements: requirements,
+			}),
+		).toEqual({
+			version: 2,
+			eligible: false,
+			reasons: [
+				{
+					code: 'compiled-program-unsupported-main-thread-prop',
+					module: '/src/App.tsrx',
+					thread: 'background',
+					name: 'main-thread:background-ref',
+					line: 12,
+					column: 4,
+				},
+				{
+					code: 'compiled-program-unsupported-main-thread-prop',
+					module: '/src/App.tsrx',
+					thread: 'main-thread',
+					name: 'main-thread:main-ref',
+					line: 22,
+					column: 6,
+				},
+			],
+		});
 	});
 
 	it('keeps compiler-proved portals on the general Block application', () => {
