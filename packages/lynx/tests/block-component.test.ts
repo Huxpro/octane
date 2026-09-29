@@ -4913,6 +4913,73 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		await block.settle(block.background.unmountAsync());
 	});
 
+	it('keeps one action-state dispatcher that runs the latest accepted action', async () => {
+		const started: string[] = [];
+		const dispatchers: Array<(payload: string) => void> = [];
+		const ActionVersionCard = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function ActionVersionCard({ label }: { readonly label: string }) {
+				const [state, run, pending] = useActionState(
+					(previous: string, payload: string) => {
+						started.push(`${label}:${payload}`);
+						return `${previous}|${label}:${payload}`;
+					},
+					'alpha',
+					undefined,
+					'action-state',
+				);
+				dispatchers.push(run);
+				// The label reaches the host so every render is a host transaction
+				// the main thread can accept or reject.
+				return universalValue(CARD_PLAN, [
+					pending ? 'card pending' : 'card',
+					state,
+					'card-meta',
+					noop,
+					`${label}/${pending ? 'pending' : 'ready'}`,
+				]);
+			},
+		);
+		const block = blockColumn<{ readonly label: string }>();
+		const drain = async (): Promise<void> => {
+			for (let index = 0; index < 8; index++) {
+				await flushMicrotasks();
+				block.acknowledgePending();
+			}
+		};
+
+		await block.render(ActionVersionCard as never, { label: 'mount' });
+		await block.render(ActionVersionCard as never, { label: 'accepted' });
+		const [first] = dispatchers;
+		expect(dispatchers.every((dispatch) => dispatch === first)).toBe(true);
+
+		const rejected = block.background.renderAsync(ActionVersionCard as never, {
+			label: 'rejected',
+		});
+		await flushMicrotasks();
+		block.main.reject(block.main.commits.at(-1)!, 'injected action-state rejection');
+		block.markPendingHandled();
+		await expect(rejected).rejects.toThrow('injected action-state rejection');
+		expect(dispatchers.at(-1)).toBe(first);
+
+		// The first render's dispatcher runs the action the host last accepted,
+		// never the one captured at mount or the one from the rejected attempt.
+		first!('beta');
+		await drain();
+		expect(started).toEqual(['accepted:beta']);
+		expect(paint(block.main.commits).tree).toContain('alpha|accepted:beta');
+		expect(paint(block.main.commits).tree).toContain('accepted/ready');
+
+		await block.render(ActionVersionCard as never, { label: 'latest' });
+		first!('gamma');
+		await drain();
+		expect(started).toEqual(['accepted:beta', 'latest:gamma']);
+		expect(paint(block.main.commits).tree).toContain('alpha|accepted:beta|latest:gamma');
+		expect(dispatchers.every((dispatch) => dispatch === first)).toBe(true);
+
+		await block.settle(block.background.unmountAsync());
+	});
+
 	it('rebases optimistic state urgently and reverts it in the accepted transition', async () => {
 		vi.useFakeTimers();
 		try {

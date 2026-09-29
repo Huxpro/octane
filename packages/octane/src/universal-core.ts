@@ -6392,8 +6392,13 @@ export interface UniversalHookScope {
 	commit(visible?: boolean, holdTransitions?: boolean): void;
 	/** Drop the last render's cells, leaving the committed ones in place. */
 	abort(retryTransitions?: boolean): void;
-	/** Settle and discard every promoted, drafted, or held transition owned by this scope. */
-	finishTransitions(): void;
+	/**
+	 * Settle and discard every promoted, drafted, or held transition owned by
+	 * this scope. With `retainScheduled`, promoted lanes that no render has
+	 * consumed yet stay scheduled for the transition render their promotion
+	 * already requested, so an accepted attempt cannot discard later work.
+	 */
+	finishTransitions(retainScheduled?: boolean): void;
 	/** Release the cells. A setter that fires afterwards is ignored. */
 	dispose(): void;
 }
@@ -6801,15 +6806,17 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				services.scheduleTransitionRender?.();
 			}
 		},
-		finishTransitions(): void {
+		finishTransitions(retainScheduled = false): void {
 			const batches = new Set([
-				...(scheduledTransitionBatches ?? EMPTY_UNIVERSAL_TRANSITION_BATCHES),
+				...(retainScheduled
+					? EMPTY_UNIVERSAL_TRANSITION_BATCHES
+					: (scheduledTransitionBatches ?? EMPTY_UNIVERSAL_TRANSITION_BATCHES)),
 				...(heldTransitionBatches ?? EMPTY_UNIVERSAL_TRANSITION_BATCHES),
 				...draftTransitionBatches,
 			]);
 			draft = null;
 			draftTransitionBatches = EMPTY_UNIVERSAL_TRANSITION_BATCHES;
-			scheduledTransitionBatches = null;
+			if (!retainScheduled) scheduledTransitionBatches = null;
 			heldTransitionBatches = null;
 			for (const batch of batches) finishUniversalTransitionRoot(batch, root);
 		},
@@ -7601,11 +7608,93 @@ export function useTransition(slot?: unknown): [boolean, typeof startTransition]
 	});
 }
 
-interface UniversalActionStateController<State> {
+interface UniversalActionStateController<State, Payload> {
 	/** The resolved tail keeps every dispatch on the last completed result. */
 	chain: Promise<State>;
 	/** Number of queued or running actions; the visible hook state stores only its zero/non-zero edge. */
 	pending: number;
+	/** One dispatcher for the hook's lifetime, like the DOM runtime's slot dispatcher. */
+	dispatch: (payload: Payload) => Promise<State>;
+}
+
+/**
+ * Surface an action failure the way the DOM runtime does: the nearest
+ * semantic error boundary owns it. Without one, the root's `onUncaughtError`
+ * reports it, and otherwise it is rethrown on the owner's host microtask
+ * service — the Universal host's uncaught-error channel, where the DOM runtime
+ * would `console.error`. A hook-scope owner has no semantic parent, so an
+ * adopting core's failure always takes the host channel.
+ */
+function reportUniversalActionError(record: UniversalOwnerRecord, error: unknown): void {
+	if (routeUniversalOwnerError(record, error)) return;
+	if (reportUniversalUncaughtError(record.root, error)) return;
+	scheduleUniversalOwnerMicrotask(record, () => {
+		throw error;
+	});
+}
+
+function createUniversalActionStateController<State, Payload>(
+	record: UniversalOwnerRecord,
+	initialState: State,
+	action: EffectEventCell,
+	setState: (value: State) => void,
+	setPending: (value: boolean) => void,
+): UniversalActionStateController<State, Payload> {
+	const controller: UniversalActionStateController<State, Payload> = {
+		chain: Promise.resolve(initialState),
+		pending: 0,
+		dispatch(payload: Payload): Promise<State> {
+			controller.pending++;
+			if (controller.pending === 1) setPending(true);
+			// Each run sees the previous completed result. Both settlement paths
+			// resolve the tail so one failed action cannot stall later dispatches.
+			controller.chain = controller.chain.then(
+				(previousState) =>
+					new Promise<State>((resolveResult) => {
+						const finish = (): void => {
+							controller.pending--;
+							if (controller.pending === 0) setPending(false);
+						};
+						// Like the DOM runtime, the action runs in a transition: updates it
+						// raises, including the result and the pending edge, join that
+						// transition, and optimistic updates hold until it settles.
+						startTransition(() => {
+							let produced: Promise<State>;
+							try {
+								// Read the action when the work runs, not when it was queued:
+								// the cell holds the last accepted render's action.
+								produced = Promise.resolve(
+									(action.impl as (previous: State, payload: Payload) => State | Promise<State>)(
+										previousState,
+										payload,
+									),
+								);
+							} catch (error) {
+								finish();
+								reportUniversalActionError(record, error);
+								resolveResult(previousState);
+								return;
+							}
+							produced.then(
+								(value) => {
+									setState(value);
+									finish();
+									resolveResult(value);
+								},
+								(error: unknown) => {
+									finish();
+									reportUniversalActionError(record, error);
+									resolveResult(previousState);
+								},
+							);
+							return produced;
+						});
+					}),
+			);
+			return controller.chain;
+		},
+	};
+	return controller;
 }
 
 export function useActionState<State, Payload>(
@@ -7616,53 +7705,29 @@ export function useActionState<State, Payload>(
 ): [State, (payload: Payload) => void, boolean] {
 	const slot = maybeSlot ?? (typeof _permalinkOrSlot === 'string' ? undefined : _permalinkOrSlot);
 	const base = resolveHookSlot(slot);
-	const root = currentDraftOwner().record.root;
+	const record = currentDraftOwner().record;
 	return withSlot(base, () => {
 		const [state, setState] = useState(initialState, 'state');
 		const [pending, setPending] = useState(false, 'pending');
+		// Queued work reads the latest accepted action through this cell, so the
+		// dispatcher itself never depends on `action` and keeps one identity.
+		const actionCell = committedCallbackHook(action, 'action').cell;
 		// Action users pay for one controller cell. The queue object is not
 		// recreated on ordinary renders and no queue bookkeeping reaches
 		// components that do not call this hook.
-		const controller = useMemo<UniversalActionStateController<State>>(
-			() => ({ chain: Promise.resolve(initialState), pending: 0 }),
+		const controller = useMemo(
+			() =>
+				createUniversalActionStateController<State, Payload>(
+					record,
+					initialState,
+					actionCell,
+					setState,
+					setPending,
+				),
 			[],
 			'queue',
 		);
-		const dispatch = useCallback(
-			(payload: Payload) => {
-				controller.pending++;
-				if (controller.pending === 1) setPending(true);
-				// Handle both fulfillment and rejection inside the tail so one failed
-				// action cannot reject the queue and prevent later dispatches.
-				controller.chain = controller.chain.then((previousState) => {
-					const finish = (): void => {
-						controller.pending--;
-						if (controller.pending === 0) setPending(false);
-					};
-					const fail = (error: unknown): State => {
-						finish();
-						root.__scheduleMicrotask(() => {
-							throw error;
-						});
-						return previousState;
-					};
-					let produced: State | Promise<State>;
-					try {
-						produced = action(previousState, payload);
-					} catch (error) {
-						return fail(error);
-					}
-					return Promise.resolve(produced).then((value) => {
-						setState(value);
-						finish();
-						return value;
-					}, fail);
-				});
-			},
-			[action, controller],
-			'dispatch',
-		);
-		return [state, dispatch, pending];
+		return [state, controller.dispatch, pending];
 	});
 }
 
@@ -8138,22 +8203,31 @@ export function useImperativeHandle<T>(
 }
 
 export function useEffectEvent<T extends (...args: any[]) => any>(fn: T, slot?: unknown): T {
+	return committedCallbackHook(fn, slot).value as T;
+}
+
+/**
+ * One callback cell whose `impl` every commit path replaces with the accepted
+ * render's callback. A rejected or aborted draft never publishes its callback,
+ * and the cell outlives disposal so already-queued work keeps its last value.
+ */
+function committedCallbackHook(fn: (...args: any[]) => any, slot: unknown): EffectEventHook {
 	const owner = currentDraftOwner();
 	const resolved = resolveHookSlot(slot);
 	let hook = owner.hooks.get(resolved) as EffectEventHook | undefined;
 	if (hook?.kind !== 'effect-event') {
-		const cell = { impl: fn as (...args: any[]) => any, active: false };
-		const value = ((...args: any[]) => {
+		const cell = { impl: fn, active: false };
+		const value = (...args: any[]) => {
 			if (!cell.active) throw new Error('A universal Effect Event cannot run before commit.');
 			return cell.impl(...args);
-		}) as T;
+		};
 		hook = { kind: 'effect-event', cell, next: fn, value };
 	} else {
 		hook = { ...hook, next: fn };
 	}
 	owner.hooks.set(resolved, hook);
 	owner.clonedHooks.add(resolved);
-	return hook.value as T;
+	return hook;
 }
 
 export function useDebugValue(): void {}

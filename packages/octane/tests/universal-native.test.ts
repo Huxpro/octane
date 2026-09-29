@@ -10,8 +10,11 @@ import {
 	createObjectDriver,
 	createUniversalRoot,
 	defineUniversalComponent,
+	universalComponent,
 	universalPlan,
+	universalTry,
 	universalValue,
+	useActionState,
 	useContext,
 } from 'octane/universal/native';
 
@@ -324,12 +327,59 @@ globalThis.renderedValue = container.children[0].props.value;
 		expect(scheduled).toHaveLength(1);
 		expect(scheduled.shift()!).not.toThrow();
 		await Promise.resolve();
+		// The failure is rethrown through the host scheduler. Its pending edge
+		// settles in the action's transition, promoted on the same host service.
 		expect(scheduled).toHaveLength(2);
-		expect(scheduled.shift()!).not.toThrow();
 		expect(scheduled.shift()!).toThrow('action-fault');
+		while (scheduled.length !== 0) expect(scheduled.shift()!).not.toThrow();
 		expect(actionContainer.children[0].props.theme).toBe(0);
 
 		root.unmount();
 		actionRoot.unmount();
+	});
+
+	it('routes a rejected action-state action to the nearest catch arm', async () => {
+		const container = createObjectContainer(RENDERER);
+		const uncaught: unknown[] = [];
+		const root = createUniversalRoot(container, createObjectDriver(RENDERER), {
+			scheduleMicrotask(callback) {
+				queueMicrotask(() => {
+					try {
+						callback();
+					} catch (error) {
+						uncaught.push(error);
+					}
+				});
+			},
+		});
+		let dispatch!: (payload: string) => void;
+		const Child = defineUniversalComponent(RENDERER, () => {
+			const [value, run] = useActionState(
+				async (_previous: string, payload: string): Promise<string> => {
+					throw new Error(`action-fault:${payload}`);
+				},
+				'ready',
+				undefined,
+				'action',
+			);
+			dispatch = run;
+			return universalValue(valuePlan, [value]);
+		});
+		const Boundary = defineUniversalComponent(RENDERER, () =>
+			universalTry(
+				() => universalComponent(RENDERER, Child, null),
+				null,
+				(error) => universalValue(valuePlan, [`caught:${(error as Error).message}`]),
+			),
+		);
+
+		root.render(Boundary, undefined);
+		expect(container.children[0].props.theme).toBe('ready');
+		dispatch('beta');
+		for (let index = 0; index < 20; index++) await Promise.resolve();
+		expect(container.children[0].props.theme).toBe('caught:action-fault:beta');
+		// The boundary owns the error episode; nothing escapes to the host.
+		expect(uncaught).toEqual([]);
+		root.unmount();
 	});
 });

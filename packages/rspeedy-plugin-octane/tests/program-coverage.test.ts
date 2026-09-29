@@ -236,7 +236,8 @@ function completeProofs() {
 
 function blockComponentFeatureDecision(
 	feature: 'activity' | 'portal' | 'try' | null = null,
-	runtime: 'startTransition' | 'useDeferredValue' | 'useTransition' | null = null,
+	runtime:
+		'startTransition' | 'useActionState' | 'useDeferredValue' | 'useTransition' | null = null,
 ) {
 	const features = featureRequirements({
 		templateFeatures: feature === null ? [] : [{ kind: feature, name: null, line: 1, column: 0 }],
@@ -277,7 +278,12 @@ describe('Lynx Block component feature selection', () => {
 				reasons: [{ code: 'entry-requires-optional-block-semantics' }],
 			});
 		}
-		for (const runtime of ['startTransition', 'useDeferredValue', 'useTransition'] as const) {
+		for (const runtime of [
+			'startTransition',
+			'useActionState',
+			'useDeferredValue',
+			'useTransition',
+		] as const) {
 			expect(blockComponentFeatureDecision(null, runtime)).toMatchObject({
 				version: 2,
 				selected: 'full',

@@ -958,12 +958,20 @@ export function lynxBlockProgramForComponent<Props>(
 		suspended: boolean;
 	}
 	let activeTransitionAttempt: BlockTransitionAttempt | null = null;
+	/**
+	 * An accepted attempt settles only the lanes it rendered or revealed. A lane
+	 * promoted while that attempt awaited host acceptance has its own queued
+	 * transition render, so it stays scheduled instead of being discarded. An
+	 * error escaping the Block has no later reveal and settles every lane.
+	 */
 	const finishBlockTransitions = LYNX_BLOCK_TRANSITIONS
-		? (): void => {
-				for (const cells of transitionWorkScopes!) cells.finishTransitions();
-				transitionWorkScopes!.clear();
+		? (accepted = false): void => {
+				for (const cells of transitionWorkScopes!) {
+					cells.finishTransitions(accepted);
+					if (!accepted || !cells.hasTransitionWork()) transitionWorkScopes!.delete(cells);
+				}
 			}
-		: (): void => undefined;
+		: (_accepted = false): void => undefined;
 
 	let encoder: UniversalHostEncoder | null = null;
 	let portalCapability: UniversalPortalCapability<LynxClientContainer> | null = null;
@@ -4036,7 +4044,7 @@ export function lynxBlockProgramForComponent<Props>(
 			if (transitionAttempt !== null) {
 				context.afterCommit(() => {
 					if (transitionAttempt.suspended) return;
-					finishBlockTransitions();
+					finishBlockTransitions(true);
 				});
 			}
 		} catch (error) {

@@ -69,6 +69,50 @@ function scopeWithLog() {
 	};
 }
 
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((accept) => {
+		resolve = accept;
+	});
+	return { promise, resolve };
+}
+
+/**
+ * A transition-capable scope whose host microtasks run on the real queue.
+ * Errors a host microtask throws are collected instead of escaping the test.
+ */
+function actionScope() {
+	const errors: unknown[] = [];
+	const scope = createUniversalHookScope({
+		renderer: 'test',
+		scheduleRender() {},
+		scheduleTransitionRender() {},
+		scheduleMicrotask(task) {
+			queueMicrotask(() => {
+				try {
+					task();
+				} catch (error) {
+					errors.push(error);
+				}
+			});
+		},
+	});
+	return {
+		scope,
+		errors,
+		/** Render every promoted transition lane when one is waiting, then commit. */
+		pass<T>(setup: () => T): T {
+			const value = scope.hasTransitionWork() ? scope.renderTransition(setup) : scope.render(setup);
+			scope.commit();
+			return value;
+		},
+	};
+}
+
+async function drainActions(): Promise<void> {
+	for (let index = 0; index < 20; index++) await Promise.resolve();
+}
+
 describe('universal hook scope', () => {
 	it('shows an out-of-action optimistic value once and then reverts through host scheduling', () => {
 		const renders: unknown[] = [];
@@ -110,47 +154,120 @@ describe('universal hook scope', () => {
 	});
 
 	it('keeps an action-state queue running after reporting an action error', async () => {
-		const reported: Array<() => void> = [];
-		const scope = createUniversalHookScope({
-			renderer: 'test',
-			scheduleRender() {},
-			scheduleMicrotask(task) {
-				reported.push(task);
-			},
-			scheduleTransitionRender() {},
-		});
+		const { errors, pass, scope } = actionScope();
 		const calls: Array<[number, number]> = [];
-		let dispatch!: (payload: number) => void;
-		const render = (): readonly [number, boolean] =>
-			scope.render(() => {
-				const [state, run, pending] = useActionState(
-					(previous: number, payload: number) => {
-						calls.push([previous, payload]);
-						if (payload < 0) throw new Error('action failed');
-						return previous + payload;
-					},
-					10,
-					undefined,
-					'action',
-				);
-				dispatch = run;
-				return [state, pending] as const;
-			});
+		const setup = () => {
+			const [state, run, pending] = useActionState(
+				(previous: number, payload: number) => {
+					calls.push([previous, payload]);
+					if (payload < 0) throw new Error('action failed');
+					return previous + payload;
+				},
+				10,
+				undefined,
+				'action',
+			);
+			return { state, run, pending };
+		};
 
-		expect(render()).toEqual([10, false]);
-		scope.commit();
-		dispatch(-1);
-		dispatch(5);
-		for (let index = 0; index < 8; index++) await Promise.resolve();
+		const mounted = pass(setup);
+		expect(mounted).toMatchObject({ state: 10, pending: false });
+		mounted.run(-1);
+		mounted.run(5);
+		await drainActions();
 
 		expect(calls).toEqual([
 			[10, -1],
 			[10, 5],
 		]);
-		expect(reported).toHaveLength(1);
-		expect(reported.shift()!).toThrow('action failed');
-		expect(render()).toEqual([15, false]);
-		scope.commit();
+		// A scope has no semantic parent that could own a boundary, so the error
+		// surfaces exactly once through the adopting host's microtask service.
+		expect(errors).toEqual([new Error('action failed')]);
+		expect(pass(setup)).toMatchObject({ state: 15, pending: false });
+		scope.dispose();
+	});
+
+	it('keeps one action-state dispatcher and runs queued work with the latest accepted action', async () => {
+		const { pass, scope } = actionScope();
+		const gate = deferred<void>();
+		const calls: string[] = [];
+		const setup = (version: string) => () => {
+			const [state, run, pending] = useActionState(
+				async (previous: string, payload: string) => {
+					calls.push(`${version}:${payload}`);
+					if (payload === 'first') await gate.promise;
+					return `${previous}|${version}:${payload}`;
+				},
+				'init',
+				undefined,
+				'action',
+			);
+			return { state, run, pending };
+		};
+
+		const first = pass(setup('v1'));
+		const second = pass(setup('v2'));
+		// The DOM runtime hands out one dispatcher for the hook's lifetime, even
+		// when the action is a fresh inline closure on every render.
+		expect(second.run).toBe(first.run);
+
+		first.run('first');
+		first.run('second');
+		await drainActions();
+		// The dispatcher captured on the first render runs the accepted action.
+		expect(calls).toEqual(['v2:first']);
+
+		// A rejected attempt must not publish its action to queued work.
+		scope.render(setup('rejected'));
+		scope.abort();
+		const third = pass(setup('v3'));
+		expect(third).toMatchObject({ state: 'init', pending: true });
+		expect(third.run).toBe(first.run);
+
+		gate.resolve();
+		await drainActions();
+		expect(calls).toEqual(['v2:first', 'v3:second']);
+		const settled = pass(setup('v3'));
+		expect(settled).toMatchObject({ state: 'init|v2:first|v3:second', pending: false });
+		expect(settled.run).toBe(first.run);
+		scope.dispose();
+	});
+
+	it('runs action-state work in a transition so optimistic updates hold until it settles', async () => {
+		const { pass, scope } = actionScope();
+		const gate = deferred<void>();
+		let addOptimistic!: (value: number) => void;
+		const setup = () => {
+			const [state, run, pending] = useActionState(
+				async (previous: number, payload: number) => {
+					addOptimistic(payload);
+					await gate.promise;
+					return previous + payload;
+				},
+				10,
+				undefined,
+				'action',
+			);
+			const [optimistic, add] = useOptimistic(
+				state,
+				(current: number, next: number) => current + next,
+				'optimistic',
+			);
+			addOptimistic = add;
+			return { state, optimistic, pending, run };
+		};
+
+		pass(setup).run(5);
+		await drainActions();
+		expect(pass(setup)).toMatchObject({ state: 10, optimistic: 15, pending: true });
+		// Outside a transition an optimistic value reverts on the next microtask.
+		// Inside the action's transition it holds until the action settles.
+		await drainActions();
+		expect(pass(setup)).toMatchObject({ state: 10, optimistic: 15, pending: true });
+
+		gate.resolve();
+		await drainActions();
+		expect(pass(setup)).toMatchObject({ state: 15, optimistic: 15, pending: false });
 		scope.dispose();
 	});
 
@@ -1225,6 +1342,49 @@ describe('universal hook scope', () => {
 		expect(scope.hasTransitionWork()).toBe(false);
 		expect(urgent).toHaveLength(2);
 		expect(read('urgent')).toEqual([false, 1]);
+		scope.commit();
+		scope.dispose();
+	});
+
+	it('keeps a lane promoted during an accepted transition draft for its own render', () => {
+		const microtasks: (() => void)[] = [];
+		const transition: unknown[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleTransitionRender() {
+				transition.push('render');
+			},
+			scheduleMicrotask(task) {
+				microtasks.push(task);
+			},
+		});
+		let setCount!: (value: number) => void;
+		const read = (lane: 'urgent' | 'transition') =>
+			(lane === 'transition' ? scope.renderTransition : scope.render)(() => {
+				const [count, update] = useState(0, 'count');
+				setCount = update;
+				return count;
+			});
+
+		expect(read('urgent')).toBe(0);
+		scope.commit();
+		startTransition(() => setCount(1));
+		microtasks.shift()!();
+		expect(read('transition')).toBe(1);
+
+		// A second lane promotes while the first draft awaits host acceptance.
+		startTransition(() => setCount(2));
+		microtasks.shift()!();
+		expect(transition).toEqual(['render', 'render']);
+		scope.commit();
+		// The accepted reveal settles what it rendered, not the queued lane.
+		scope.finishTransitions(true);
+		expect(scope.hasTransitionWork()).toBe(true);
+		expect(read('transition')).toBe(2);
+		scope.commit();
+		expect(scope.hasTransitionWork()).toBe(false);
+		expect(read('urgent')).toBe(2);
 		scope.commit();
 		scope.dispose();
 	});
