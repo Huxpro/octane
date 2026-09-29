@@ -1503,7 +1503,13 @@ function reportRequiresOptionalBlockSemantics(report) {
 		}
 	}
 	if (report?.semanticRequirements?.paired !== true) return true;
-	const transitions = new Set(['startTransition', 'useDeferredValue', 'useTransition']);
+	// An action-state dispatch runs its action in a transition, like the DOM runtime.
+	const transitions = new Set([
+		'startTransition',
+		'useActionState',
+		'useDeferredValue',
+		'useTransition',
+	]);
 	for (const module of report.semanticRequirements.modules) {
 		for (const requirements of [module.background, module.mainThread]) {
 			for (const site of [...requirements.runtimeUses, ...requirements.runtimeExports]) {
