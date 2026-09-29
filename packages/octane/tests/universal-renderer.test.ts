@@ -1384,6 +1384,8 @@ function evaluateEvent(value) {
   return value;
 }
 
+export const preservedModuleCallback = () => 'preserved-module-callback';
+
 export function Scene({ id }) @{
 	const tap = useCallback(() => erasedEventHelper(id), [observeDependency(id)]);
 	const directTap = () => erasedDirectEventHelper(id);
@@ -1426,6 +1428,7 @@ export function Scene({ id }) @{
 		expect(mainThread.code).toContain('retained-non-event-callback');
 		expect(mainThread.code).toContain('retained-event-evaluation');
 		expect(mainThread.code).toContain('retained-evaluated-event-callback');
+		expect(mainThread.code).toContain('preserved-module-callback');
 		expect(() => parseModule(mainThread.code, '/dist/CallbackEvents.js')).not.toThrow();
 
 		const calls = callsByImportedName(mainThread.code, 'octane/universal');

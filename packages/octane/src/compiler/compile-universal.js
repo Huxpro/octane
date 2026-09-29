@@ -458,7 +458,8 @@ function eraseMainThreadEventOnlyCallbacks(ast, state, lexicalAnalysis, erasedAr
 			const binding = resolveBinding(nodeScopes.get(node.id) ?? rootScope, node.id.name);
 			if (
 				(callback?.type === 'ArrowFunctionExpression' || callback?.type === 'FunctionExpression') &&
-				binding !== null
+				binding !== null &&
+				binding.scope !== rootScope
 			) {
 				candidates.push({
 					name: node.id.name,
