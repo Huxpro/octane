@@ -115,6 +115,7 @@ export function collectLynxElementTemplates(compilation, chunkGroups, retainVisi
 	let total = 0;
 	let lowered = 0;
 	let visibilitySlots = 0;
+	const unlowered = [];
 	for (const module of modules) {
 		const info = getOctaneRspackBuildInfo(module);
 		if (
@@ -133,6 +134,11 @@ export function collectLynxElementTemplates(compilation, chunkGroups, retainVisi
 		total += info.lynxElementTemplateCoverage.total;
 		lowered += info.lynxElementTemplateCoverage.lowered;
 		visibilitySlots += info.lynxElementTemplateCoverage.visibilitySlots;
+		if (info.lynxElementTemplateCoverage.lowered !== info.lynxElementTemplateCoverage.total) {
+			unlowered.push(
+				`${info.canonicalId} (${info.lynxElementTemplateCoverage.lowered} of ${info.lynxElementTemplateCoverage.total})`,
+			);
+		}
 		records.push(...info.lynxElementTemplates);
 	}
 	if (observed === 0) {
@@ -142,7 +148,7 @@ export function collectLynxElementTemplates(compilation, chunkGroups, retainVisi
 	}
 	if (lowered !== total) {
 		throw new Error(
-			`${PLUGIN_NAME}: Element Template lowering covered ${lowered} of ${total} main-thread plans.`,
+			`${PLUGIN_NAME}: Element Template lowering covered ${lowered} of ${total} main-thread plans; not lowered: ${unlowered.sort().join(', ')}. The backend rejects refs, native lists, \`main-thread:*\` bindings, text-polymorphic ranges, and native-composed attributes.`,
 		);
 	}
 	const expectedVisibilitySlots = retainVisibility ? lowered : 0;
