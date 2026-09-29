@@ -10,6 +10,10 @@ import { installLynxCompiledProgramFeatureReplacement } from './compiled-program
 import { installLynxCompiledProgramHostRefFeatureReplacement } from './compiled-program-host-ref-feature.js';
 import { installLynxCompiledProgramNativeListFeatureReplacement } from './compiled-program-native-list-feature.js';
 import { installLynxApplicationSelectionReplacement } from './application-selection.js';
+import {
+	FLAT_KEYED_ELEMENT_TEMPLATE_MAIN_THREAD_PROGRAM_BACKEND,
+	FLAT_KEYED_MAIN_THREAD_PROGRAM_BACKEND,
+} from './program-backends.js';
 
 export const LYNX_PROGRAM_COVERAGE_ASSET_INFO = 'octane:lynx-program-coverage';
 export const LYNX_PROGRAM_COVERAGE_VERSION = 1;
@@ -26,7 +30,7 @@ export const LYNX_APPLICATION_SELECTION_ASSET_INFO = 'octane:lynx-application-se
 export const LYNX_APPLICATION_SELECTION_VERSION = 2;
 export const LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO =
 	'octane:lynx-block-component-feature-selection';
-export const LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_VERSION = 1;
+export const LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_VERSION = 2;
 export const LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_ASSET_INFO =
 	'octane:lynx-compiled-program-feature-selection';
 export const LYNX_COMPILED_PROGRAM_FEATURE_SELECTION_VERSION = 1;
@@ -315,13 +319,13 @@ function verifyCompiledProgramFeatureSelection(compilation, owners, selected) {
 function isLynxBlockComponentFeatures(module, selected) {
 	const resource = moduleResource(module);
 	if (resource === null) return false;
-	return selected === 'structural'
-		? resource.endsWith('/block-component-features.structural.ts')
-		: resource.endsWith('/block-component-features.ts');
+	return selected === 'full'
+		? resource.endsWith('/block-component-features.ts')
+		: resource.endsWith(`/block-component-features.${selected}.ts`);
 }
 
 function verifyBlockComponentFeatureSelection(compilation, components, selected) {
-	if (selected === 'structural' && components.length === 0) {
+	if (selected !== 'full' && components.length === 0) {
 		throw new Error(
 			'@octanejs/rspeedy-plugin: Block component lowering disappeared during feature specialization.',
 		);
@@ -1505,6 +1509,46 @@ function reportRequiresOptionalBlockSemantics(report) {
 	return false;
 }
 
+const LYNX_FLAT_KEYED_RUNTIME_NAMES = new Set(['useCallback', 'useRef', 'useState']);
+
+function reportSupportsFlatKeyedBlockSemantics(report) {
+	if (report?.featureRequirements?.paired !== true) return false;
+	let keyedRange = false;
+	for (const module of report.featureRequirements.modules) {
+		for (const requirements of [module.background, module.mainThread]) {
+			if (requirements.templateFeatures.length !== 0) return false;
+			for (const range of requirements.keyedRanges) {
+				keyedRange = true;
+				if (
+					range.empty ||
+					range.nested ||
+					!range.lastChild ||
+					range.row.kind !== 'local-component' ||
+					range.row.hooks.length !== 0
+				) {
+					return false;
+				}
+			}
+		}
+	}
+	if (!keyedRange) return false;
+	if (report?.semanticRequirements?.paired !== true) return false;
+	for (const module of report.semanticRequirements.modules) {
+		for (const requirements of [module.background, module.mainThread]) {
+			if (requirements.opaqueRuntimeAccesses.length !== 0) return false;
+			for (const site of [...requirements.runtimeUses, ...requirements.runtimeExports]) {
+				if (!LYNX_FLAT_KEYED_RUNTIME_NAMES.has(site.name)) return false;
+			}
+			for (const component of requirements.components) {
+				for (const hook of component.hooks) {
+					if (!LYNX_FLAT_KEYED_RUNTIME_NAMES.has(hook.name)) return false;
+				}
+			}
+		}
+	}
+	return true;
+}
+
 /**
  * Select the smallest Block component implementation proved sufficient for
  * every authored entry. Unknown or unsupported graphs retain the source-safe
@@ -1512,6 +1556,7 @@ function reportRequiresOptionalBlockSemantics(report) {
  */
 export function decideLynxBlockComponentFeatures(compiler, entries, reports, coreDecision) {
 	const reasons = [];
+	let flatKeyed = true;
 	if (!oneShotProduction(compiler)) {
 		reasons.push(reason('feature-specialization-requires-one-shot-production'));
 	}
@@ -1521,23 +1566,30 @@ export function decideLynxBlockComponentFeatures(compiler, entries, reports, cor
 	for (const entry of entries) {
 		const report = reports.get(entry.mainThreadEntry);
 		if (report === undefined) {
+			flatKeyed = false;
 			reasons.push(reason('selection-report-missing', { entry: entry.mainThreadEntry }));
 			continue;
 		}
 		if (report.selection.eligible !== true) {
+			flatKeyed = false;
 			reasons.push(reason('entry-ineligible', { entry: entry.mainThreadEntry }));
 			continue;
 		}
 		if (reportRequiresOptionalBlockSemantics(report)) {
+			flatKeyed = false;
 			reasons.push(
 				reason('entry-requires-optional-block-semantics', { entry: entry.mainThreadEntry }),
 			);
 		}
+		if (!reportSupportsFlatKeyedBlockSemantics(report)) flatKeyed = false;
 	}
-	if (entries.length === 0) reasons.push(reason('no-authored-entries'));
+	if (entries.length === 0) {
+		flatKeyed = false;
+		reasons.push(reason('no-authored-entries'));
+	}
 	return Object.freeze({
 		version: LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_VERSION,
-		selected: reasons.length === 0 ? 'structural' : 'full',
+		selected: reasons.length === 0 ? (flatKeyed ? 'flat-keyed' : 'structural') : 'full',
 		reasons: Object.freeze(reasons),
 	});
 }
@@ -1942,7 +1994,20 @@ export class LynxProgramCoveragePlugin {
 					rebuild.add(owner);
 				}
 			}
-			if (
+			if (state.blockComponentFeatures.selected === 'flat-keyed') {
+				const backend =
+					state.applicationDecision.selected === 'compiled-program-element-template'
+						? FLAT_KEYED_ELEMENT_TEMPLATE_MAIN_THREAD_PROGRAM_BACKEND
+						: FLAT_KEYED_MAIN_THREAD_PROGRAM_BACKEND;
+				for (const report of state.reports.values()) {
+					for (const module of report.mainThreadCompilerModules) {
+						setOctaneRspackModuleCompilerOptions(module, {
+							mainThreadProgramBackend: backend,
+						});
+						rebuild.add(module);
+					}
+				}
+			} else if (
 				state.applicationDecision.selected === 'compiled-program-element-template' &&
 				state.blockComponentFeatures.selected === 'structural'
 			) {

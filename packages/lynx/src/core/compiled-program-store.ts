@@ -3,6 +3,7 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 import type { UniversalProgramCreate, UniversalProgramPlan } from 'octane/universal/native';
 
 import { encodePrevalidatedLynxNativeEventToken } from './native-events.js';
+import { LYNX_BLOCK_RESIDENT_WIRE } from './block-component-features.js';
 import type { LynxHostAttachmentChange } from './protocol.js';
 import { LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS } from './compiled-program-features.js';
 import { requireLynxMainThreadWorkletFeature } from './main-thread-worklet-feature.js';
@@ -388,9 +389,13 @@ function validateResidentNodes(plan: UniversalProgramPlan): void {
 			fail('host refs reached a bundle compiled without host-ref support');
 		}
 	}
-	for (let index = 0; index < (plan.wire?.nodes.length ?? 0); index++) {
-		const wire = plan.wire!.nodes[index]!;
-		if ((wire.bindings?.length ?? 0) !== 0 || wire.type === 'list') requireNode(index, 'bound');
+	if (LYNX_BLOCK_RESIDENT_WIRE) {
+		for (let index = 0; index < (plan.wire?.nodes.length ?? 0); index++) {
+			const wire = plan.wire!.nodes[index]!;
+			if ((wire.bindings?.length ?? 0) !== 0 || wire.type === 'list') {
+				requireNode(index, 'bound');
+			}
+		}
 	}
 }
 

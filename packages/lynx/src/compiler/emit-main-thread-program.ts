@@ -818,6 +818,13 @@ export function emitLynxMainThreadProgram(
 		 */
 		readonly structuralRuns?: boolean;
 		/**
+		 * Keep the callable create ABI as a small adapter over `run` instead of
+		 * emitting the straight-line body twice. A graph-proved product whose first
+		 * screen calls `run(1)` selects this form; ordinary compiler consumers retain
+		 * the historical direct create body.
+		 */
+		readonly compactCreate?: boolean;
+		/**
 		 * The holes the program dropped, in the order their values are passed.
 		 *
 		 * Omitted or empty emits exactly what it emitted before this parameter
@@ -1111,6 +1118,9 @@ export function emitLynxMainThreadProgram(
 	// number of logical IDs. Keep this explicit so existing callers preserve both
 	// their source bytes and the stronger dense-run meaning by default.
 	const runDriver = denseRun || options.structuralRuns === true;
+	if (options.compactCreate === true && !runDriver) {
+		refuse('compact create requires a run driver');
+	}
 	const runValueOffset = runDriver && program.nodes[0]!.type === 'list-item';
 	const stride = program.nodes.length + ranges.length;
 
@@ -1145,8 +1155,13 @@ export function emitLynxMainThreadProgram(
 			: [
 					...preamble,
 					`\tfunction ${options.name}(${params.join(', ')}) {`,
-					...body,
-					`\t\treturn [${returned}];`,
+					...(options.compactCreate === true
+						? [
+								`\t\tvar out = new Array(${stride});`,
+								`\t\t${options.name}.run(pageId, 1, [${Array.from({ length: valueCount }, (_unused, index) => `v${index}`).join(', ')}], [${program.events.map((_unused, index) => `e${index}`).join(', ')}], [${ranges.map((_unused, index) => `r${index}`).join(', ')}], out);`,
+								`\t\treturn out;`,
+							]
+						: [...body, `\t\treturn [${returned}];`]),
 					`\t}`,
 					...(runDriver
 						? [

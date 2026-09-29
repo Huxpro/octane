@@ -10,6 +10,7 @@ import type {
 	LynxCompiledProgramAdoptionSource,
 	LynxCompiledProgramMount,
 } from './compiled-program-store.js';
+import { LYNX_BLOCK_RESIDENT_WIRE } from './block-component-features.js';
 import { LYNX_COMPILED_PROGRAM_NATIVE_LIST } from './compiled-program-native-list-feature.js';
 
 const DEVELOPMENT =
@@ -157,9 +158,17 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 				create = plan.bind(papi);
 				bound.set(plan, create);
 			}
-			const created = create(pageId, ...selectedValues, ...tokens, ...texts) as readonly (
-				Node | undefined
-			)[];
+			let created: readonly (Node | undefined)[];
+			if (LYNX_BLOCK_RESIDENT_WIRE) {
+				created = create(pageId, ...selectedValues, ...tokens, ...texts) as readonly (
+					Node | undefined
+				)[];
+			} else {
+				if (typeof create.run !== 'function') fail('program has no dense create driver');
+				const output = new Array<Node | undefined>(plan.nodes + plan.ranges.length);
+				create.run(pageId, 1, selectedValues, tokens, texts, output);
+				created = output;
+			}
 			if (created.length !== plan.nodes + plan.ranges.length || created[0] === undefined) {
 				fail('program create returned the wrong physical output arity');
 			}

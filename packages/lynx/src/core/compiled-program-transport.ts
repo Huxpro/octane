@@ -307,11 +307,10 @@ export function createLynxCompiledProgramTransport(
 			handlePageDestroy();
 			return;
 		}
-		if (message.type === 'call-main-result' || message.type === 'call-main-error') {
-			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
-				report(new Error(TRANSPORT_ERROR));
-				return;
-			}
+		if (
+			LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS &&
+			(message.type === 'call-main-result' || message.type === 'call-main-error')
+		) {
 			const entry = pendingMainCalls.get(message.call);
 			if (
 				entry === undefined ||
@@ -332,11 +331,7 @@ export function createLynxCompiledProgramTransport(
 			else entry.deferred.reject(remoteError(message.error));
 			return;
 		}
-		if (message.type === 'cancel-background') {
-			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
-				report(new Error(TRANSPORT_ERROR));
-				return;
-			}
+		if (LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS && message.type === 'cancel-background') {
 			const entry = runningBackgroundCalls.get(message.call);
 			if (
 				entry !== undefined &&
@@ -348,11 +343,7 @@ export function createLynxCompiledProgramTransport(
 			}
 			return;
 		}
-		if (message.type === 'call-background') {
-			if (!LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS) {
-				report(new Error(TRANSPORT_ERROR));
-				return;
-			}
+		if (LYNX_COMPILED_PROGRAM_THREAD_FUNCTIONS && message.type === 'call-background') {
 			const callIdentity = acknowledged ?? accepted;
 			if (
 				callIdentity === null ||
@@ -439,6 +430,15 @@ export function createLynxCompiledProgramTransport(
 					}
 				},
 			);
+			return;
+		}
+		if (
+			message.type === 'call-main-result' ||
+			message.type === 'call-main-error' ||
+			message.type === 'cancel-background' ||
+			message.type === 'call-background'
+		) {
+			report(new Error(TRANSPORT_ERROR));
 			return;
 		}
 		if (message.type === 'page-data' || message.type === 'global-props') {

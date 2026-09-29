@@ -339,6 +339,14 @@ export interface UniversalProgramPlan {
 	/** Resident host-node indexes that carry authored background refs. */
 	readonly refs?: readonly number[];
 	/**
+	 * Compact scalar encoders for resident values, in `values` order.
+	 *
+	 * A graph-proved native backend may emit this instead of `wire`: `c` is a
+	 * class value, `i` an id, `t` a text-host `text` prop, and `v` the ordinary
+	 * scalar route. Source-safe backends keep the complete descriptor below.
+	 */
+	readonly wireValueKinds?: string;
+	/**
 	 * Whole-root Lynx Element Template identity emitted only by an explicitly
 	 * selected SDK Template Definition backend.
 	 */

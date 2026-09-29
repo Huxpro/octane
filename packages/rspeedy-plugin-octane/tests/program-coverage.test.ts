@@ -266,24 +266,94 @@ function blockComponentFeatureDecision(
 describe('Lynx Block component feature selection', () => {
 	it('selects the structural runtime only when optional semantics are absent', () => {
 		expect(blockComponentFeatureDecision()).toEqual({
-			version: 1,
+			version: 2,
 			selected: 'structural',
 			reasons: [],
 		});
 		for (const feature of ['activity', 'portal', 'try'] as const) {
 			expect(blockComponentFeatureDecision(feature)).toMatchObject({
-				version: 1,
+				version: 2,
 				selected: 'full',
 				reasons: [{ code: 'entry-requires-optional-block-semantics' }],
 			});
 		}
 		for (const runtime of ['startTransition', 'useDeferredValue', 'useTransition'] as const) {
 			expect(blockComponentFeatureDecision(null, runtime)).toMatchObject({
-				version: 1,
+				version: 2,
 				selected: 'full',
 				reasons: [{ code: 'entry-requires-optional-block-semantics' }],
 			});
 		}
+	});
+
+	it('selects flat keyed semantics only from complete paired narrow proofs', () => {
+		const range = {
+			line: 1,
+			column: 0,
+			empty: false,
+			nested: false,
+			lastChild: true,
+			row: { kind: 'local-component' as const, name: 'Row', hooks: [] },
+		};
+		const decide = (
+			features = featureRequirements({ keyedRanges: [range] }),
+			semantics = semanticRequirements({
+				runtimeUses: [site('useCallback'), site('useRef'), site('useState')],
+				components: [
+					{
+						name: 'App',
+						exportKind: 'default' as const,
+						line: 1,
+						column: 0,
+						hooks: [site('useState')],
+					},
+				],
+			}),
+		) =>
+			decideLynxBlockComponentFeatures(
+				{ options: { mode: 'production' }, watchMode: false },
+				[{ mainThreadEntry: 'app__octane_main_thread' }],
+				new Map([
+					[
+						'app__octane_main_thread',
+						{
+							selection: { eligible: true },
+							featureRequirements: {
+								paired: true,
+								modules: [{ background: features, mainThread: features }],
+							},
+							semanticRequirements: {
+								paired: true,
+								modules: [{ background: semantics, mainThread: semantics }],
+							},
+						},
+					],
+				]),
+				{ selected: 'block' },
+			);
+
+		expect(decide()).toEqual({ version: 2, selected: 'flat-keyed', reasons: [] });
+		for (const changed of [
+			{ ...range, empty: true },
+			{ ...range, nested: true },
+			{ ...range, lastChild: false },
+			{ ...range, row: { kind: 'inline-host' as const, name: 'view' } },
+			{ ...range, row: { ...range.row, hooks: [site('useState')] } },
+		]) {
+			expect(decide(featureRequirements({ keyedRanges: [changed] }))).toMatchObject({
+				version: 2,
+				selected: 'structural',
+			});
+		}
+		expect(decide(featureRequirements(), semanticRequirements())).toMatchObject({
+			selected: 'structural',
+		});
+		expect(
+			decide(
+				featureRequirements({ keyedRanges: [range] }),
+				semanticRequirements({ runtimeUses: [site('useMemo')] }),
+			),
+		).toMatchObject({ selected: 'structural' });
 	});
 });
 
@@ -1631,7 +1701,7 @@ describe('Lynx application resident-program coverage', () => {
 				reasons: [],
 			},
 			[LYNX_BLOCK_COMPONENT_FEATURE_SELECTION_ASSET_INFO]: {
-				version: 1,
+				version: 2,
 				selected: 'structural',
 				reasons: [],
 			},
