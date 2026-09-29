@@ -669,6 +669,8 @@ function blockColumn<Props = CardProps>(
 	core?: LynxBlockCore,
 	resolveProgram?: Parameters<typeof installMainSide>[2],
 	compact = false,
+	scheduleMicrotask: (callback: () => void) => void = (callback) =>
+		void Promise.resolve().then(callback),
 ) {
 	const context = new FakeContextProxy();
 	const main = installMainSide(context, compact, resolveProgram);
@@ -677,7 +679,7 @@ function blockColumn<Props = CardProps>(
 	const background = createLynxBlockBackgroundCore({
 		container,
 		transport,
-		scheduleMicrotask: (callback) => void Promise.resolve().then(callback),
+		scheduleMicrotask,
 		transportRoot: 1,
 		core,
 	});
@@ -1392,6 +1394,67 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		expect(flushed).toBe(false);
 
 		block.acknowledgePending();
+		await Promise.all([mounting, flushing]);
+		expect(paint(block.main.commits).tree).toContain('once');
+	});
+
+	it('keeps flushTransport open when the host microtask queue runs after promise jobs', async () => {
+		// lynx.queueMicrotask is the production scheduler. When the host services it
+		// after the Promise job queue, accepted passive effects run only once the
+		// acknowledged frame's promise chain has fully settled.
+		const hostQueue: (() => void)[] = [];
+		const drainHost = () => {
+			while (hostQueue.length !== 0) hostQueue.shift()!();
+		};
+		const EffectUpdate = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function EffectUpdate() {
+			const [count, setCount] = useState(0, 'count');
+			useEffect(
+				() => {
+					if (count === 0) setCount(1);
+				},
+				[count],
+				'increment-after-accept',
+			);
+			return universalValue(CARD_PLAN, [
+				'card',
+				TALLY[count] ?? 'many',
+				'card-meta',
+				noop,
+				'detail',
+			]);
+		});
+		const block = blockColumn<Record<string, never>>(undefined, undefined, false, (callback) =>
+			hostQueue.push(callback),
+		);
+		const mounting = block.background.renderAsync(EffectUpdate as never, {});
+		const flushing = block.background.flushTransport();
+		let flushed = false;
+		void flushing.then(() => {
+			flushed = true;
+		});
+
+		for (let guard = 0; guard < 5 && block.main.commits.length < 1; guard++) {
+			await flushMicrotasks();
+			drainHost();
+		}
+		expect(block.main.commits).toHaveLength(1);
+		block.acknowledgePending();
+		// Let the acknowledged frame's promise chain settle completely before the
+		// host services its queue, as a separate native microtask queue would.
+		for (let turn = 0; turn < 10; turn++) await flushMicrotasks();
+		expect(flushed).toBe(false);
+		for (let guard = 0; guard < 5 && block.main.commits.length < 2; guard++) {
+			drainHost();
+			await flushMicrotasks();
+		}
+		expect(block.main.commits).toHaveLength(2);
+		expect(flushed).toBe(false);
+
+		block.acknowledgePending();
+		for (let guard = 0; guard < 5 && !flushed; guard++) {
+			await flushMicrotasks();
+			drainHost();
+		}
 		await Promise.all([mounting, flushing]);
 		expect(paint(block.main.commits).tree).toContain('once');
 	});
