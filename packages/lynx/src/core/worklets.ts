@@ -632,6 +632,8 @@ export interface CreateLynxMainThreadWorkletRegistryOptions {
 		args: readonly LynxWorkletValue[],
 	) => unknown;
 	readonly wrapElementRef?: (value: object) => unknown;
+	/** Main-thread global object whose Element PAPI wrapped elements call. */
+	readonly elementTarget?: object;
 }
 
 export interface LynxMainThreadWorkletRegistry {

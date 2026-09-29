@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createLynxMainThreadElement } from '../src/core/main-thread-element.js';
+import { requireLynxMainThreadWorkletFeature } from '../src/core/main-thread-worklet-feature.js';
+import { createLynxMainThreadRefDescriptor } from '../src/core/worklets.js';
+import '../src/main-worklets.js';
 
 describe('Lynx MainThread.Element adapter', () => {
 	it('adapts an opaque Element PAPI handle and coalesces native flushes', async () => {
@@ -85,6 +88,41 @@ describe('Lynx MainThread.Element adapter', () => {
 
 		await Promise.resolve();
 		expect(flush).toHaveBeenCalledOnce();
+	});
+
+	it('flushes each main-thread global that scheduled work in the same turn', async () => {
+		const first = { __SetAttribute: vi.fn(), __FlushElementTree: vi.fn() };
+		const second = { __SetAttribute: vi.fn(), __FlushElementTree: vi.fn() };
+
+		createLynxMainThreadElement({ id: 'a' }, first).setAttribute('data-a', 1);
+		createLynxMainThreadElement({ id: 'b' }, second).setAttribute('data-b', 2);
+		createLynxMainThreadElement({ id: 'c' }, first).setAttribute('data-c', 3);
+		await Promise.resolve();
+
+		expect(first.__FlushElementTree).toHaveBeenCalledOnce();
+		expect(second.__FlushElementTree).toHaveBeenCalledOnce();
+	});
+
+	it('binds mounted host refs to the registry element target', async () => {
+		const node = { id: 'owner' };
+		const target = { __SetAttribute: vi.fn(), __FlushElementTree: vi.fn() };
+		const registry = requireLynxMainThreadWorkletFeature().createRegistry({
+			elementTarget: target,
+		});
+		const ref = createLynxMainThreadRefDescriptor('test:element-target');
+		const cell = registry.retainRef<{ setAttribute(name: string, value: unknown): void } | null>(
+			ref,
+			null,
+		);
+
+		registry.mountRef(ref, node);
+		cell.current!.setAttribute('data-owner', 'row-0');
+		await Promise.resolve();
+
+		expect(target.__SetAttribute).toHaveBeenCalledWith(node, 'data-owner', 'row-0');
+		expect(target.__FlushElementTree).toHaveBeenCalledOnce();
+		registry.releaseRef(ref);
+		registry.close();
 	});
 
 	it('rejects a missing native method at the call boundary', () => {
