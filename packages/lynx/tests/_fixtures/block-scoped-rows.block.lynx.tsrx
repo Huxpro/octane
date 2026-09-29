@@ -234,3 +234,27 @@ export function BlockSwitchFixture(props: BlockSwitchProps) @{
 		</view>
 	</view>
 }
+
+export interface BlockReplayProps {
+	readonly label: string;
+}
+
+// Setup is only state and a pure derivation, and every state-dependent hole is
+// a pure expression, so a production Block build lets a tap replay just those
+// holes. `props.label` is read only when this body runs.
+export function BlockReplayFixture(props: BlockReplayProps) @{
+	const [count, setCount] = useState(0);
+	const parity =
+		count % 2 === 0 ? 'even' : 'odd';
+	const tally =
+		count === 0
+			? 'none'
+			: count === 1
+				? 'once'
+				: 'twice';
+	<view class={['replay', parity]}>
+		<text class="replay-count" bindtap={() => setCount(count + 1)}>{tally + ':' +
+			parity as string}</text>
+		<text class="replay-label">{props.label as string}</text>
+	</view>
+}
