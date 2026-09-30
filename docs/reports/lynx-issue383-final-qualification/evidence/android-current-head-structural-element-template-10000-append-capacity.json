@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-25T09:46:10.975Z",
+  "scope": "One clean-device Android 10 / Lynx SDK 4.2 cohort for the immutable current-product structural Element Template bundle. Each of five independent cold launches created 10,000 rows and attempted to append 1,000. This is a correctness, fail-closed capacity, and rejection-latency observation at n=5; it is not a successful 11,000-row append, a powered comparison, a process-memory/GC result, native-list evidence, Android 11+, no-JIT, low-end, iOS, cross-framework, or default-switch claim.",
+  "candidate": {
+    "runnerCommit": "cad25f418f8d4882e24a68541cba793ad8b3aad5",
+    "appendOwnershipProtocolCommit": "bd8dfa6ffcba69724c9b07f6b61ec5da1187bb53",
+    "artifactBuildCommit": "be7615df441519a99e7478d951a8f494feed6af4",
+    "branch": "feat/optimal-lynx-app-adoption",
+    "productGraphUnchangedSinceArtifactBuild": true
+  },
+  "device": {
+    "model": "aries_10",
+    "product": "aries",
+    "android": "10",
+    "abi": "arm64-v8a",
+    "rawIdentityRetained": false,
+    "packageVersion": "1.0",
+    "lynxSdk": "4.2",
+    "batteryTemperatureTenthsC": {
+      "min": 350,
+      "max": 350
+    },
+    "thermalStatuses": [0]
+  },
+  "protocol": {
+    "runner": "octane-issue194-device-v1",
+    "nativeReceipt": "lynx-native-bench-v2",
+    "nativeBoundary": "native-input-handler-to-second-native-frame",
+    "mainReceipt": "octane-issue194-compact-main-v1",
+    "ordering": "single-cell repeated cold launches",
+    "coldLaunchPerAttempt": true,
+    "devtool": "disabled by a background-only preflight before every attempt; no CDP connection used",
+    "input": "native ADB taps at registered application controls",
+    "operationOrder": ["create", "append1k"],
+    "capacityMode": true,
+    "capacityRejectionOracle": "append1k only; exact RangeError Octane Lynx OL512; no accepted main commit; pre/post row count, sampled identity, first label, and selection unchanged; one acknowledged Native receipt; two native frames",
+    "ordinaryCompletionOracle": "11,000 post-state plus exactly 1,000 handles, 2,000 listener slots, and 4,000 retained host refs with stable ranges and recycle pool",
+    "normalAppendAcceptancePassed": false,
+    "atomicCapacityRejectionPassed": true
+  },
+  "instrumentedBundles": {
+    "structuralElementTemplate": {
+      "engine": "3.2",
+      "bytes": 245584,
+      "sha256": "c00df02fdd6da746ac787a196da4b5df064af3a3834bdcce79765e0b0a703f9c"
+    },
+    "disableDevtool": {
+      "bytes": 272537,
+      "sha256": "06a471fd03bb2ba58859726e24a41c2fba602c8ee8da624558bbbf957a46b020"
+    }
+  },
+  "cohort": {
+    "initialScale": 10000,
+    "requestedPostAppendScale": 11000,
+    "targetAcceptedSamples": 5,
+    "acceptedSamples": 5,
+    "attempts": 5,
+    "invalidAttempts": 0,
+    "outcomes": {
+      "capacityRejection": 5,
+      "completedAt11000": 0,
+      "nativeCrash": 0,
+      "timeout": 0
+    },
+    "explicitOl512Errors": 5,
+    "acceptedMainCommitsAfterAppend": 0,
+    "appendTransportAcknowledgements": 5,
+    "appendNativeFrames": 10,
+    "unchangedPostStates": 5,
+    "errorsOtherThanOl512": 0,
+    "preAppendOwnershipCensus": {
+      "handles": 10001,
+      "ranges": 2,
+      "listenerSlots": 20012,
+      "retainedHostRefs": 40028,
+      "recycledHandles": 0,
+      "recycledHostRefs": 0
+    },
+    "projectedSuccessfulAppendCensus": {
+      "handles": 11001,
+      "ranges": 2,
+      "listenerSlots": 22012,
+      "retainedHostRefs": 44028,
+      "recycledHandles": 0,
+      "recycledHostRefs": 0
+    },
+    "registeredResidentPlanNodeLimit": 40960
+  },
+  "operations": {
+    "create": {
+      "nativeLatencyMs": {
+        "values": [20645, 21064, 20045, 21011, 21232],
+        "min": 20045,
+        "median": 21011,
+        "mean": 20799.4,
+        "max": 21232
+      },
+      "mainCommitWallMs": {
+        "values": [20010, 20403, 19395, 20372, 20582],
+        "min": 19395,
+        "median": 20372,
+        "mean": 20152.4,
+        "max": 20582
+      },
+      "frameBytes": {
+        "values": [338453, 338671, 339242, 338888, 339103],
+        "min": 338453,
+        "median": 338888,
+        "mean": 338871.4,
+        "max": 339242
+      },
+      "state": {
+        "rowCount": [0, 10000],
+        "sampledIdsAfter": [1, 2, 3, 999],
+        "selectionAfter": null
+      }
+    },
+    "append1kCapacityRejection": {
+      "nativeReceiptLatencyMs": {
+        "values": [860, 876, 844, 875, 887],
+        "min": 844,
+        "median": 875,
+        "mean": 868.4,
+        "max": 887
+      },
+      "error": {
+        "name": "RangeError",
+        "message": "Octane Lynx OL512",
+        "lynxErrorCode": 20100,
+        "observedInEverySample": true
+      },
+      "state": {
+        "rowCount": [10000, 10000],
+        "sampledIdentityStable": true,
+        "firstLabelStable": true,
+        "selectionStable": true,
+        "partialAppendObserved": false
+      },
+      "boundary": {
+        "transportAcknowledgedInEverySample": true,
+        "nativeFramesPerSample": 2,
+        "acceptedMainCommitObserved": false
+      }
+    }
+  },
+  "decision": {
+    "append1000From10000": "failed at the registered structural Element Template live-capacity boundary",
+    "failureClass": "correctness/reachability, not comparative performance",
+    "safetyProperty": "pass: the rejected transaction preserved the complete sampled 10,000-row state in all five launches",
+    "nextOwner": "the existing virtualized native-list architecture required for tables above the Element Template resident-plan limit",
+    "r11": "NO-GO",
+    "defaultChanged": false
+  },
+  "rawEvidence": {
+    "sha256": "aaf6d340e9c2c9494088f2ea2bae876b42b41d64926356d806da7c9dc9fbbc03",
+    "checkedFields": [
+      "runner and artifact commits",
+      "bundle bytes and SHA-256",
+      "device and thermal class",
+      "operation order",
+      "accepted and invalid counts",
+      "capacity outcome and exact checks",
+      "OL512 marker",
+      "create ownership census",
+      "native receipt latency",
+      "main commit wall time and absence after rejection",
+      "pre/post state",
+      "transport acknowledgement and native frames",
+      "error and rejection fields"
+    ],
+    "rawDeviceEndpointExcluded": true,
+    "rawLocalPathsExcluded": true
+  }
+}

@@ -1,0 +1,1004 @@
+{
+  "protocol": "octane-issue291-native-memory-comparison-v1",
+  "question": "Does the shipping M4 Element Template candidate preserve M0-current process-memory non-inferiority across 20 native lifecycle cycles?",
+  "createdAt": "2026-09-15T07:09:38.669Z",
+  "comparison": {
+    "reference": {
+      "label": "baseline",
+      "sourceCommit": "e82160fc0e663f52848e2181d83c6203d633bc86",
+      "bundle": {
+        "path": "/tmp/octane-issue291-m0-current-287be65b2/main.lynx.bundle",
+        "bytes": 553923,
+        "sha256": "a7804edbc02280f225aea34922b67a5b253b650491566f8c3af2f24dacdd2e5c"
+      }
+    },
+    "candidate": {
+      "label": "candidate",
+      "sourceCommit": "204f4cf4c535cea9f4191ea85af07bd77f642fe2",
+      "bundle": {
+        "path": "/tmp/octane-issue291-m4-candidate-204f4cf4c/main.lynx.bundle",
+        "bytes": 280240,
+        "sha256": "9d66909d3dc4d3713402f034a92eb1b6f9c8195a7829c6f730177527869b89c7"
+      }
+    }
+  },
+  "device": {
+    "model": "aries_10",
+    "product": "aries",
+    "android": "10",
+    "fingerprint": "aries_10/aries/aries:10/QQ3A.200805.001/1.5.2:userdebug/test-keys",
+    "abi": "arm64-v8a",
+    "explorer": "1.0"
+  },
+  "engines": {
+    "reference": {
+      "appBundleEngine": "3.9",
+      "lynxSdk": "4.2"
+    },
+    "candidate": {
+      "appBundleEngine": "3.2",
+      "lynxSdk": "4.2"
+    }
+  },
+  "collection": {
+    "pairs": 10,
+    "orders": {
+      "reference-candidate": 5,
+      "candidate-reference": 5
+    },
+    "cyclesPerSample": 20,
+    "settleMs": 4000,
+    "invalidAttempts": 0
+  },
+  "method": {
+    "pairing": "adjacent cold-launch AB/BA sessions",
+    "aggregate": "geometric mean of within-pair candidate/reference ratios",
+    "bootstrap": "paired session-level percentile bootstrap",
+    "bootstrapRepetitions": 20000,
+    "bootstrapSeed": "43106526 + metric/checkpoint ordinal",
+    "nonInferiorityLimit": 1.05
+  },
+  "metrics": {
+    "nativeHeapAllocKb": {
+      "emptyBaseline": {
+        "unit": "kB",
+        "reference": {
+          "n": 10,
+          "median": 41527,
+          "min": 41182,
+          "max": 41781
+        },
+        "candidate": {
+          "n": 10,
+          "median": 40673,
+          "min": 40485,
+          "max": 40926
+        },
+        "pairedRatios": [
+          0.9696512768961968, 0.9806199681820373, 0.9791772106138384, 0.979507702692929,
+          0.9812505994053898, 0.9898256519838764, 0.9749922075430982, 0.9807650379127402,
+          0.9749150270477285, 0.9845287649479079
+        ],
+        "bootstrap": {
+          "method": "paired session-level percentile bootstrap of geometric-mean ratios",
+          "n": 10,
+          "repetitions": 20000,
+          "seed": 43106526,
+          "pointEstimate": 0.9795092447912469,
+          "ci95": {
+            "lower": 0.9762697879670187,
+            "upper": 0.9827839412120171
+          }
+        },
+        "nonInferiority": {
+          "limit": 1.05,
+          "passed": true
+        }
+      },
+      "operationalCreateHighWater": {
+        "unit": "kB",
+        "reference": {
+          "n": 10,
+          "median": 108072,
+          "min": 107452,
+          "max": 108516
+        },
+        "candidate": {
+          "n": 10,
+          "median": 89659.5,
+          "min": 89466,
+          "max": 91591
+        },
+        "pairedRatios": [
+          0.8282552059274588, 0.8334232959833228, 0.8289353031074885, 0.8341176251766982,
+          0.8305714470558878, 0.8344437751934393, 0.82630211213093, 0.8324330857265044,
+          0.8270181828266114, 0.8447328131628945
+        ],
+        "bootstrap": {
+          "method": "paired session-level percentile bootstrap of geometric-mean ratios",
+          "n": 10,
+          "repetitions": 20000,
+          "seed": 43106527,
+          "pointEstimate": 0.8320078883615626,
+          "ci95": {
+            "lower": 0.8292273823279562,
+            "upper": 0.8354805726805237
+          }
+        },
+        "nonInferiority": {
+          "limit": 1.05,
+          "passed": true
+        }
+      },
+      "settledPopulated": {
+        "unit": "kB",
+        "reference": {
+          "n": 10,
+          "median": 88749.5,
+          "min": 88305,
+          "max": 89422
+        },
+        "candidate": {
+          "n": 10,
+          "median": 86984.5,
+          "min": 86008,
+          "max": 88289
+        },
+        "pairedRatios": [
+          0.9807752915222188, 0.9863767623577374, 0.9699785722341265, 0.9817072480501692,
+          0.9859280190028031, 0.9818808635695716, 0.9766943927538506, 0.9704535198555957,
+          0.9727309544165954, 0.9873297398850395
+        ],
+        "bootstrap": {
+          "method": "paired session-level percentile bootstrap of geometric-mean ratios",
+          "n": 10,
+          "repetitions": 20000,
+          "seed": 43106528,
+          "pointEstimate": 0.9793656960309507,
+          "ci95": {
+            "lower": 0.9754137000153534,
+            "upper": 0.9830738142715155
+          }
+        },
+        "nonInferiority": {
+          "limit": 1.05,
+          "passed": true
+        }
+      },
+      "afterClear": {
+        "unit": "kB",
+        "reference": {
+          "n": 10,
+          "median": 88325,
+          "min": 87783,
+          "max": 89320
+        },
+        "candidate": {
+          "n": 10,
+          "median": 86214.5,
+          "min": 85401,
+          "max": 88213
+        },
+        "pairedRatios": [
+          0.9714673759266595, 0.9765852883425834, 0.9764312814995186, 0.9705431113838601,
+          0.9739394555288325, 0.9916270804142032, 0.9690041222715293, 0.9785261102977062,
+          0.9743361033330322, 0.9876063591580833
+        ],
+        "bootstrap": {
+          "method": "paired session-level percentile bootstrap of geometric-mean ratios",
+          "n": 10,
+          "repetitions": 20000,
+          "seed": 43106529,
+          "pointEstimate": 0.976982077698412,
+          "ci95": {
+            "lower": 0.9731085873732034,
+            "upper": 0.9816500947093645
+          }
+        },
+        "nonInferiority": {
+          "limit": 1.05,
+          "passed": true
+        }
+      }
+    },
+    "totalPssKb": {
+      "emptyBaseline": {
+        "unit": "kB",
+        "reference": {
+          "n": 10,
+          "median": 121742.5,
+          "min": 114612,
+          "max": 125618
+        },
+        "candidate": {
+          "n": 10,
+          "median": 112452,
+          "min": 110590,
+          "max": 117147
+        },
+        "pairedRatios": [
+          0.9071937825687552, 0.9293333757900938, 0.9561637720813735, 0.9222442750637957,
+          0.9378362367106443, 0.933077522335118, 0.914204322841844, 0.9703085191777475,
+          0.943164011491251, 0.9597938849105296
+        ],
+        "bootstrap": {
+          "method": "paired session-level percentile bootstrap of geometric-mean ratios",
+          "n": 10,
+          "repetitions": 20000,
+          "seed": 43106536,
+          "pointEstimate": 0.9371331274589833,
+          "ci95": {
+            "lower": 0.9255893583342405,
+            "upper": 0.9491909122836566
+          }
+        },
+        "nonInferiority": {
+          "limit": 1.05,
+          "passed": true
+        }
+      },
+      "operationalCreateHighWater": {
+        "unit": "kB",
+        "reference": {
+          "n": 10,
+          "median": 297899.5,
+          "min": 287029,
+          "max": 308486
+        },
+        "candidate": {
+          "n": 10,
+          "median": 234198,
+          "min": 227925,
+          "max": 243006
+        },
+        "pairedRatios": [
+          0.7984782907392141, 0.7707408503502022, 0.764057364029486, 0.7759782926945521,
+          0.7680512239685594, 0.8014597086762035, 0.7499262164448788, 0.8241571409160747,
+          0.8044611732925485, 0.8082745852517849
+        ],
+        "bootstrap": {
+          "method": "paired session-level percentile bootstrap of geometric-mean ratios",
+          "n": 10,
+          "repetitions": 20000,
+          "seed": 43106537,
+          "pointEstimate": 0.7862327828235758,
+          "ci95": {
+            "lower": 0.7726752657935323,
+            "upper": 0.8000955835773543
+          }
+        },
+        "nonInferiority": {
+          "limit": 1.05,
+          "passed": true
+        }
+      },
+      "settledPopulated": {
+        "unit": "kB",
+        "reference": {
+          "n": 10,
+          "median": 252215.5,
+          "min": 237938,
+          "max": 270575
+        },
+        "candidate": {
+          "n": 10,
+          "median": 205691.5,
+          "min": 188973,
+          "max": 226841
+        },
+        "pairedRatios": [
+          0.8455146311603307, 0.8671338636801824, 0.8170910069009574, 0.8038393523794554,
+          0.9029395959796995, 0.7018423727247528, 0.7799390469590418, 0.7463211772232885,
+          0.8595130436151416, 0.8450974703870623
+        ],
+        "bootstrap": {
+          "method": "paired session-level percentile bootstrap of geometric-mean ratios",
+          "n": 10,
+          "repetitions": 20000,
+          "seed": 43106538,
+          "pointEstimate": 0.8148339119947636,
+          "ci95": {
+            "lower": 0.7773501730142471,
+            "upper": 0.850704704081881
+          }
+        },
+        "nonInferiority": {
+          "limit": 1.05,
+          "passed": true
+        }
+      },
+      "afterClear": {
+        "unit": "kB",
+        "reference": {
+          "n": 10,
+          "median": 247261.5,
+          "min": 231411,
+          "max": 271777
+        },
+        "candidate": {
+          "n": 10,
+          "median": 208407.5,
+          "min": 186937,
+          "max": 219145
+        },
+        "pairedRatios": [
+          0.8281029784835103, 0.8222536141202123, 0.8940387894809847, 0.7046515134381243,
+          0.7785664786801895, 0.9304700295145866, 0.8571551872950112, 0.8975052408227135,
+          0.8350434032998536, 0.7196709066624475
+        ],
+        "bootstrap": {
+          "method": "paired session-level percentile bootstrap of geometric-mean ratios",
+          "n": 10,
+          "repetitions": 20000,
+          "seed": 43106539,
+          "pointEstimate": 0.823636989563902,
+          "ci95": {
+            "lower": 0.7793092857743057,
+            "upper": 0.8678084819299396
+          }
+        },
+        "nonInferiority": {
+          "limit": 1.05,
+          "passed": true
+        }
+      }
+    },
+    "smapsPssKb": {
+      "emptyBaseline": {
+        "unit": "kB",
+        "reference": {
+          "n": 10,
+          "median": 122054.5,
+          "min": 114925,
+          "max": 125923
+        },
+        "candidate": {
+          "n": 10,
+          "median": 112766.5,
+          "min": 110900,
+          "max": 117462
+        },
+        "pairedRatios": [
+          0.9074101104461636, 0.929591893458701, 0.9562600486457518, 0.9224447697631089,
+          0.9379701349516889, 0.9332357949379226, 0.9144304044812089, 0.9703806830541658,
+          0.9433241885720333, 0.9599263640547497
+        ],
+        "bootstrap": {
+          "method": "paired session-level percentile bootstrap of geometric-mean ratios",
+          "n": 10,
+          "repetitions": 20000,
+          "seed": 43106546,
+          "pointEstimate": 0.9372996213394164,
+          "ci95": {
+            "lower": 0.9254234757024836,
+            "upper": 0.9492947838414294
+          }
+        },
+        "nonInferiority": {
+          "limit": 1.05,
+          "passed": true
+        }
+      },
+      "operationalCreateHighWater": {
+        "unit": "kB",
+        "reference": {
+          "n": 10,
+          "median": 298216,
+          "min": 287345,
+          "max": 308800
+        },
+        "candidate": {
+          "n": 10,
+          "median": 234511,
+          "min": 228239,
+          "max": 243321
+        },
+        "pairedRatios": [
+          0.7987221543571654, 0.7709608966441542, 0.7642972797927461, 0.7762096019969869,
+          0.7682796361255017, 0.8016769259786355, 0.7501752592854662, 0.8243435591362299,
+          0.8046622066278866, 0.8084898629531998
+        ],
+        "bootstrap": {
+          "method": "paired session-level percentile bootstrap of geometric-mean ratios",
+          "n": 10,
+          "repetitions": 20000,
+          "seed": 43106547,
+          "pointEstimate": 0.7864565397187502,
+          "ci95": {
+            "lower": 0.772644197594481,
+            "upper": 0.8004714208256825
+          }
+        },
+        "nonInferiority": {
+          "limit": 1.05,
+          "passed": true
+        }
+      },
+      "settledPopulated": {
+        "unit": "kB",
+        "reference": {
+          "n": 10,
+          "median": 252533.5,
+          "min": 238252,
+          "max": 270889
+        },
+        "candidate": {
+          "n": 10,
+          "median": 206007,
+          "min": 189287,
+          "max": 227158
+        },
+        "pairedRatios": [
+          0.8457373479051368, 0.8672875680200921, 0.8173320685660561, 0.8040716363079748,
+          0.9030475539265184, 0.7021953641528449, 0.7802046546747312, 0.74663242887177,
+          0.8596909096626104, 0.8453047466701489
+        ],
+        "bootstrap": {
+          "method": "paired session-level percentile bootstrap of geometric-mean ratios",
+          "n": 10,
+          "repetitions": 20000,
+          "seed": 43106548,
+          "pointEstimate": 0.8150667032760386,
+          "ci95": {
+            "lower": 0.7781191227776527,
+            "upper": 0.85028759591616
+          }
+        },
+        "nonInferiority": {
+          "limit": 1.05,
+          "passed": true
+        }
+      },
+      "afterClear": {
+        "unit": "kB",
+        "reference": {
+          "n": 10,
+          "median": 247576.5,
+          "min": 231725,
+          "max": 272092
+        },
+        "candidate": {
+          "n": 10,
+          "median": 208722,
+          "min": 187251,
+          "max": 219459
+        },
+        "pairedRatios": [
+          0.8283636518734938, 0.8224484318687217, 0.8941743537924965, 0.7049927148004382,
+          0.7788268135061757, 0.9305728773330456, 0.8573281559136695, 0.8976342844039424,
+          0.835252141389791, 0.7200027931728974
+        ],
+        "bootstrap": {
+          "method": "paired session-level percentile bootstrap of geometric-mean ratios",
+          "n": 10,
+          "repetitions": 20000,
+          "seed": 43106549,
+          "pointEstimate": 0.8238584742771405,
+          "ci95": {
+            "lower": 0.7789844795421447,
+            "upper": 0.8672008093699479
+          }
+        },
+        "nonInferiority": {
+          "limit": 1.05,
+          "passed": true
+        }
+      }
+    }
+  },
+  "verdict": {
+    "availableChecksPassed": true,
+    "settledHeap": "pass",
+    "afterClearHeap": "pass",
+    "peakHeap": "inconclusive",
+    "issue291MemoryGate": "inconclusive",
+    "reason": "postReceipt is an operational high-water checkpoint after the Native ACK and second frame, not an instantaneous heap peak; this record cannot close the registered peak-heap requirement"
+  },
+  "pairs": [
+    {
+      "pair": 1,
+      "order": "reference-candidate",
+      "reference": {
+        "ordinal": 1,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 41781,
+            "operationalCreateHighWater": 108242,
+            "settledPopulated": 88844,
+            "afterClear": 88355
+          },
+          "totalPssKb": {
+            "emptyBaseline": 123009,
+            "operationalCreateHighWater": 291120,
+            "settledPopulated": 249946,
+            "afterClear": 234146
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 123318,
+            "operationalCreateHighWater": 291428,
+            "settledPopulated": 250255,
+            "afterClear": 234455
+          }
+        }
+      },
+      "candidate": {
+        "ordinal": 2,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 40513,
+            "operationalCreateHighWater": 89652,
+            "settledPopulated": 87136,
+            "afterClear": 85834
+          },
+          "totalPssKb": {
+            "emptyBaseline": 111593,
+            "operationalCreateHighWater": 232453,
+            "settledPopulated": 211333,
+            "afterClear": 193897
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 111900,
+            "operationalCreateHighWater": 232770,
+            "settledPopulated": 211650,
+            "afterClear": 194214
+          }
+        }
+      }
+    },
+    {
+      "pair": 2,
+      "order": "candidate-reference",
+      "reference": {
+        "ordinal": 4,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 41486,
+            "operationalCreateHighWater": 107452,
+            "settledPopulated": 88305,
+            "afterClear": 88107
+          },
+          "totalPssKb": {
+            "emptyBaseline": 125618,
+            "operationalCreateHighWater": 304110,
+            "settledPopulated": 238586,
+            "afterClear": 260506
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 125923,
+            "operationalCreateHighWater": 304424,
+            "settledPopulated": 238900,
+            "afterClear": 260820
+          }
+        }
+      },
+      "candidate": {
+        "ordinal": 3,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 40682,
+            "operationalCreateHighWater": 89553,
+            "settledPopulated": 87102,
+            "afterClear": 86044
+          },
+          "totalPssKb": {
+            "emptyBaseline": 116741,
+            "operationalCreateHighWater": 234390,
+            "settledPopulated": 206886,
+            "afterClear": 214202
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 117057,
+            "operationalCreateHighWater": 234699,
+            "settledPopulated": 207195,
+            "afterClear": 214511
+          }
+        }
+      }
+    },
+    {
+      "pair": 3,
+      "order": "reference-candidate",
+      "reference": {
+        "ordinal": 5,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 41493,
+            "operationalCreateHighWater": 107965,
+            "settledPopulated": 88670,
+            "afterClear": 88295
+          },
+          "totalPssKb": {
+            "emptyBaseline": 120973,
+            "operationalCreateHighWater": 308486,
+            "settledPopulated": 237938,
+            "afterClear": 245118
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 121285,
+            "operationalCreateHighWater": 308800,
+            "settledPopulated": 238252,
+            "afterClear": 245432
+          }
+        }
+      },
+      "candidate": {
+        "ordinal": 6,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 40629,
+            "operationalCreateHighWater": 89496,
+            "settledPopulated": 86008,
+            "afterClear": 86214
+          },
+          "totalPssKb": {
+            "emptyBaseline": 115670,
+            "operationalCreateHighWater": 235701,
+            "settledPopulated": 194417,
+            "afterClear": 219145
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 115980,
+            "operationalCreateHighWater": 236015,
+            "settledPopulated": 194731,
+            "afterClear": 219459
+          }
+        }
+      }
+    },
+    {
+      "pair": 4,
+      "order": "candidate-reference",
+      "reference": {
+        "ordinal": 8,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 41479,
+            "operationalCreateHighWater": 107528,
+            "settledPopulated": 88341,
+            "afterClear": 87993
+          },
+          "totalPssKb": {
+            "emptyBaseline": 119914,
+            "operationalCreateHighWater": 293726,
+            "settledPopulated": 254470,
+            "afterClear": 265290
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 120224,
+            "operationalCreateHighWater": 294043,
+            "settledPopulated": 254787,
+            "afterClear": 265607
+          }
+        }
+      },
+      "candidate": {
+        "ordinal": 7,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 40629,
+            "operationalCreateHighWater": 89691,
+            "settledPopulated": 86725,
+            "afterClear": 85401
+          },
+          "totalPssKb": {
+            "emptyBaseline": 110590,
+            "operationalCreateHighWater": 227925,
+            "settledPopulated": 204553,
+            "afterClear": 186937
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 110900,
+            "operationalCreateHighWater": 228239,
+            "settledPopulated": 204867,
+            "afterClear": 187251
+          }
+        }
+      }
+    },
+    {
+      "pair": 5,
+      "order": "reference-candidate",
+      "reference": {
+        "ordinal": 9,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 41708,
+            "operationalCreateHighWater": 108199,
+            "settledPopulated": 88829,
+            "afterClear": 88563
+          },
+          "totalPssKb": {
+            "emptyBaseline": 124912,
+            "operationalCreateHighWater": 308137,
+            "settledPopulated": 251225,
+            "afterClear": 261189
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 125230,
+            "operationalCreateHighWater": 308458,
+            "settledPopulated": 251546,
+            "afterClear": 261510
+          }
+        }
+      },
+      "candidate": {
+        "ordinal": 10,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 40926,
+            "operationalCreateHighWater": 89867,
+            "settledPopulated": 87579,
+            "afterClear": 86255
+          },
+          "totalPssKb": {
+            "emptyBaseline": 117147,
+            "operationalCreateHighWater": 236665,
+            "settledPopulated": 226841,
+            "afterClear": 203353
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 117462,
+            "operationalCreateHighWater": 236982,
+            "settledPopulated": 227158,
+            "afterClear": 203671
+          }
+        }
+      }
+    },
+    {
+      "pair": 6,
+      "order": "candidate-reference",
+      "reference": {
+        "ordinal": 12,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 41182,
+            "operationalCreateHighWater": 107915,
+            "settledPopulated": 88470,
+            "afterClear": 87783
+          },
+          "totalPssKb": {
+            "emptyBaseline": 120662,
+            "operationalCreateHighWater": 291291,
+            "settledPopulated": 270575,
+            "afterClear": 231411
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 120978,
+            "operationalCreateHighWater": 291605,
+            "settledPopulated": 270889,
+            "afterClear": 231725
+          }
+        }
+      },
+      "candidate": {
+        "ordinal": 11,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 40763,
+            "operationalCreateHighWater": 90049,
+            "settledPopulated": 86867,
+            "afterClear": 87048
+          },
+          "totalPssKb": {
+            "emptyBaseline": 112587,
+            "operationalCreateHighWater": 233458,
+            "settledPopulated": 189901,
+            "afterClear": 215321
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 112901,
+            "operationalCreateHighWater": 233773,
+            "settledPopulated": 190217,
+            "afterClear": 215637
+          }
+        }
+      }
+    },
+    {
+      "pair": 7,
+      "order": "reference-candidate",
+      "reference": {
+        "ordinal": 13,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 41707,
+            "operationalCreateHighWater": 108516,
+            "settledPopulated": 89206,
+            "afterClear": 88786
+          },
+          "totalPssKb": {
+            "emptyBaseline": 122512,
+            "operationalCreateHighWater": 304946,
+            "settledPopulated": 253966,
+            "afterClear": 243306
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 122824,
+            "operationalCreateHighWater": 305262,
+            "settledPopulated": 254282,
+            "afterClear": 243622
+          }
+        }
+      },
+      "candidate": {
+        "ordinal": 14,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 40664,
+            "operationalCreateHighWater": 89667,
+            "settledPopulated": 87127,
+            "afterClear": 86034
+          },
+          "totalPssKb": {
+            "emptyBaseline": 112001,
+            "operationalCreateHighWater": 228687,
+            "settledPopulated": 198078,
+            "afterClear": 208551
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 112314,
+            "operationalCreateHighWater": 229000,
+            "settledPopulated": 198392,
+            "afterClear": 208864
+          }
+        }
+      }
+    },
+    {
+      "pair": 8,
+      "order": "candidate-reference",
+      "reference": {
+        "ordinal": 16,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 41279,
+            "operationalCreateHighWater": 107563,
+            "settledPopulated": 88640,
+            "afterClear": 88107
+          },
+          "totalPssKb": {
+            "emptyBaseline": 114612,
+            "operationalCreateHighWater": 287029,
+            "settledPopulated": 253206,
+            "afterClear": 235173
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 114925,
+            "operationalCreateHighWater": 287345,
+            "settledPopulated": 253521,
+            "afterClear": 235489
+          }
+        }
+      },
+      "candidate": {
+        "ordinal": 15,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 40485,
+            "operationalCreateHighWater": 89539,
+            "settledPopulated": 86021,
+            "afterClear": 86215
+          },
+          "totalPssKb": {
+            "emptyBaseline": 111209,
+            "operationalCreateHighWater": 236557,
+            "settledPopulated": 188973,
+            "afterClear": 211069
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 111521,
+            "operationalCreateHighWater": 236871,
+            "settledPopulated": 189287,
+            "afterClear": 211383
+          }
+        }
+      }
+    },
+    {
+      "pair": 9,
+      "order": "reference-candidate",
+      "reference": {
+        "ordinal": 17,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 41778,
+            "operationalCreateHighWater": 108179,
+            "settledPopulated": 88892,
+            "afterClear": 88568
+          },
+          "totalPssKb": {
+            "emptyBaseline": 122528,
+            "operationalCreateHighWater": 302073,
+            "settledPopulated": 254109,
+            "afterClear": 249405
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 122839,
+            "operationalCreateHighWater": 302389,
+            "settledPopulated": 254424,
+            "afterClear": 249721
+          }
+        }
+      },
+      "candidate": {
+        "ordinal": 18,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 40730,
+            "operationalCreateHighWater": 89466,
+            "settledPopulated": 86468,
+            "afterClear": 86295
+          },
+          "totalPssKb": {
+            "emptyBaseline": 115564,
+            "operationalCreateHighWater": 243006,
+            "settledPopulated": 218410,
+            "afterClear": 208264
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 115877,
+            "operationalCreateHighWater": 243321,
+            "settledPopulated": 218726,
+            "afterClear": 208580
+          }
+        }
+      }
+    },
+    {
+      "pair": 10,
+      "order": "candidate-reference",
+      "reference": {
+        "ordinal": 20,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 41561,
+            "operationalCreateHighWater": 108426,
+            "settledPopulated": 89422,
+            "afterClear": 89320
+          },
+          "totalPssKb": {
+            "emptyBaseline": 117022,
+            "operationalCreateHighWater": 289513,
+            "settledPopulated": 244741,
+            "afterClear": 271777
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 117334,
+            "operationalCreateHighWater": 289828,
+            "settledPopulated": 245056,
+            "afterClear": 272092
+          }
+        }
+      },
+      "candidate": {
+        "ordinal": 19,
+        "metrics": {
+          "nativeHeapAllocKb": {
+            "emptyBaseline": 40918,
+            "operationalCreateHighWater": 91591,
+            "settledPopulated": 88289,
+            "afterClear": 88213
+          },
+          "totalPssKb": {
+            "emptyBaseline": 112317,
+            "operationalCreateHighWater": 234006,
+            "settledPopulated": 206830,
+            "afterClear": 195590
+          },
+          "smapsPssKb": {
+            "emptyBaseline": 112632,
+            "operationalCreateHighWater": 234323,
+            "settledPopulated": 207147,
+            "afterClear": 195907
+          }
+        }
+      }
+    }
+  ],
+  "input": {
+    "path": "../../../../../../tmp/octane-issue291-m0-candidate-formal-204f4cf4c.json",
+    "bytes": 9594779,
+    "sha256": "dad1c380dfda570d3973d08a8faefc4de422fd1257cae7dc78d8392b01f9fe42"
+  }
+}

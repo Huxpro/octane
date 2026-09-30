@@ -1,5 +1,6 @@
 /** @jsxImportSource @octanejs/lynx/intrinsics */
 import { runOnBackground, runOnMainThread, useMainThreadRef } from '@octanejs/lynx';
+import type { LynxMainThreadElement } from '@octanejs/lynx';
 import { useEffect, useState } from 'octane';
 
 import { Indicator } from './Indicator.lynx.tsrx';
@@ -46,7 +47,7 @@ export function Swiper({
 }) @{
 	const [current, setCurrent] = useState(0);
 
-	const containerRef = useMainThreadRef<object>();
+	const containerRef = useMainThreadRef<LynxMainThreadElement>();
 	const touchStartXRef = useMainThreadRef<number>(0);
 	const touchStartCurrentOffsetRef = useMainThreadRef<number>(0);
 	const currentOffsetRef = useMainThreadRef<number>(0);
@@ -66,8 +67,7 @@ export function Swiper({
 		'main thread';
 		const container = containerRef.current;
 		if (container === null || container === undefined) return;
-		__AddInlineStyle(container as object, 'transform', `translateX(${offset}px)`);
-		__FlushElementTree();
+		container.setStyleProperty('transform', `translateX(${offset}px)`);
 	};
 
 	const calcNearestPage = (offset: number) => {

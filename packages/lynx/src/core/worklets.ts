@@ -631,6 +631,7 @@ export interface CreateLynxMainThreadWorkletRegistryOptions {
 		handle: LynxBackgroundFunctionDescriptor,
 		args: readonly LynxWorkletValue[],
 	) => unknown;
+	readonly wrapElementRef?: (value: object) => unknown;
 }
 
 export interface LynxMainThreadWorkletRegistry {
@@ -641,6 +642,7 @@ export interface LynxMainThreadWorkletRegistry {
 	finishRefOwnerPublication(): void;
 	retainRef<T>(descriptor: LynxMainThreadRefDescriptor, initialValue: T): LynxMainThreadRefCell<T>;
 	updateRef<T>(descriptor: LynxMainThreadRefDescriptor, value: T): void;
+	mountRef(descriptor: LynxMainThreadRefDescriptor, value: object): void;
 	releaseRef(descriptor: LynxMainThreadRefDescriptor): void;
 	retainOwner(descriptor: LynxMainThreadRefDescriptor): LynxMainThreadRefCell;
 	releaseOwner(descriptor: LynxMainThreadRefDescriptor): void;
@@ -1056,6 +1058,9 @@ export function createLynxMainThreadWorkletRegistry(
 						: 'Octane Lynx OL295',
 				);
 			cell.current = value;
+		},
+		mountRef(descriptor, value) {
+			this.updateRef(descriptor, options.wrapElementRef?.(value) ?? value);
 		},
 		releaseRef(descriptor) {
 			if (!isLynxMainThreadRefDescriptor(descriptor)) return;

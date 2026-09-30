@@ -226,7 +226,7 @@ export function createLynxCompiledProgramWorkletStore<Node extends LynxElementRe
 				fail(`ref ${JSON.stringify(next._wvid)} is already mounted`);
 			registry.retainRef(next, null);
 			try {
-				registry.updateRef(next, node);
+				registry.mountRef(next, node);
 			} catch (error) {
 				registry.releaseRef(next);
 				throw error;

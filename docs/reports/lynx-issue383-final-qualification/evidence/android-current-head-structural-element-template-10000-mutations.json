@@ -1,0 +1,350 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-25T09:07:59.356Z",
+  "scope": "One clean-device Android 10 / Lynx SDK 4.2 cohort for the immutable current-product structural Element Template bundle at 10,000 rows. Each of five independent cold launches ran create, update-every-tenth, select the second row, swap rows 2 and 999, a 50-tick update storm, a 30-tick select storm, and remove the current second row. This is semantic-correctness, bounded-owner, and operation-latency evidence at n=5; it is not an independent per-operation cold-start comparison, a process-memory/GC result, Android 11+, higher-scale, native-list, no-JIT, low-end, iOS, cross-framework, or default-switch claim.",
+  "candidate": {
+    "collectionBaseCommit": "2c1190a73e908a6c968fc9110c29d2e4cbe167d9",
+    "registeredProtocolCommit": "8bcf31cf0d4de8325bcd368c25a7bcedf30c79e9",
+    "artifactBuildCommit": "be7615df441519a99e7478d951a8f494feed6af4",
+    "branch": "feat/optimal-lynx-app-adoption",
+    "productGraphUnchangedSinceArtifactBuild": true,
+    "runnerProvenance": "The raw collector reports the clean base commit because the sequence protocol was collected before its commit. The exact sequence parser, transition oracle, multi-commit attribution, wire gate, and ownership census used by the run were committed as registeredProtocolCommit. After collection, the only runner behavior edit was an equivalent extraction of postState selection into a tested pure helper; no product or bundle source changed."
+  },
+  "device": {
+    "model": "aries_10",
+    "product": "aries",
+    "android": "10",
+    "abi": "arm64-v8a",
+    "rawIdentityRetained": false,
+    "packageVersion": "1.0",
+    "lynxSdk": "4.2",
+    "batteryTemperatureTenthsC": {
+      "min": 350,
+      "max": 350
+    },
+    "thermalStatuses": [0]
+  },
+  "protocol": {
+    "runner": "octane-issue194-device-v1",
+    "nativeReceipt": "lynx-native-bench-v2",
+    "nativeBoundary": "native-input-handler-to-second-native-frame",
+    "mainReceipt": "octane-issue194-compact-main-v1",
+    "mainBoundary": "latest compact product receiver frame after the registered input, through ACK and complete dispatch",
+    "ordering": "single-cell repeated cold launches",
+    "coldLaunchPerAttempt": true,
+    "devtool": "disabled by a background-only preflight before every attempt; no CDP connection used",
+    "input": "native ADB taps at registered application controls and row targets",
+    "operationOrder": [
+      "create",
+      "update10th",
+      "select",
+      "swap",
+      "updateStorm",
+      "selectStorm",
+      "remove"
+    ],
+    "mainVersionsAfterOperation": [2, 3, 4, 5, 55, 85, 86],
+    "stormAttribution": "interaction ordinal identifies the Native receipt; the latest main version after each tap attributes the final tick without consuming later input",
+    "semanticOracle": "exact sampled row identity, row count, first-label mutation, selection, storm tick/barrier/ACK counts, one operation ACK plus one complete message, two native frames, stable ownership for pure mutations, exact one-row retirement on remove, and no observed error",
+    "wireShape": {
+      "messagesPerOperation": 2,
+      "ackMessagesPerOperation": 1,
+      "completeMessagesPerOperation": 1,
+      "encodedBytesByOperation": [18, 18, 18, 18, 20, 20, 20]
+    },
+    "mutationCensusRequired": true
+  },
+  "instrumentedBundles": {
+    "structuralElementTemplate": {
+      "engine": "3.2",
+      "bytes": 245584,
+      "sha256": "c00df02fdd6da746ac787a196da4b5df064af3a3834bdcce79765e0b0a703f9c"
+    },
+    "disableDevtool": {
+      "bytes": 272537,
+      "sha256": "06a471fd03bb2ba58859726e24a41c2fba602c8ee8da624558bbbf957a46b020"
+    }
+  },
+  "cohort": {
+    "scale": 10000,
+    "targetAcceptedSamples": 5,
+    "acceptedSamples": 5,
+    "attempts": 5,
+    "invalidAttempts": 0,
+    "operationsPerSample": 7,
+    "acceptedOperations": 35,
+    "interactionMainCommits": 425,
+    "semanticOraclePassed": true,
+    "mutationCensusPassed": true,
+    "operationTransportAcknowledgements": 35,
+    "stormTickAcknowledgements": 400,
+    "nativeFrames": 70,
+    "errors": 0,
+    "populatedOwnershipCensus": {
+      "handles": 10001,
+      "ranges": 2,
+      "listenerSlots": 20012,
+      "retainedHostRefs": 40028,
+      "recycledHandles": 0,
+      "recycledHostRefs": 0
+    },
+    "postRemoveOwnershipCensus": {
+      "handles": 10000,
+      "ranges": 2,
+      "listenerSlots": 20010,
+      "retainedHostRefs": 40024,
+      "recycledHandles": 1,
+      "recycledHostRefs": 4
+    },
+    "operations": {
+      "create": {
+        "nativeLatencyMs": {
+          "values": [20983, 21717, 22155, 20873, 21919],
+          "min": 20873,
+          "median": 21717,
+          "mean": 21529.4,
+          "max": 22155
+        },
+        "mainCommitWallMs": {
+          "values": [20368, 21089, 21508, 20225, 21280],
+          "min": 20225,
+          "median": 21089,
+          "mean": 20894,
+          "max": 21508
+        },
+        "frameBytes": {
+          "values": [338568, 338782, 338883, 338782, 339423],
+          "min": 338568,
+          "median": 338782,
+          "mean": 338887.6,
+          "max": 339423
+        },
+        "state": {
+          "rowCount": [0, 10000],
+          "sampledIdsAfter": [1, 2, 3, 999],
+          "firstLabelAfter": "nonempty",
+          "selectedIdAfter": null
+        }
+      },
+      "update10th": {
+        "nativeLatencyMs": {
+          "values": [220, 211, 222, 223, 202],
+          "min": 202,
+          "median": 220,
+          "mean": 215.6,
+          "max": 223
+        },
+        "mainCommitWallMs": {
+          "values": [141, 131, 133, 133, 130],
+          "min": 130,
+          "median": 133,
+          "mean": 133.6,
+          "max": 141
+        },
+        "frameBytes": {
+          "values": [35842, 35848, 35864, 35863, 36206],
+          "min": 35842,
+          "median": 35863,
+          "mean": 35924.6,
+          "max": 36206
+        },
+        "state": {
+          "rowCount": [10000, 10000],
+          "sampledIdentityStable": true,
+          "firstLabelSuffix": " !!!",
+          "selectionStable": true
+        }
+      },
+      "select": {
+        "nativeLatencyMs": {
+          "values": [41, 37, 43, 44, 44],
+          "min": 37,
+          "median": 43,
+          "mean": 41.8,
+          "max": 44
+        },
+        "mainCommitWallMs": {
+          "values": [8, 8, 8, 8, 7],
+          "min": 7,
+          "median": 8,
+          "mean": 7.8,
+          "max": 8
+        },
+        "frameBytes": {
+          "values": [24, 24, 24, 24, 24],
+          "min": 24,
+          "median": 24,
+          "mean": 24,
+          "max": 24
+        },
+        "state": {
+          "rowCount": [10000, 10000],
+          "sampledIdentityStable": true,
+          "selectedIdAfter": 2
+        }
+      },
+      "swap": {
+        "nativeLatencyMs": {
+          "values": [82, 73, 71, 81, 75],
+          "min": 71,
+          "median": 75,
+          "mean": 76.4,
+          "max": 82
+        },
+        "mainCommitWallMs": {
+          "values": [42, 37, 38, 40, 39],
+          "min": 37,
+          "median": 39,
+          "mean": 39.2,
+          "max": 42
+        },
+        "frameBytes": {
+          "values": [39, 39, 39, 39, 39],
+          "min": 39,
+          "median": 39,
+          "mean": 39,
+          "max": 39
+        },
+        "state": {
+          "rowCount": [10000, 10000],
+          "sampledIdsBefore": [1, 2, 3, 999],
+          "sampledIdsAfter": [1, 999, 3, 2],
+          "selectionStable": true
+        }
+      },
+      "updateStorm": {
+        "nativeLatencyMs": {
+          "values": [8862, 8570, 8717, 8792, 8847],
+          "min": 8570,
+          "median": 8792,
+          "mean": 8757.6,
+          "max": 8862
+        },
+        "firstFeedbackLatencyMs": {
+          "values": [177, 169, 182, 174, 179],
+          "min": 169,
+          "median": 177,
+          "mean": 176.2,
+          "max": 182
+        },
+        "finalTickMainCommitWallMs": {
+          "values": [92, 101, 100, 96, 102],
+          "min": 92,
+          "median": 100,
+          "mean": 98.2,
+          "max": 102
+        },
+        "finalTickFrameBytes": {
+          "values": [21892, 21892, 21892, 21892, 21892],
+          "min": 21892,
+          "median": 21892,
+          "mean": 21892,
+          "max": 21892
+        },
+        "state": {
+          "rowCount": [10000, 10000],
+          "expectedTicks": 50,
+          "completedTicks": 50,
+          "renderBarriers": 50,
+          "tickAcknowledgements": 50,
+          "firstLabelAfter": "bench 50",
+          "sampledIdentityStable": true,
+          "selectionStable": true
+        }
+      },
+      "selectStorm": {
+        "nativeLatencyMs": {
+          "values": [1530, 1436, 1388, 1469, 1387],
+          "min": 1387,
+          "median": 1436,
+          "mean": 1442,
+          "max": 1530
+        },
+        "firstFeedbackLatencyMs": {
+          "values": [13, 19, 21, 18, 20],
+          "min": 13,
+          "median": 19,
+          "mean": 18.2,
+          "max": 21
+        },
+        "finalTickMainCommitWallMs": {
+          "values": [6, 6, 6, 15, 7],
+          "min": 6,
+          "median": 6,
+          "mean": 8,
+          "max": 15
+        },
+        "finalTickFrameBytes": {
+          "values": [41, 41, 41, 41, 41],
+          "min": 41,
+          "median": 41,
+          "mean": 41,
+          "max": 41
+        },
+        "state": {
+          "rowCount": [10000, 10000],
+          "expectedTicks": 30,
+          "completedTicks": 30,
+          "renderBarriers": 30,
+          "tickAcknowledgements": 30,
+          "selectedIdAfter": 1,
+          "sampledIdentityStable": true,
+          "labelStable": true
+        }
+      },
+      "remove": {
+        "nativeLatencyMs": {
+          "values": [141, 151, 163, 145, 135],
+          "min": 135,
+          "median": 145,
+          "mean": 147,
+          "max": 163
+        },
+        "mainCommitWallMs": {
+          "values": [89, 93, 108, 91, 85],
+          "min": 85,
+          "median": 91,
+          "mean": 93.2,
+          "max": 108
+        },
+        "frameBytes": {
+          "values": [14, 14, 14, 14, 14],
+          "min": 14,
+          "median": 14,
+          "mean": 14,
+          "max": 14
+        },
+        "state": {
+          "rowCount": [10000, 9999],
+          "sampledIdsBefore": [1, 999, 3, 2],
+          "sampledIdsAfter": [1, 3, 4, 1000],
+          "selectedIdAfter": 1,
+          "labelStable": true
+        }
+      }
+    }
+  },
+  "sourceReport": {
+    "role": "structural-element-template-10000-registered-mutation-sequence",
+    "sha256": "03f52ac87ae13754c0ea24407eb40abaecb63fb60783301d7fdc425b1ae04796"
+  },
+  "sanitization": "This compact record excludes the raw device endpoint, local paths, per-event timestamps, process IDs, raw log lines, generated row labels, and ADB coordinates.",
+  "decision": {
+    "registeredMutationSemantics": "passed at n=5: all 35 operations completed on the first attempt with exact state transitions, one operation ACK plus one complete message, two native frames, and the expected ownership census",
+    "stormSemantics": "all five update storms completed 50 commits, barriers, and tick ACKs; all five select storms completed 30 commits, barriers, and tick ACKs; latest-version attribution ended at main versions 55 and 85 in every cold launch",
+    "ownerStability": "update, select, swap, and both storms retained the populated census exactly; remove retired one live handle, two listener slots, and four retained host refs into one recycled handle with four recycled host refs",
+    "latencyComparison": "not claimed because this is one serialized single-cell sequence at n=5; storm wall latency covers all ticks while the recorded main wall/frame bytes describe only the final tick",
+    "memoryQualification": "not claimed because Android 10 ownership census is not fresh-process peak, settled, after-clear, post-GC process memory on the required Android 11+ runtime",
+    "defaultSwitch": "not authorized",
+    "roadmapVerdict": "NO-GO remains unchanged",
+    "remaining": [
+      "20-cycle fresh-process peak, settled, after-clear, and post-GC memory on one Android 11+ device/runtime cohort",
+      "behavior above 10,000 rows within the resident native-node budget or through native-list virtualization",
+      "10k append and the native-list startup/reuse/recycle/fling lanes",
+      "powered AB/BA operation comparison and at least 100 valid interactions for tail latency",
+      "no-JIT and low-end Android matrix",
+      "iOS correctness, latency, memory, and bytecode evidence",
+      "cross-framework and latest-upstream comparison with a shared supported receipt"
+    ]
+  }
+}

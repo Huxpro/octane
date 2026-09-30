@@ -5,6 +5,10 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useId,
+	useInsertionEffect,
+	useLayoutEffect,
+	useLinkedState,
 	useState,
 } from 'octane';
 
@@ -13,22 +17,81 @@ export interface BlockScopedRowValue {
 	readonly label: string;
 }
 
+export interface BlockInsertionProps {
+	readonly label: string;
+	readonly log: (entry: string) => void;
+}
+
+export function BlockInsertionFixture(props: BlockInsertionProps) @{
+	const label = props.label;
+	const log = props.log;
+	useInsertionEffect(() => {
+		log('insertion:create:' + label);
+		return () => log('insertion:cleanup:' + label);
+	}, [label]);
+	useLayoutEffect(() => {
+		log('layout:create:' + label);
+		return () => log('layout:cleanup:' + label);
+	}, [label]);
+	useEffect(() => {
+		log('passive:create:' + label);
+		return () => log('passive:cleanup:' + label);
+	}, [label]);
+	<view class="insertion-fixture">
+		<text>{label as string}</text>
+	</view>
+}
+
+export interface BlockLinkedStateRowValue {
+	readonly id: number;
+	readonly source: string;
+}
+
+export interface BlockLinkedStateProps {
+	readonly rows: readonly BlockLinkedStateRowValue[];
+}
+
+function BlockLinkedStateRow(props: { readonly row: BlockLinkedStateRowValue }) @{
+	const row = props.row;
+	const [value, setValue, getValue] = useLinkedState(
+		row.source,
+		(source, previous) => previous === undefined
+			? 'initial:' + source
+			: 'linked:' + source + ':' + previous.value,
+	);
+	<view class="linked-row">
+		<text bindtap={() => setValue(getValue() + '!')}>{value as string}</text>
+	</view>
+}
+
+export function BlockLinkedStateFixture(props: BlockLinkedStateProps) @{
+	<view class="linked-rows">
+		@for (const row of props.rows; key row.id) {
+			<BlockLinkedStateRow row={row} />
+		}
+	</view>
+}
+
 export interface BlockScopedRowsProps {
 	readonly rows: readonly BlockScopedRowValue[];
 	readonly log: (entry: string) => void;
 	readonly observe: (entry: string) => void;
+	readonly observeId?: (row: number, id: string) => void;
 }
 
 export function BlockScopedRow(props: {
 	readonly row: BlockScopedRowValue;
 	readonly log: (entry: string) => void;
 	readonly observe: (entry: string) => void;
+	readonly observeId?: (row: number, id: string) => void;
 }) @{
 	const [tone, setTone] = useState('quiet');
+	const hookId = useId();
 	const row = props.row;
 	const label = row.label;
 	const log = props.log;
 	props.observe('row:' + row.id);
+	props.observeId?.(row.id, hookId);
 	const onTap = useCallback(() => setTone((value) => (value === 'quiet' ? 'loud' : 'quiet')), [
 		tone,
 	]);
@@ -52,7 +115,47 @@ export function BlockScopedRowsFixture(props: BlockScopedRowsProps) @{
 		<text class="title">rows</text>
 		<view class="rows">
 			@for (const row of props.rows; key row.id) {
-				<BlockScopedRow row={row} log={props.log} observe={props.observe} />
+				<BlockScopedRow
+					row={row}
+					log={props.log}
+					observe={props.observe}
+					observeId={props.observeId}
+				/>
+			}
+		</view>
+	</view>
+}
+
+export interface BlockWrappedSelectionProps {
+	readonly rows: readonly BlockScopedRowValue[];
+	readonly selected: number;
+	readonly observe: (entry: string) => void;
+}
+
+function BlockWrappedSelectionRow(props: {
+	readonly row: BlockScopedRowValue;
+	readonly tone: 'danger' | 'muted';
+	readonly observe: (entry: string) => void;
+}) @{
+	props.observe('selection-row:' + props.row.id);
+	<view class={['row', props.tone]}>
+		<text>{props.row.label}</text>
+	</view>
+}
+
+export function BlockWrappedSelectionFixture({
+	rows,
+	selected,
+	observe,
+}: BlockWrappedSelectionProps) @{
+	<view class="page">
+		<view class="rows">
+			@for (const row of rows; key row.id) {
+				<BlockWrappedSelectionRow
+					row={row}
+					tone={selected !== row.id ? 'muted' : 'danger'}
+					observe={observe}
+				/>
 			}
 		</view>
 	</view>
@@ -229,6 +332,33 @@ export function BlockSwitchFixture(props: BlockSwitchProps) @{
 					<view class="alternate">
 						<text>{'default:' + props.label}</text>
 					</view>
+				}
+			}
+		</view>
+	</view>
+}
+
+export function BlockStateBranchesFixture() @{
+	const [mode, setMode] = useState<'then' | 'case' | 'default'>('then');
+	<view class="state-branches">
+		<text
+			class="state-branches-mode"
+			bindtap={() => setMode(mode === 'then' ? 'case' : mode === 'case' ? 'default' : 'then')}
+		>{mode as string}</text>
+		<view class="state-if">
+			@if (mode === 'then') {
+				<text>if:then</text>
+			} @else {
+				<text>if:else</text>
+			}
+		</view>
+		<view class="state-switch">
+			@switch (mode) {
+				@case 'case': {
+					<text>switch:case</text>
+				}
+				@default: {
+					<text>switch:default</text>
 				}
 			}
 		</view>

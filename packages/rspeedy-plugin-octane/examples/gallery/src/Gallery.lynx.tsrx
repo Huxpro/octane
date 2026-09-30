@@ -1,6 +1,10 @@
 /** @jsxImportSource @octanejs/lynx/intrinsics */
 import { useMainThreadRef } from '@octanejs/lynx';
-import type { LynxMainThreadRefCell, LynxPublicHandle } from '@octanejs/lynx';
+import type {
+	LynxMainThreadElement,
+	LynxMainThreadRefCell,
+	LynxPublicHandle,
+} from '@octanejs/lynx';
 import { useEffect, useRef } from 'octane';
 
 import { LikeImageCard } from './LikeImageCard.lynx.tsrx';
@@ -21,7 +25,7 @@ interface GalleryScrollDetail {
 export function NiceScrollbarMTS({
 	scrollbarRef,
 }: {
-	scrollbarRef: LynxMainThreadRefCell<object | undefined>;
+	scrollbarRef: LynxMainThreadRefCell<LynxMainThreadElement | undefined>;
 }) @{
 	<view main-thread:ref={scrollbarRef} class="scrollbar">
 		<view class="scrollbar-effect glow" />
@@ -29,8 +33,8 @@ export function NiceScrollbarMTS({
 }
 
 export function Gallery({ pictureData }: { pictureData: Picture[] }) @{
-	const scrollbarMTSRef = useMainThreadRef<object>();
-	const galleryMTSRef = useMainThreadRef<object>();
+	const scrollbarMTSRef = useMainThreadRef<LynxMainThreadElement>();
+	const galleryMTSRef = useMainThreadRef<LynxMainThreadElement>();
 	const galleryRef = useRef<LynxPublicHandle | null>(null);
 
 	const onScrollMTS = (event: { detail: GalleryScrollDetail }) => {
@@ -51,25 +55,16 @@ export function Gallery({ pictureData }: { pictureData: Picture[] }) @{
 		const listHeight = event.detail.listHeight ?? SystemInfo.pixelHeight / SystemInfo.pixelRatio;
 		const scrollbarHeight = listHeight * (listHeight / event.detail.scrollHeight);
 		const scrollbarTop = listHeight * (event.detail.scrollTop / event.detail.scrollHeight);
-		__AddInlineStyle(scrollbar, 'height', scrollbarHeight + 'px');
-		__AddInlineStyle(scrollbar, 'top', scrollbarTop + 'px');
-		__FlushElementTree();
+		scrollbar.setStyleProperties({
+			height: scrollbarHeight + 'px',
+			top: scrollbarTop + 'px',
+		});
 
 		const atBottom = event.detail.scrollTop + listHeight >= event.detail.scrollHeight;
 		if (event.detail.deltaY > 0 && atBottom) {
-			__InvokeUIMethod(
-				gallery,
-				'autoScroll',
-				{ rate: '-60', start: true, autoStop: true },
-				() => {},
-			);
+			void gallery.invoke('autoScroll', { rate: '-60', start: true, autoStop: true });
 		} else if (event.detail.deltaY < 0 && event.detail.scrollTop <= 0) {
-			__InvokeUIMethod(
-				gallery,
-				'autoScroll',
-				{ rate: '60', start: true, autoStop: true },
-				() => {},
-			);
+			void gallery.invoke('autoScroll', { rate: '60', start: true, autoStop: true });
 		}
 	};
 

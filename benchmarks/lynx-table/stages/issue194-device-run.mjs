@@ -4,6 +4,26 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+	issue194CollectionState,
+	issue194CompleteGroupSampleLimit,
+	issue194DeviceCompletionMode,
+	issue194DeviceResumeMismatch,
+	issue194LifecycleSequence,
+	issue194LogWindow,
+	issue194MutationCensus,
+	issue194NativePostState,
+	issue194NativeTransitionChecks,
+	issue194NativeWorkloads,
+	issue194Ol512CapacityRejectionChecks,
+	issue194RejectionReasons,
+	normalizeIssue194NativeReceipt,
+	parseIssue194SequenceStep,
+	parseIssue194AndroidProcessMemory,
+	summarizeIssue194LifecycleCensus,
+	validateIssue194ProcessMemoryControls,
+} from './issue194-device-protocol.mjs';
+
 const args = process.argv.slice(2);
 const readArg = (name) => {
 	const index = args.indexOf(name);
@@ -20,6 +40,8 @@ const disableFile = path.resolve(readArg('--disable-file'));
 const output = path.resolve(readArg('--out'));
 const checkpointArg = readOptionalArg('--checkpoint');
 const checkpoint = checkpointArg === null ? null : path.resolve(checkpointArg);
+const maxNewSamplesArg = readOptionalArg('--max-new-samples');
+const maxNewSamples = maxNewSamplesArg === null ? null : Number(maxNewSamplesArg);
 const workload = readOptionalArg('--workload');
 const tapXArg = readOptionalArg('--tap-x');
 const tapYArg = readOptionalArg('--tap-y');
@@ -30,6 +52,14 @@ const clearTapYArg = readOptionalArg('--clear-tap-y');
 const clearTapX = clearTapXArg === null ? null : Number(clearTapXArg);
 const clearTapY = clearTapYArg === null ? null : Number(clearTapYArg);
 const createClearRecreate = args.includes('--create-clear-recreate');
+const sequenceCyclesArg = readOptionalArg('--sequence-cycles');
+const sequenceCycles = sequenceCyclesArg === null ? 1 : Number(sequenceCyclesArg);
+const sequenceSteps = [];
+for (let index = 0; index < args.length; index++) {
+	if (args[index] === '--sequence-step') {
+		sequenceSteps.push(parseIssue194SequenceStep(args[index + 1]));
+	}
+}
 const question = readArg('--question');
 const scale = Number(readArg('--scale'));
 const samples = Number(readArg('--samples'));
@@ -37,11 +67,10 @@ const timeoutMs = Number(readArg('--timeout-ms'));
 const nativeCrashOutcome = args.includes('--native-crash-outcome');
 const capacityOutcome = args.includes('--capacity-outcome');
 const engineOnly = args.includes('--engine-only');
-const mode = args.includes('--direct-result')
-	? 'direct-result'
-	: args.includes('--first-screen-ready')
-		? 'first-screen-ready'
-		: 'commit';
+const processMemory = args.includes('--process-memory');
+const settleMsArg = readOptionalArg('--settle-ms');
+const settleMs = settleMsArg === null ? 4000 : Number(settleMsArg);
+const mode = issue194DeviceCompletionMode(args);
 const cells = [];
 for (let index = 0; index < args.length; index++) {
 	if (args[index] !== '--cell') continue;
@@ -60,13 +89,37 @@ for (let index = 0; index < args.length; index++) {
 	if (cell === undefined) throw new Error(`--cell-file has no matching --cell: ${label}`);
 	cell.file = path.resolve(value.slice(split + 1));
 }
+for (let index = 0; index < args.length; index++) {
+	if (args[index] !== '--cell-commit') continue;
+	const value = args[index + 1] ?? '';
+	const split = value.indexOf('=');
+	if (split < 1) throw new Error(`invalid --cell-commit ${JSON.stringify(value)}`);
+	const label = value.slice(0, split);
+	const sourceCommit = value.slice(split + 1);
+	const cell = cells.find((candidate) => candidate.label === label);
+	if (cell === undefined) throw new Error(`--cell-commit has no matching --cell: ${label}`);
+	if (cell.sourceCommit !== undefined) throw new Error(`duplicate --cell-commit: ${label}`);
+	if (!/^[0-9a-f]{40}$/.test(sourceCommit)) {
+		throw new Error(`--cell-commit requires a full lowercase Git SHA: ${label}`);
+	}
+	cell.sourceCommit = sourceCommit;
+}
 if (!Number.isSafeInteger(scale) || scale < 1) throw new Error('scale must be positive.');
 if (!Number.isSafeInteger(samples) || samples < 1) throw new Error('samples must be positive.');
 if (cells.length < 1 || cells.length > 2) {
 	throw new Error('this runner requires one cell or an AB/BA pair.');
 }
-if (workload !== null && workload !== 'create' && workload !== 'clear') {
-	throw new Error('--workload must be create or clear.');
+if (
+	maxNewSamples !== null &&
+	(!Number.isSafeInteger(maxNewSamples) || maxNewSamples < 1 || maxNewSamples % cells.length !== 0)
+) {
+	throw new Error('--max-new-samples must be a positive integer preserving complete cell groups.');
+}
+if (maxNewSamples !== null && checkpoint === null) {
+	throw new Error('--max-new-samples requires --checkpoint.');
+}
+if (workload !== null && !issue194NativeWorkloads.includes(workload)) {
+	throw new Error(`--workload must be one of ${issue194NativeWorkloads.join(', ')}.`);
 }
 if (
 	workload !== null &&
@@ -86,6 +139,37 @@ if (
 		'--create-clear-recreate requires --workload create and non-negative clear tap coordinates.',
 	);
 }
+if (!Number.isSafeInteger(sequenceCycles) || sequenceCycles < 1) {
+	throw new Error('--sequence-cycles must be a positive integer.');
+}
+if (sequenceCyclesArg !== null && !createClearRecreate) {
+	throw new Error('--sequence-cycles requires --create-clear-recreate.');
+}
+if (
+	sequenceSteps.length > 0 &&
+	(workload !== null || createClearRecreate || sequenceCyclesArg !== null || processMemory)
+) {
+	throw new Error(
+		'--sequence-step is exclusive with --workload, --create-clear-recreate, --sequence-cycles, and --process-memory.',
+	);
+}
+if (new Set(sequenceSteps.map((step) => step.phase)).size !== sequenceSteps.length) {
+	throw new Error('--sequence-step phases must be unique within one measured sequence.');
+}
+validateIssue194ProcessMemoryControls({
+	processMemory,
+	mode,
+	createClearRecreate,
+	settleMs,
+});
+if (processMemory && cells.some((cell) => cell.sourceCommit === undefined)) {
+	throw new Error('--process-memory requires one --cell-commit=<full-sha> for every cell.');
+}
+const configuredInteractionSequence = createClearRecreate
+	? issue194LifecycleSequence(sequenceCycles, { x: tapX, y: tapY }, { x: clearTapX, y: clearTapY })
+	: sequenceSteps.length > 0
+		? sequenceSteps
+		: null;
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../app');
 const run = (command, commandArgs, { allowFailure = false } = {}) => {
@@ -99,6 +183,25 @@ const run = (command, commandArgs, { allowFailure = false } = {}) => {
 };
 const adb = (...commandArgs) => run('adb', ['-s', serial, ...commandArgs]);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function resolveExplorerPid() {
+	const pid = Number(adb('shell', 'pidof', 'com.lynx.explorer').trim());
+	if (!Number.isSafeInteger(pid) || pid < 1) {
+		throw new Error('could not resolve the Explorer process ID.');
+	}
+	return pid;
+}
+
+function readProcessMemory(pid) {
+	return {
+		capturedAt: new Date().toISOString(),
+		...parseIssue194AndroidProcessMemory(
+			adb('shell', 'cat', `/proc/${pid}/smaps_rollup`),
+			adb('shell', 'cat', `/proc/${pid}/status`),
+			adb('shell', 'dumpsys', 'meminfo', String(pid)),
+		),
+	};
+}
 
 function jsonAfterMarker(line, marker) {
 	const start = line.indexOf(marker);
@@ -173,6 +276,12 @@ function parseLog(log) {
 		if (line.includes('__ISSUE194_NATIVE_RESULT__')) {
 			const value = jsonAfterMarker(line, '__ISSUE194_NATIVE_RESULT__');
 			if (value !== null) native.push(value);
+		}
+		if (line.includes('__NATIVE_BENCH_RESULT__')) {
+			const value = jsonAfterMarker(line, '__NATIVE_BENCH_RESULT__');
+			if (value !== null) {
+				native.push(normalizeIssue194NativeReceipt(value, native.length + 1));
+			}
 		}
 		if (line.includes('start TemplateAssembler::LoadTemplate')) loadStartMs ??= epoch(line);
 		if (line.includes('LepusClosureEventListener::Invoke name: __RenderPage')) {
@@ -307,6 +416,10 @@ async function measure(cell, ordinal) {
 	adb('logcat', '-c');
 	const preflightMarker = `__ISSUE194_LOG_START__preflight-${ordinal}-${Date.now()}`;
 	adb('shell', 'log', '-t', 'octane-issue194', preflightMarker);
+	let preflightWindow = issue194LogWindow(adb('logcat', '-d', '-v', 'epoch'), preflightMarker);
+	if (preflightWindow.markerEpochMs === null) {
+		throw new Error('could not establish the DevTool preflight log boundary.');
+	}
 	adb(
 		'shell',
 		'am',
@@ -323,8 +436,8 @@ async function measure(cell, ordinal) {
 	while (Date.now() < disableDeadline) {
 		await delay(250);
 		const fullLog = adb('logcat', '-d', '-v', 'epoch');
-		const markerIndex = fullLog.lastIndexOf(preflightMarker);
-		disableLog = markerIndex === -1 ? '' : fullLog.slice(markerIndex);
+		preflightWindow = issue194LogWindow(fullLog, preflightMarker, preflightWindow.markerEpochMs);
+		disableLog = preflightWindow.log;
 		disableParsed = parseLog(disableLog);
 		const disabledIndex = disableLog.lastIndexOf('DevTool disabled. Transitioning to ATTACHED.');
 		const acknowledgementIndex = disableLog.lastIndexOf('__OCTANE_DEVTOOL_DISABLED__=true');
@@ -339,12 +452,15 @@ async function measure(cell, ordinal) {
 	if (/DevTool enabled\. Transitioning to ENABLED\./.test(disableLog.slice(disabledIndex))) {
 		throw new Error('DevTool preflight re-enabled after the disable transition.');
 	}
-	// The process-scoped lifecycle is now disabled. Clearing only logcat makes
-	// every enabled line in the next snapshot unambiguously part of the measured
-	// bundle instead of Explorer's cold-start prelude.
+	// Clearing is best effort: some Sandbox shells leave readable buffers intact.
+	// The epoch boundary below, rather than this command, owns attribution.
 	adb('logcat', '-c');
 	const measurementMarker = `__ISSUE194_LOG_START__measurement-${ordinal}-${Date.now()}`;
 	adb('shell', 'log', '-t', 'octane-issue194', measurementMarker);
+	let measurementWindow = issue194LogWindow(adb('logcat', '-d', '-v', 'epoch'), measurementMarker);
+	if (measurementWindow.markerEpochMs === null) {
+		throw new Error('could not establish the measurement log boundary.');
+	}
 	adb(
 		'shell',
 		'am',
@@ -371,11 +487,15 @@ async function measure(cell, ordinal) {
 	};
 	const observedDevtoolEnabledEvidence = [];
 	const observedErrors = [];
+	let initialCensus = null;
+	let processMemoryPid = null;
+	let processMemoryBaseline = null;
 	const observeParsed = (snapshot) => {
 		for (const key of ['loadStartMs', 'renderPageMs', 'firstScreenMs', 'loadEndMs']) {
 			observedLifecycle[key] ??= snapshot[key];
 		}
 		observedLifecycle.engine ??= snapshot.engine;
+		initialCensus ??= snapshot.main.find((entry) => entry.version === 1)?.census ?? null;
 		observedDevtoolEnabledEvidence.push(...snapshot.devtoolEnabledEvidence);
 		observedErrors.push(
 			...snapshot.lines.filter((line) =>
@@ -385,24 +505,20 @@ async function measure(cell, ordinal) {
 			),
 		);
 	};
-	const interactionSequence = createClearRecreate
-		? [
-				{ workload: 'create', x: tapX, y: tapY },
-				{ workload: 'clear', x: clearTapX, y: clearTapY },
-				{ workload: 'create', x: tapX, y: tapY },
-			]
-		: null;
+	const interactionSequence = configuredInteractionSequence;
 	const sequenceEvidence = [];
 	let activeSequenceStep = null;
 	while (Date.now() < deadline) {
-		await delay(2000);
+		await delay(processMemory ? 100 : 2000);
 		const fullLog = adb('logcat', '-d', '-v', 'epoch');
-		const markerIndex = fullLog.lastIndexOf(measurementMarker);
-		// The buffer was cleared at window start, so everything in it postdates
-		// the marker. A multi-megabyte ART dump can evict the marker line itself;
-		// falling back to the empty string here would discard exactly that
-		// evidence and reject an otherwise valid crash sample.
-		log = markerIndex === -1 ? fullLog : fullLog.slice(markerIndex);
+		measurementWindow = issue194LogWindow(
+			fullLog,
+			measurementMarker,
+			measurementWindow.markerEpochMs,
+		);
+		// A multi-megabyte ART dump can evict the marker. Its captured epoch keeps
+		// the remaining crash evidence without importing older log buffers.
+		log = measurementWindow.log;
 		parsed = parseLog(log);
 		observeParsed(parsed);
 		if ((nativeCrashOutcome || capacityOutcome) && parsed.nativeCrashMs !== null) {
@@ -412,10 +528,21 @@ async function measure(cell, ordinal) {
 			// in device round 1 (#194 / #222).
 			await delay(3000);
 			const fullLog = adb('logcat', '-d', '-v', 'epoch');
-			const markerIndex = fullLog.lastIndexOf(measurementMarker);
-			log = markerIndex === -1 ? fullLog : fullLog.slice(markerIndex);
+			measurementWindow = issue194LogWindow(
+				fullLog,
+				measurementMarker,
+				measurementWindow.markerEpochMs,
+			);
+			log = measurementWindow.log;
 			parsed = parseLog(log);
 			observeParsed(parsed);
+			completed = true;
+			break;
+		}
+		if (!nativeCrashOutcome && !capacityOutcome && observedErrors.length !== 0) {
+			// A correctness/memory cell can never accept a window containing one of
+			// the fatal markers collected above. Stop at that exact evidence boundary
+			// instead of waiting out the full sample deadline after the app died.
 			completed = true;
 			break;
 		}
@@ -424,14 +551,20 @@ async function measure(cell, ordinal) {
 				activeSequenceStep === null &&
 				sequenceEvidence.length < interactionSequence.length &&
 				(sequenceEvidence.length > 0 ||
-					(parsed.firstScreenMs !== null && parsed.loadEndMs !== null))
+					(parsed.firstScreenMs !== null &&
+						parsed.loadEndMs !== null &&
+						(mode === 'native-only' || parsed.main.some((entry) => entry.version === 1))))
 			) {
 				const spec = interactionSequence[sequenceEvidence.length];
+				if (processMemory && processMemoryBaseline === null) {
+					processMemoryPid = resolveExplorerPid();
+					await delay(settleMs);
+					processMemoryBaseline = readProcessMemory(processMemoryPid);
+				}
 				activeSequenceStep = {
 					...spec,
 					interactionOrdinal: sequenceEvidence.length + 1,
-					mainBefore: parsed.main.length,
-					nativeBefore: parsed.native.length,
+					mainVersionBefore: Math.max(0, ...parsed.main.map((entry) => entry.version ?? 0)),
 					issuedAtMs: Date.now(),
 				};
 				adb('shell', 'input', 'tap', String(spec.x), String(spec.y));
@@ -441,14 +574,13 @@ async function measure(cell, ordinal) {
 				continue;
 			}
 			if (activeSequenceStep !== null) {
-				// The device log ring can evict the very large create record while
-				// later commits are still running, so array offsets are not stable
-				// across snapshots. Version 1 is first-tree adoption; the three
-				// serialized interaction commits are therefore versions 2/3/4.
+				// The device log ring can evict earlier records, and storms commit
+				// once per tick. Pair by the Native interaction ordinal, then retain
+				// the latest commit version produced after this tap.
 				const main =
-					parsed.main.find(
-						(entry) => entry.version === activeSequenceStep.interactionOrdinal + 1,
-					) ?? null;
+					parsed.main
+						.filter((entry) => entry.version > activeSequenceStep.mainVersionBefore)
+						.at(-1) ?? null;
 				const native =
 					parsed.native.find(
 						(entry) =>
@@ -456,9 +588,26 @@ async function measure(cell, ordinal) {
 							entry.workload === activeSequenceStep.workload &&
 							entry.scale === scale,
 					) ?? null;
-				if (main !== null && native !== null) {
+				const capacityRejectionChecks = issue194Ol512CapacityRejectionChecks({
+					workload: activeSequenceStep.workload,
+					attribution: main,
+					receipt: native,
+					errors: observedErrors,
+					scale,
+				});
+				const expectedCapacityRejection =
+					capacityOutcome && issue194RejectionReasons(capacityRejectionChecks).length === 0;
+				if (
+					native !== null &&
+					(mode === 'native-only' || main !== null || expectedCapacityRejection)
+				) {
+					const postReceipt = processMemory ? readProcessMemory(processMemoryPid) : null;
+					if (processMemory) await delay(settleMs);
+					const settled = processMemory ? readProcessMemory(processMemoryPid) : null;
 					sequenceEvidence.push({
 						step: activeSequenceStep.interactionOrdinal,
+						cycle: activeSequenceStep.cycle,
+						phase: activeSequenceStep.phase,
 						workload: activeSequenceStep.workload,
 						adbInput: {
 							x: activeSequenceStep.x,
@@ -467,6 +616,14 @@ async function measure(cell, ordinal) {
 						},
 						attribution: main,
 						backgroundSettle: native,
+						transitionChecks: issue194NativeTransitionChecks(native, scale),
+						processMemory:
+							postReceipt === null
+								? null
+								: {
+										postReceipt,
+										settled,
+									},
 					});
 					console.log(
 						`[issue194] sequence step ${activeSequenceStep.interactionOrdinal}: accepted ${activeSequenceStep.workload}`,
@@ -508,12 +665,14 @@ async function measure(cell, ordinal) {
 			(engineOnly
 				? parsed.firstScreenMs !== null
 				: workload !== null
-					? interactionMain.length > 0 && matchingNative
+					? matchingNative && (mode === 'native-only' || interactionMain.length > 0)
 					: mode === 'direct-result'
 						? parsed.direct.length > 0
 						: mode === 'first-screen-ready'
 							? parsed.firstScreen.length > 0
-							: parsed.main.length > 0 && parsed.native.length > 0) &&
+							: mode === 'native-only'
+								? parsed.native.length > 0
+								: parsed.main.length > 0 && parsed.native.length > 0) &&
 			parsed.loadStartMs !== null &&
 			(engineOnly || parsed.renderPageMs !== null) &&
 			parsed.firstScreenMs !== null &&
@@ -534,44 +693,39 @@ async function measure(cell, ordinal) {
 	parsed.devtoolEnabledEvidence = [
 		...new Set([...observedDevtoolEnabledEvidence, ...parsed.devtoolEnabledEvidence]),
 	];
-	const attribution = createClearRecreate
-		? (sequenceEvidence.at(-1)?.attribution ?? null)
-		: workload !== null
-			? (parsed.main.filter((entry) => entry.version >= 2).at(-1) ?? null)
-			: mode === 'direct-result'
-				? (parsed.direct.at(-1) ?? null)
-				: mode === 'first-screen-ready'
-					? (parsed.firstScreen.at(-1) ?? null)
-					: (parsed.main.at(-1) ?? null);
-	const backgroundSettle = createClearRecreate
-		? (sequenceEvidence.at(-1)?.backgroundSettle ?? null)
-		: workload === null
-			? (parsed.native.find((entry) => entry.scale === scale) ?? null)
-			: (parsed.native.find((entry) => entry.workload === workload && entry.scale === scale) ??
-				null);
-	const state = backgroundSettle?.postState ?? null;
-	const validPopulatedState = (candidate) =>
-		candidate?.rowCount === scale &&
-		candidate.firstId === 1 &&
-		candidate.secondId === 2 &&
-		candidate.thirdId === 3 &&
-		(scale < 999 || candidate.row998Id === 999);
+	const attribution =
+		interactionSequence !== null
+			? (sequenceEvidence.at(-1)?.attribution ?? null)
+			: workload !== null
+				? (parsed.main.filter((entry) => entry.version >= 2).at(-1) ?? null)
+				: mode === 'direct-result'
+					? (parsed.direct.at(-1) ?? null)
+					: mode === 'first-screen-ready'
+						? (parsed.firstScreen.at(-1) ?? null)
+						: (parsed.main.at(-1) ?? null);
+	const backgroundSettle =
+		interactionSequence !== null
+			? (sequenceEvidence.at(-1)?.backgroundSettle ?? null)
+			: workload === null
+				? (parsed.native.find((entry) => entry.scale === scale) ?? null)
+				: (parsed.native.find((entry) => entry.workload === workload && entry.scale === scale) ??
+					null);
 	const validBackgroundState =
-		workload === 'clear'
-			? validPopulatedState(backgroundSettle?.preState) && state?.rowCount === 0
-			: validPopulatedState(state);
-	const [sequenceCreate, sequenceClear, sequenceRecreate] = sequenceEvidence;
+		workload !== null &&
+		backgroundSettle !== null &&
+		issue194RejectionReasons(issue194NativeTransitionChecks(backgroundSettle, scale)).length === 0;
 	const validSequenceState =
-		sequenceEvidence.length === 3 &&
-		sequenceCreate.workload === 'create' &&
-		sequenceCreate.backgroundSettle?.preState?.rowCount === 0 &&
-		sequenceCreate.backgroundSettle?.postState?.rowCount === scale &&
-		sequenceClear.workload === 'clear' &&
-		sequenceClear.backgroundSettle?.preState?.rowCount === scale &&
-		sequenceClear.backgroundSettle?.postState?.rowCount === 0 &&
-		sequenceRecreate.workload === 'create' &&
-		sequenceRecreate.backgroundSettle?.preState?.rowCount === 0 &&
-		sequenceRecreate.backgroundSettle?.postState?.rowCount === scale;
+		interactionSequence !== null &&
+		sequenceEvidence.length === interactionSequence.length &&
+		sequenceEvidence.every((entry, index) => {
+			const expected = interactionSequence[index];
+			return (
+				entry.cycle === expected.cycle &&
+				entry.phase === expected.phase &&
+				entry.workload === expected.workload &&
+				issue194RejectionReasons(entry.transitionChecks).length === 0
+			);
+		});
 	const validSequenceWire = sequenceEvidence.every((entry) => {
 		const wire = entry.attribution?.wireToBts;
 		return (
@@ -582,9 +736,18 @@ async function measure(cell, ordinal) {
 			wire.wireToBtsMsgs >= 2 &&
 			wire.ackMessages === 1 &&
 			Array.isArray(wire.messages) &&
-			wire.messages.length === wire.wireToBtsMsgs
+			wire.messages.length === wire.wireToBtsMsgs &&
+			wire.messages.filter((message) => message.type === 'ack').length === 1 &&
+			wire.messages.filter((message) => message.type === 'complete').length === 1
 		);
 	});
+	const lifecycleCensus = summarizeIssue194LifecycleCensus(sequenceEvidence, initialCensus);
+	const validLifecycleCensus =
+		sequenceCyclesArg === null || mode === 'native-only' || lifecycleCensus.valid;
+	const mutationCensus =
+		sequenceSteps.length === 0 ? null : issue194MutationCensus(sequenceEvidence);
+	const validMutationCensus =
+		mutationCensus === null || mode === 'native-only' || mutationCensus.valid;
 	const calls = attribution?.calls;
 	const rawTextCount = calls?.__CreateRawText?.count ?? 0;
 	const firstScreenLayout =
@@ -600,36 +763,70 @@ async function measure(cell, ordinal) {
 		firstScreenLayout !== null;
 	const validState =
 		engineOnly ||
-		(createClearRecreate
-			? validSequenceState && validSequenceWire
-			: mode === 'commit'
+		(interactionSequence !== null
+			? validSequenceState &&
+				(mode === 'native-only' ||
+					(validSequenceWire && validLifecycleCensus && validMutationCensus))
+			: mode === 'commit' || mode === 'native-only'
 				? validBackgroundState
 				: validFirstScreenShape);
 	const errors = [...new Set(observedErrors)];
-	const completedAndValid =
-		(engineOnly || attribution !== null) &&
-		validState &&
-		parsed.loadStartMs !== null &&
-		(engineOnly || parsed.renderPageMs !== null) &&
-		parsed.firstScreenMs !== null &&
-		parsed.loadEndMs !== null &&
-		errors.length === 0 &&
-		parsed.devtoolEnabledEvidence.length === 0;
+	const capacityRejectionChecks = issue194Ol512CapacityRejectionChecks({
+		workload: sequenceEvidence.at(-1)?.workload ?? null,
+		attribution: sequenceEvidence.at(-1)?.attribution ?? null,
+		receipt: sequenceEvidence.at(-1)?.backgroundSettle ?? null,
+		errors,
+		scale,
+	});
+	const capacityRejected =
+		capacityOutcome && issue194RejectionReasons(capacityRejectionChecks).length === 0;
+	const completionChecks = {
+		attribution: engineOnly || mode === 'native-only' || attribution !== null,
+		state: validState,
+		loadStart: parsed.loadStartMs !== null,
+		renderPage: engineOnly || parsed.renderPageMs !== null,
+		firstScreen: parsed.firstScreenMs !== null,
+		loadEnd: parsed.loadEndMs !== null,
+		noErrors: errors.length === 0,
+		devtoolStayedDisabled: parsed.devtoolEnabledEvidence.length === 0,
+	};
+	const completedAndValid = issue194RejectionReasons(completionChecks).length === 0;
+	const capacityTerminalOutcome =
+		parsed.loadStartMs !== null && (parsed.nativeCrashMs !== null || timedOut || capacityRejected);
+	const nativeCrashChecks = {
+		devtoolStayedDisabled: parsed.devtoolEnabledEvidence.length === 0,
+		loadStart: parsed.loadStartMs !== null,
+		nativeCrash: parsed.nativeCrashMs !== null,
+		nativeCrashEvidence: parsed.nativeCrashEvidence.length > 0,
+	};
 	const accepted =
 		parsed.devtoolEnabledEvidence.length === 0 &&
 		(capacityOutcome
-			? completedAndValid ||
-				(parsed.loadStartMs !== null && (parsed.nativeCrashMs !== null || timedOut))
+			? completedAndValid || capacityTerminalOutcome
 			: nativeCrashOutcome
-				? parsed.loadStartMs !== null &&
-					parsed.nativeCrashMs !== null &&
-					parsed.nativeCrashEvidence.length > 0
+				? issue194RejectionReasons(nativeCrashChecks).length === 0
 				: completedAndValid);
+	const rejectionReasons = accepted
+		? []
+		: capacityOutcome
+			? capacityTerminalOutcome
+				? issue194RejectionReasons({
+						devtoolStayedDisabled: parsed.devtoolEnabledEvidence.length === 0,
+					})
+				: [...issue194RejectionReasons(completionChecks), 'capacityTerminalOutcome']
+			: issue194RejectionReasons(nativeCrashOutcome ? nativeCrashChecks : completionChecks);
 	return {
 		ordinal,
 		cell: cell.label,
 		accepted,
-		outcome: parsed.nativeCrashMs !== null ? 'native-crash' : timedOut ? 'timeout' : 'completed',
+		outcome:
+			parsed.nativeCrashMs !== null
+				? 'native-crash'
+				: capacityRejected
+					? 'capacity-rejection'
+					: timedOut
+						? 'timeout'
+						: 'completed',
 		timeoutMs,
 		nativeCrash: {
 			atMs: parsed.nativeCrashMs,
@@ -664,19 +861,64 @@ async function measure(cell, ordinal) {
 			loadToFirstScreenMs: elapsed(parsed.loadStartMs, parsed.firstScreenMs),
 			loadTemplateMs: elapsed(parsed.loadStartMs, parsed.loadEndMs),
 		},
-		stateEvidence: state,
+		stateEvidence: issue194NativePostState(backgroundSettle),
 		preStateEvidence: backgroundSettle?.preState ?? null,
-		firstScreenShapeEvidence: mode === 'commit' ? null : calls,
-		firstScreenLayout: mode === 'commit' ? null : firstScreenLayout,
+		firstScreenShapeEvidence: mode === 'commit' || mode === 'native-only' ? null : calls,
+		firstScreenLayout: mode === 'commit' || mode === 'native-only' ? null : firstScreenLayout,
 		backgroundSettle,
-		sequenceEvidence: createClearRecreate ? sequenceEvidence : null,
-		adbInput: createClearRecreate
-			? sequenceEvidence.map((entry) => ({ workload: entry.workload, ...entry.adbInput }))
-			: workload === null
+		sequenceEvidence:
+			interactionSequence !== null
+				? sequenceEvidence.map(({ processMemory: _processMemory, ...entry }) => entry)
+				: null,
+		lifecycleCensus: createClearRecreate
+			? {
+					required: sequenceCyclesArg !== null && mode !== 'native-only',
+					...lifecycleCensus,
+				}
+			: null,
+		mutationCensus:
+			mutationCensus === null
 				? null
-				: { workload, x: tapX, y: tapY, issuedAtMs: tapAtMs, issued: tapped },
+				: {
+						required: mode !== 'native-only',
+						...mutationCensus,
+					},
+		capacityRejection: capacityOutcome
+			? {
+					valid: capacityRejected,
+					checks: capacityRejectionChecks,
+				}
+			: null,
+		processMemory: processMemory
+			? {
+					measurement:
+						'Android smaps_rollup, /proc status, and dumpsys meminfo sampled after first-screen settling, then immediately after each Native ACK + second-frame receipt and after the explicit settle delay; postReceipt is an operational high-water checkpoint, not an instantaneous peak',
+					settleMs,
+					pid: processMemoryPid,
+					baseline: processMemoryBaseline,
+					steps: sequenceEvidence.map((entry) => ({
+						step: entry.step,
+						cycle: entry.cycle,
+						phase: entry.phase,
+						workload: entry.workload,
+						...entry.processMemory,
+					})),
+				}
+			: null,
+		adbInput:
+			interactionSequence !== null
+				? sequenceEvidence.map((entry) => ({
+						cycle: entry.cycle,
+						phase: entry.phase,
+						workload: entry.workload,
+						...entry.adbInput,
+					}))
+				: workload === null
+					? null
+					: { workload, x: tapX, y: tapY, issuedAtMs: tapAtMs, issued: tapped },
 		attribution,
 		errors,
+		rejectionReasons: [...new Set(rejectionReasons)],
 	};
 }
 
@@ -706,30 +948,50 @@ let report = {
 		ordering:
 			cells.length === 1 ? 'single-cell repeated cold launches' : 'AB/BA (A,B,B,A repeating)',
 		completionMode: mode,
-		workload,
-		interactionSequence: createClearRecreate ? ['create', 'clear', 'create'] : null,
-		wireBoundary: createClearRecreate
-			? 'native ContextProxy encoded payloads; not the Web RPC-envelope aggregate'
+		processMemory: processMemory
+			? {
+					settleMs,
+					sources: ['smaps_rollup', '/proc/status', 'dumpsys meminfo'],
+					postReceiptIsInstantaneousPeak: false,
+				}
 			: null,
-		adbInput: createClearRecreate
-			? [
-					{ workload: 'create', command: `adb -s <serial> shell input tap ${tapX} ${tapY}` },
-					{
-						workload: 'clear',
-						command: `adb -s <serial> shell input tap ${clearTapX} ${clearTapY}`,
-					},
-					{ workload: 'create', command: `adb -s <serial> shell input tap ${tapX} ${tapY}` },
-				]
-			: workload === null
-				? null
-				: {
-						command: `adb -s <serial> shell input tap ${tapX} ${tapY}`,
-						x: tapX,
-						y: tapY,
-					},
+		workload,
+		interactionSequence:
+			configuredInteractionSequence !== null
+				? {
+						...(createClearRecreate ? { cycles: sequenceCycles } : null),
+						steps: configuredInteractionSequence.map(({ cycle, phase, workload }) => ({
+							...(cycle === undefined ? null : { cycle }),
+							phase,
+							workload,
+						})),
+					}
+				: null,
+		wireBoundary:
+			configuredInteractionSequence !== null
+				? 'native ContextProxy encoded payloads; not the Web RPC-envelope aggregate'
+				: null,
+		lifecycleCensusRequired:
+			createClearRecreate && sequenceCyclesArg !== null && mode !== 'native-only',
+		mutationCensusRequired: sequenceSteps.length > 0 && mode !== 'native-only',
+		adbInput:
+			configuredInteractionSequence !== null
+				? configuredInteractionSequence.map(({ cycle, phase, workload, x, y }) => ({
+						...(cycle === undefined ? null : { cycle }),
+						phase,
+						workload,
+						command: `adb -s <serial> shell input tap ${x} ${y}`,
+					}))
+				: workload === null
+					? null
+					: {
+							command: `adb -s <serial> shell input tap ${tapX} ${tapY}`,
+							x: tapX,
+							y: tapY,
+						},
 		engineOnly,
 		expectedOutcome: capacityOutcome
-			? `terminal outcome at ${timeoutMs} ms: completed, native-crash, or timeout`
+			? `terminal outcome at ${timeoutMs} ms: completed, exact OL512 capacity-rejection, native-crash, or timeout`
 			: nativeCrashOutcome
 				? 'native-crash'
 				: 'completed',
@@ -741,7 +1003,14 @@ let report = {
 		bundle: bundleIdentity({ label: 'disable-devtool', url: disableUrl, file: disableFile }),
 	},
 	cells: Object.fromEntries(
-		cells.map((cell) => [cell.label, { url: cell.url, bundle: bundleIdentity(cell) }]),
+		cells.map((cell) => [
+			cell.label,
+			{
+				url: cell.url,
+				sourceCommit: cell.sourceCommit ?? null,
+				bundle: bundleIdentity(cell),
+			},
+		]),
 	),
 	samples: [],
 	invalidAttempts: [],
@@ -749,16 +1018,9 @@ let report = {
 
 if (checkpoint !== null && fs.existsSync(checkpoint)) {
 	const resumed = JSON.parse(fs.readFileSync(checkpoint, 'utf8'));
-	if (
-		resumed.protocol !== report.protocol ||
-		resumed.question !== report.question ||
-		resumed.scale !== report.scale ||
-		resumed.targetAcceptedSamplesPerCell !== report.targetAcceptedSamplesPerCell ||
-		JSON.stringify(resumed.controls) !== JSON.stringify(report.controls) ||
-		JSON.stringify(resumed.disableDevToolBundle) !== JSON.stringify(report.disableDevToolBundle) ||
-		JSON.stringify(resumed.cells) !== JSON.stringify(report.cells)
-	) {
-		throw new Error(`checkpoint does not match this window: ${checkpoint}`);
+	const mismatch = issue194DeviceResumeMismatch(resumed, report);
+	if (mismatch !== null) {
+		throw new Error(`checkpoint does not match this window on ${mismatch}: ${checkpoint}`);
 	}
 	report = resumed;
 	console.log(
@@ -766,12 +1028,20 @@ if (checkpoint !== null && fs.existsSync(checkpoint)) {
 	);
 }
 
+const boundedMaxNewSamples = issue194CompleteGroupSampleLimit({
+	acceptedSamples: report.samples.length,
+	targetSamples: samples * cells.length,
+	maxNewSamples,
+	cellGroupSize: cells.length,
+});
+
 function saveCheckpoint() {
 	if (checkpoint === null) return;
 	fs.writeFileSync(checkpoint, `${JSON.stringify(report, null, 2)}\n`);
 }
 
-for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
+let newlyAcceptedSamples = 0;
+collection: for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
 	if (report.samples.some((sample) => sample.ordinal === ordinal + 1)) continue;
 	const cell = cells[cellIndex];
 	let accepted = false;
@@ -782,6 +1052,7 @@ for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
 		const sample = await measure(cell, ordinal + 1);
 		if (sample.accepted) {
 			report.samples.push(sample);
+			newlyAcceptedSamples++;
 			saveCheckpoint();
 			accepted = true;
 			console.log(
@@ -791,22 +1062,49 @@ for (const [ordinal, cellIndex] of sequenceFor(samples).entries()) {
 								? ` after ${sample.nativeCrash.loadToCrashMs} ms`
 								: sample.outcome === 'timeout'
 									? ` at ${sample.timeoutMs} ms cutoff`
-									: ` after ${sample.boundaries.loadToFirstScreenMs} ms`
+									: sample.outcome === 'capacity-rejection'
+										? ' with atomic state preservation'
+										: ` after ${sample.boundaries.loadToFirstScreenMs} ms`
 						}`
 					: `[issue194] accepted ${cell.label}: ${sample.boundaries.loadToFirstScreenMs} ms`,
 			);
 		} else {
 			report.invalidAttempts.push(sample);
-			console.log(`[issue194] rejected ${cell.label}: ${JSON.stringify(sample.errors)}`);
+			saveCheckpoint();
+			console.log(`[issue194] rejected ${cell.label}: ${JSON.stringify(sample.rejectionReasons)}`);
 		}
 	}
 	if (!accepted)
 		throw new Error(`two invalid attempts for ${cell.label} at ordinal ${ordinal + 1}.`);
+	if (
+		issue194CollectionState({
+			acceptedSamples: report.samples.length,
+			targetSamples: samples * cells.length,
+			newlyAcceptedSamples,
+			maxNewSamples: boundedMaxNewSamples,
+		}) === 'paused'
+	) {
+		break collection;
+	}
 }
 
-fs.mkdirSync(path.dirname(output), { recursive: true });
-const temporaryOutput = `${output}.tmp`;
-fs.writeFileSync(temporaryOutput, `${JSON.stringify(report, null, 2)}\n`);
-fs.renameSync(temporaryOutput, output);
-if (checkpoint !== null) fs.rmSync(checkpoint, { force: true });
-console.log(`[issue194] wrote ${output}`);
+const collectionState = issue194CollectionState({
+	acceptedSamples: report.samples.length,
+	targetSamples: samples * cells.length,
+	newlyAcceptedSamples,
+	maxNewSamples: boundedMaxNewSamples,
+});
+if (collectionState === 'complete') {
+	fs.mkdirSync(path.dirname(output), { recursive: true });
+	const temporaryOutput = `${output}.tmp`;
+	fs.writeFileSync(temporaryOutput, `${JSON.stringify(report, null, 2)}\n`);
+	fs.renameSync(temporaryOutput, output);
+	if (checkpoint !== null) fs.rmSync(checkpoint, { force: true });
+	console.log(`[issue194] wrote ${output}`);
+} else if (collectionState === 'paused') {
+	console.log(
+		`[issue194] paused after ${newlyAcceptedSamples} new samples; checkpoint retains ${report.samples.length}/${samples * cells.length}`,
+	);
+} else {
+	throw new Error('issue #194 collection stopped before its target without a pause boundary.');
+}

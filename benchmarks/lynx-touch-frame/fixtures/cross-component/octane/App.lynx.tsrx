@@ -40,8 +40,8 @@ function RemoteCounter({
 	textRef,
 }: {
 	count: number;
-	counterRef: LynxMainThreadRefCell<object | undefined>;
-	textRef: LynxMainThreadRefCell<object | undefined>;
+	counterRef: LynxMainThreadRefCell<OctaneBenchMainThreadElement | undefined>;
+	textRef: LynxMainThreadRefCell<OctaneBenchMainThreadElement | undefined>;
 }) @{
 	<view
 		id="remote-counter"
@@ -64,8 +64,8 @@ export function App() @{
 		});
 	}
 	const [count, setCount] = useState(0);
-	const counterRef = useMainThreadRef<object>();
-	const counterTextRef = useMainThreadRef<object>();
+	const counterRef = useMainThreadRef<OctaneBenchMainThreadElement>();
+	const counterTextRef = useMainThreadRef<OctaneBenchMainThreadElement>();
 	const mtsCount = useMainThreadRef(0);
 
 	const observeTouch = (event: Issue197TouchEvent) => {
@@ -74,7 +74,7 @@ export function App() @{
 		if (counter === null || counter === undefined) {
 			throw new Error('ISSUE197_OBSERVER_FAILURE cross-component counter ref missing at touchstart');
 		}
-		const before = __GetComputedStyleByKey(counter, 'background-color');
+		const before = counter.getComputedStyleProperty('background-color');
 		const inputPlatformTimestamp = event.timestamp;
 		if (__BENCH_PROFILE__) {
 			lynx.performance.profileMark('Issue197::T2::cross-component::mts-input');
@@ -82,7 +82,7 @@ export function App() @{
 		let changedFrameOrdinal = 0;
 		const poll = (changedVsyncPlatformTimestamp: number) => {
 			changedFrameOrdinal += 1;
-			const after = __GetComputedStyleByKey(counter, 'background-color');
+			const after = counter.getComputedStyleProperty('background-color');
 			if (after !== before) {
 				if (__BENCH_PROFILE__) {
 					lynx.performance.profileMark('Issue197::T2::cross-component::changed-vsync');
@@ -126,10 +126,9 @@ export function App() @{
 		) return;
 		const next = mtsCount.current + 1;
 		mtsCount.current = next;
-		__SetAttribute(counter, 'data-count', String(next));
-		__SetAttribute(counterText, 'text', String(next));
-		__AddInlineStyle(counter, 'background-color', next % 2 === 0 ? EVEN_COLOR : ODD_COLOR);
-		__FlushElementTree();
+		counter.setAttribute('data-count', String(next));
+		counterText.setAttribute('text', String(next));
+		counter.setStyleProperty('background-color', next % 2 === 0 ? EVEN_COLOR : ODD_COLOR);
 	};
 
 	<view class="page" main-thread:capture-bindtouchstart={observeTouch}>

@@ -21,6 +21,7 @@ import {
 	useEffect,
 	useLayoutEffect,
 	useMemo,
+	useOptimistic,
 	useReducer,
 	useState,
 	useTransition,
@@ -177,6 +178,30 @@ function values(container: ObjectHostContainer): Readonly<Record<string, unknown
 }
 
 describe('universal transition scheduling', () => {
+	it('publishes an optimistic value before its out-of-action expiry render', async () => {
+		const renders: string[] = [];
+		let add!: (value: string) => void;
+		const Scene = defineUniversalComponent('object', () => {
+			const [value, update] = useOptimistic(
+				'base',
+				(previous: string, next: string) => `${previous}/${next}`,
+				'optimistic',
+			);
+			add = update;
+			renders.push(value);
+			return node('value', value);
+		});
+		const { container, root } = objectRoot();
+
+		root.render(Scene, undefined);
+		add('brief');
+		await drainMicrotasks();
+
+		expect(renders).toEqual(['base', 'base/brief', 'base']);
+		expect(values(container)).toEqual({ value: 'base' });
+		root.unmount();
+	});
+
 	it('publishes pending urgently and retains accepted content until a suspended transition resolves', async () => {
 		const first = fulfilled('first');
 		const second = deferred<string>();

@@ -1,14 +1,15 @@
 /** @jsxImportSource @octanejs/lynx/intrinsics */
 import { useMainThreadRef } from '@octanejs/lynx';
+import type { LynxMainThreadElement } from '@octanejs/lynx';
 
 /**
  * The documented Lynx main-thread scripting pattern: a `'main thread'` handler
- * writes an element style and publishes it with `__FlushElementTree()`. Hosts
- * that dispatch the handler from inside their own element-tree work cannot take
- * that flush inline, so this is the shape the runtime has to keep working.
+ * writes through MainThread.Element, which publishes with a coalesced flush.
+ * Hosts that dispatch the handler from inside their own element-tree work
+ * cannot take that flush inline, so this is the shape the runtime must support.
  */
 export function App() @{
-	const barRef = useMainThreadRef<object>();
+	const barRef = useMainThreadRef<LynxMainThreadElement>();
 	const heightRef = useMainThreadRef<number>(8);
 
 	const onTapMTS = () => {
@@ -17,8 +18,7 @@ export function App() @{
 		if (bar === null || bar === undefined) return;
 		const height = heightRef.current + 8;
 		heightRef.current = height;
-		__AddInlineStyle(bar, 'height', height + 'px');
-		__FlushElementTree();
+		bar.setStyleProperty('height', height + 'px');
 	};
 
 	<view id="flush-probe" main-thread:bindtap={onTapMTS}>
