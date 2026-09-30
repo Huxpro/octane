@@ -40,7 +40,7 @@ export const LYNX_COMPILED_PROGRAM_HOST_REF_FEATURE_SELECTION_VERSION = 1;
 export const LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_ASSET_INFO =
 	'octane:lynx-compiled-program-native-list-feature-selection';
 export const LYNX_COMPILED_PROGRAM_NATIVE_LIST_FEATURE_SELECTION_VERSION = 1;
-export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 20;
+export const LYNX_BLOCK_SUPPORT_MATRIX_VERSION = 28;
 export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 	version: LYNX_BLOCK_SUPPORT_MATRIX_VERSION,
 	// Each name has an independent assertion through the Block component path.
@@ -52,12 +52,20 @@ export const LYNX_BLOCK_SUPPORT_MATRIX = Object.freeze({
 		'memo',
 		'startTransition',
 		'use',
+		'useActionState',
+		'useOptimistic',
 		'useBatch',
 		'useCallback',
 		'useContext',
 		'useDeferredValue',
+		'useDebugValue',
 		'useEffect',
+		'useEffectEvent',
+		'useId',
+		'useImperativeHandle',
+		'useInsertionEffect',
 		'useLayoutEffect',
+		'useLinkedState',
 		'useMemo',
 		'useReducer',
 		'useRef',
@@ -398,6 +406,7 @@ function importsLynxFirstScreenFacade(compilation, module) {
 	return [...compilation.moduleGraph.getOutgoingConnections(module)].some(
 		(connection) =>
 			activeConnection(connection) &&
+			connection.dependency?.request === '@octanejs/lynx/first-screen' &&
 			connection.module != null &&
 			isLynxFirstScreenFacade(connection.module),
 	);
@@ -1357,6 +1366,19 @@ export function evaluateLynxCompiledProgramEligibility({ blockSelection, feature
 				['background', module.background],
 				['main-thread', module.mainThread],
 			]) {
+				// The compact client encodes host props without a `main-thread:*`
+				// lane, so an authored main-thread binding or ref cannot mount there.
+				for (const prop of requirements.mainThreadProps) {
+					reasons.push(
+						reason('compiled-program-unsupported-main-thread-prop', {
+							module: module.module,
+							thread,
+							name: prop.name,
+							line: prop.line,
+							column: prop.column,
+						}),
+					);
+				}
 				for (const feature of requirements.templateFeatures) {
 					if (feature.kind !== 'portal') continue;
 					reasons.push(
@@ -1498,7 +1520,13 @@ function reportRequiresOptionalBlockSemantics(report) {
 		}
 	}
 	if (report?.semanticRequirements?.paired !== true) return true;
-	const transitions = new Set(['startTransition', 'useDeferredValue', 'useTransition']);
+	// An action-state dispatch runs its action in a transition, like the DOM runtime.
+	const transitions = new Set([
+		'startTransition',
+		'useActionState',
+		'useDeferredValue',
+		'useTransition',
+	]);
 	for (const module of report.semanticRequirements.modules) {
 		for (const requirements of [module.background, module.mainThread]) {
 			for (const site of [...requirements.runtimeUses, ...requirements.runtimeExports]) {
@@ -1781,6 +1809,48 @@ export function decideLynxCompiledProgramHostRefFeature(
 	});
 }
 
+function formatReasonDetail(value) {
+	if (Array.isArray(value)) return `[${value.map(formatReasonDetail).join('; ')}]`;
+	if (value !== null && typeof value === 'object') {
+		return typeof value.code === 'string' ? formatReason(value) : JSON.stringify(value);
+	}
+	return String(value);
+}
+
+function formatReason({ code, ...details }) {
+	const entries = Object.entries(details);
+	return entries.length === 0
+		? code
+		: `${code} (${entries.map(([key, value]) => `${key}: ${formatReasonDetail(value)}`).join(', ')})`;
+}
+
+/**
+ * The explicit Element Template option selects one whole-root owner and has no
+ * general fallback: name every reason the application proof declined it, and
+ * expand an ineligible entry into its compiled-program reasons.
+ */
+function elementTemplateRefusal(decision, reports) {
+	const lines = [];
+	for (const item of decision.reasons) {
+		lines.push(`  - ${formatReason(item)}`);
+		if (item.code === 'compiled-program-selection-requires-one-shot-production') {
+			lines.push(
+				"    `experimentalElementTemplate` requires a one-shot production build (mode 'production', no watch or dev server).",
+			);
+		}
+		if (item.code === 'entry-ineligible') {
+			for (const cause of reports.get(item.entry)?.compiledProgramSelection.reasons ?? []) {
+				lines.push(`    - ${formatReason(cause)}`);
+			}
+		}
+	}
+	if (lines.length === 0) lines.push('  - no application entry was collected');
+	return [
+		'@octanejs/rspeedy-plugin: `experimentalElementTemplate` could not select the whole-root Element Template application, and it never falls back to the general application:',
+		...lines,
+	].join('\n');
+}
+
 /** Attach versioned proofs and specialize the one-core production graph. */
 export class LynxProgramCoveragePlugin {
 	constructor(
@@ -1925,6 +1995,12 @@ export class LynxProgramCoveragePlugin {
 				explicitRootReasons,
 				this.elementTemplate,
 			);
+			if (
+				this.elementTemplate &&
+				state.applicationDecision.selected !== 'compiled-program-element-template'
+			) {
+				throw new Error(elementTemplateRefusal(state.applicationDecision, state.reports));
+			}
 			state.blockComponentFeatures = decideLynxBlockComponentFeatures(
 				compiler,
 				this.entries,

@@ -230,4 +230,101 @@ describe.sequential('@octanejs/lynx compact native-list worklets', () => {
 			dom.window.close();
 		}
 	});
+
+	it('faults when two demanded rows claim one ref outside a frame', () => {
+		const dom = new JSDOM();
+		installLynxTestingEnv(globalThis, { window: dom.window as never });
+		const environment = globalThis.lynxTestingEnv;
+		environment.clearGlobal();
+		environment.switchToMainThread();
+		const registry = createLynxMainThreadWorkletRegistry();
+		try {
+			const ref = createLynxMainThreadRefDescriptor('compact-list:shared-ref');
+			const cell = registry.retainOwner(ref);
+			const shell = plan(
+				Object.freeze({
+					nodes: Object.freeze([
+						Object.freeze({ type: 'view', parent: -1, props: Object.freeze({}) }),
+						Object.freeze({ type: 'list', parent: 0, props: Object.freeze({ id: 'feed' }) }),
+					]),
+					events: Object.freeze([]),
+				}),
+				'createCompactSharedRefList',
+				['r'],
+				[],
+				[{ slot: 0, node: 1, id: 1 }],
+			);
+			const row = plan(
+				Object.freeze({
+					nodes: Object.freeze([
+						Object.freeze({
+							type: 'list-item',
+							parent: -1,
+							props: Object.freeze({ 'reuse-identifier': 'row' }),
+							bindings: Object.freeze([
+								Object.freeze({ name: 'item-key', valueIndex: 0 }),
+								Object.freeze({ name: 'main-thread:ref', valueIndex: 1 }),
+							]),
+						}),
+					]),
+					events: Object.freeze([]),
+				}),
+				'createCompactSharedRefRow',
+				['p:item-key', 'p:main-thread:ref'],
+				[0, 1],
+			);
+			const papi = createLynxElementPAPI(globalThis);
+			const page = papi.createPage('0', 0);
+			const faults: unknown[] = [];
+			const store = createLynxCompiledProgramStore(
+				papi,
+				papi.getUniqueId(page),
+				91,
+				1,
+				undefined,
+				(error) => faults.push(error),
+				undefined,
+				registry,
+			);
+
+			store.begin();
+			store.mount({
+				firstHandle: 2,
+				count: 1,
+				parent: page,
+				before: null,
+				plan: shell,
+				values: [],
+			});
+			store.mount({
+				firstHandle: 3,
+				count: 2,
+				parent: store.range(2, 0),
+				before: null,
+				plan: row,
+				values: ['first', ref, 'second', ref],
+			});
+			store.commit();
+			papi.flush(page);
+
+			const list = (page as unknown as Element).querySelector('#feed')!;
+			globalThis.elementTree.enterListItemAtIndex(list as never, 0);
+			expect(cell.current).toBe(list.firstElementChild);
+			expect(faults).toEqual([]);
+			globalThis.elementTree.enterListItemAtIndex(list as never, 1);
+			expect(store.isFaulted()).toBe(true);
+			expect(faults).toEqual([
+				expect.objectContaining({ message: expect.stringMatching(/is already mounted/) }),
+			]);
+
+			store.dispose();
+			expect(cell.current).toBeNull();
+			registry.releaseOwner(ref);
+		} finally {
+			registry.close();
+			environment.clearGlobal();
+			uninstallLynxTestingEnv(globalThis);
+			dom.window.close();
+		}
+	});
 });

@@ -1,5 +1,6 @@
 import { provideLynxMainThreadWorkletFeature } from './core/main-thread-worklet-feature.js';
 import { createLynxCompiledProgramWorkletStore } from './core/compiled-program-worklets.js';
+import { createLynxMainThreadElement } from './core/main-thread-element.js';
 import {
 	createLynxMainThreadRefDescriptor,
 	createLynxMainThreadWorkletRegistry,
@@ -7,13 +8,19 @@ import {
 	installMainThreadCallBridge,
 	isLynxBackgroundFunctionDescriptor,
 	isolateLynxWorkletValue,
+	type CreateLynxMainThreadWorkletRegistryOptions,
 	type LynxMainThreadRefCell,
 } from './core/worklets.js';
 import { useId, useMemo } from './main-renderer.js';
 
 const MAIN_THREAD_WORKLET_FEATURE = Object.freeze({
 	createCompiledProgramStore: createLynxCompiledProgramWorkletStore,
-	createRegistry: createLynxMainThreadWorkletRegistry,
+	createRegistry: (options: CreateLynxMainThreadWorkletRegistryOptions) =>
+		createLynxMainThreadWorkletRegistry({
+			...options,
+			wrapElementRef: (value: object) =>
+				createLynxMainThreadElement(value, options.elementTarget ?? globalThis),
+		}),
 	installRegistry: installLynxMainThreadWorkletRegistry,
 	installCallBridge: installMainThreadCallBridge,
 	isolateValue: isolateLynxWorkletValue,

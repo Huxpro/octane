@@ -325,6 +325,17 @@ function evaluate(code: string): EvaluatedModule {
 		let value = initial;
 		return [value, (action: unknown) => (value = reducer(value, action)), () => value] as const;
 	};
+	const useLinkedState = (
+		source: unknown,
+		reconcile: (source: unknown, previous: undefined) => unknown,
+	) => {
+		let value = reconcile(source, undefined);
+		return [
+			value,
+			(next: unknown) => (value = typeof next === 'function' ? (next as any)(value) : next),
+			() => value,
+		] as const;
+	};
 
 	const renderer = {
 		universalPlan: (_renderer: string, root: unknown, address?: unknown) => {
@@ -333,6 +344,22 @@ function evaluate(code: string): EvaluatedModule {
 			return root;
 		},
 		universalValue: (plan: unknown, values: readonly unknown[]) => ({ plan, values }),
+		universalFor: (
+			items: readonly unknown[],
+			key: (item: unknown, index: number) => unknown,
+			render: (item: unknown, index: number) => unknown,
+			...rest: readonly unknown[]
+		) => ({ items, key, render, rest }),
+		universalIf: (
+			condition: unknown,
+			then: () => unknown,
+			otherwise: (() => unknown) | null = null,
+		) => ({ kind: 'if', condition: !!condition, then, else: otherwise }),
+		universalSwitch: (
+			value: unknown,
+			cases: readonly (readonly [unknown, () => unknown])[],
+			fallback: (() => unknown) | null = null,
+		) => ({ kind: 'switch', value, cases, default: fallback }),
 		enableLynxCompilerProgramRefs: () => {},
 		lynxProgram: (_renderer: string, program: any) => {
 			roots.push(program);
@@ -345,8 +372,10 @@ function evaluate(code: string): EvaluatedModule {
 			computations: readonly any[] = [],
 		) => ({ program, values, computations }),
 		useState,
+		useLinkedState,
 		useReducer,
 		__useStateWithGetter: useState,
+		__useLinkedStateWithGetter: useLinkedState,
 		defineUniversalComponent: (_renderer: string, render: unknown, metadata: unknown) => {
 			componentMetadata.push(metadata);
 			return render;
@@ -669,6 +698,71 @@ export function Card() @{
 		expect(value.computations!.flatMap((group) => group.run()).sort()).toEqual(['left', 'right']);
 	});
 
+	it('replays hooks and derived values declared in one const statement', () => {
+		const value = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+export function Card() @{
+	const [left, setLeft] = useState('left'),
+		[right, setRight] = useState('right'),
+		leftLabel = 'L:' + left,
+		combined = leftLabel + ':' + right;
+	<view class={leftLabel}>
+		<text bindtap={() => { setLeft('LEFT'); setRight('RIGHT'); }}>{combined as string}</text>
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/MultiDeclaratorCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			),
+		).card({});
+
+		expect(value.computations).toHaveLength(2);
+		const tap = value.values.find((entry) => typeof entry === 'function');
+		expect(tap).toEqual(expect.any(Function));
+		(tap as () => void)();
+		expect(value.computations!.flatMap((group) => group.run())).toEqual(
+			expect.arrayContaining(['L:LEFT', 'L:LEFT:RIGHT']),
+		);
+	});
+
+	it('keeps a grouped opaque derivation on the owning-component path', () => {
+		const code = compiled(
+			`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+function format(value: number): string {
+	return String(value);
+}
+
+export function Card() @{
+	const [count] = useState(0),
+		label = format(count);
+	<view><text>{label as string}</text></view>
+}
+`,
+			{
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/OpaqueMultiDeclaratorCard.lynx.tsrx',
+				backgroundProgram: true,
+			},
+		);
+		expect(code).not.toContain('__useStateWithGetter as');
+
+		const value = evaluate(code).card({});
+		expect(value.computations).toEqual([]);
+		expect(value.values).toEqual(['0']);
+	});
+
 	it('replays useReducer state through the same dirty binding path', () => {
 		const value = evaluate(
 			compiled(
@@ -704,6 +798,151 @@ export function Card() @{
 		expect(computation.run()).toEqual(['2']);
 	});
 
+	it('keeps a reducer that captures replayable state on the component path', () => {
+		for (const setup of [
+			`const [t, dispatch] = useReducer((acc: string, x: string) => acc + x + n, '');`,
+			`const suffix = 'z' + n;
+	const [t, dispatch] = useReducer((acc: string, x: string) => acc + x + suffix, '');`,
+			`const reduce = (acc: string, x: string) => acc + x + n;
+	const [t, dispatch] = useReducer(reduce, '');`,
+			`const [t, dispatch] = useReducer((acc: string, x: string) => acc + x + later, '');
+	const later = 'z' + n;`,
+			`const [t, dispatch] = useReducer((acc: string, x: string) => acc + x + t.length, '');`,
+		]) {
+			const code = compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useReducer, useState } from 'octane';
+
+export function Card() @{
+	const [n, setN] = useState('a');
+	${setup}
+	<view>
+		<text bindtap={() => setN(n + 'b')}>{('n-' + n) as string}</text>
+		<text bindtap={() => dispatch('x')}>{('t-' + t) as string}</text>
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/ReducerClosureCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			);
+
+			// Dispatch reduces with the reducer from the last component render. A
+			// replay that skipped that render would reduce `t-xa` instead of `t-xab`.
+			expect(code, setup).not.toContain('component-render');
+		}
+	});
+
+	it('keeps a reducer that captures no replayable state on dirty replay', () => {
+		for (const setup of [
+			`const [t, dispatch] = useReducer((acc: string, x: string) => acc + x, '');`,
+			`const [t, dispatch] = useReducer((acc: string, x: string) => acc + x, n);`,
+			`const [t, dispatch] = useReducer(
+		(acc: string, x: string) => (setN('c'), acc + x),
+		n,
+		(initial: string) => initial + n,
+	);`,
+		]) {
+			const code = compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useReducer, useState } from 'octane';
+
+export function Card() @{
+	const [n, setN] = useState('a');
+	${setup}
+	<view>
+		<text bindtap={() => setN(n + 'b')}>{('n-' + n) as string}</text>
+		<text bindtap={() => dispatch('x')}>{('t-' + t) as string}</text>
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/ReducerPureCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			);
+
+			// The initial argument and init function run once, at mount, so only
+			// the retained reducer decides whether replay is safe.
+			expect(code, setup).toContain('component-render');
+		}
+	});
+
+	it('emits replayable computations for local linked-state edits', () => {
+		const value = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useLinkedState } from 'octane';
+
+export function Card({ source }: { source: string }) @{
+	const [label, setLabel] = useLinkedState(source, (next) => 'initial:' + next);
+	<view><text bindtap={() => setLabel((current) => current + '!')}>{label as string}</text></view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/LinkedStateCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			),
+		).card({ source: 'one' });
+
+		expect(value.computations).toHaveLength(1);
+		const computation = value.computations![0];
+		expect(computation).toMatchObject({
+			kind: 'scalar',
+			purity: 'pure',
+			escape: 'component-render',
+		});
+		expect(computation.run()).toEqual(expect.arrayContaining(['initial:one']));
+		const tap = value.values.find((entry) => typeof entry === 'function');
+		expect(tap).toEqual(expect.any(Function));
+		(tap as () => void)();
+		expect(computation.run()).toEqual(expect.arrayContaining(['initial:one!']));
+	});
+
+	it('keeps linked state whose source reads component state on the component path', () => {
+		for (const setup of [
+			`const [linked] = useLinkedState(word, (next: string) => 'linked:' + next);`,
+			`const source = 'x' + word;
+	const [linked] = useLinkedState(source, (next: string) => 'linked:' + next);`,
+		]) {
+			const code = compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useLinkedState, useState } from 'octane';
+
+export function Card() @{
+	const [word, setWord] = useState('a');
+	${setup}
+	<view>
+		<text bindtap={() => setWord(word + 'b')}>{('word:' + word) as string}</text>
+		<text>{linked as string}</text>
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/LinkedFollowCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			);
+
+			// A replay would repaint `word:ab` beside a linked value still reading `a`.
+			expect(code).not.toContain('component-render');
+		}
+	});
+
 	it('keeps scalar replay separate from structural invalidation', () => {
 		const code = compiled(
 			`/** @jsxImportSource @octanejs/lynx/intrinsics */
@@ -732,15 +971,157 @@ export function Card() @{
 		);
 		const descriptors = [
 			...code.matchAll(
-				/["']?kind["']?\s*:\s*["'](scalar|structural)["'][\s\S]*?["']?purity["']?\s*:\s*["'](pure|unknown)["']/g,
+				/["']?kind["']?\s*:\s*["'](scalar|structural)["'][\s\S]*?["']?purity["']?\s*:\s*["'](pure|unknown|descriptor-pure)["']/g,
 			),
 		].map((match) => match.slice(1));
 		expect(descriptors).toEqual(
 			expect.arrayContaining([
 				['scalar', 'pure'],
-				['structural', 'unknown'],
+				['structural', 'descriptor-pure'],
 			]),
 		);
+		const value = evaluate(code).card({});
+		const structural = value.computations!.find((entry) => entry.kind === 'structural');
+		expect(structural).toMatchObject({
+			kind: 'structural',
+			purity: 'descriptor-pure',
+			escape: 'component-render',
+			run: expect.any(Function),
+		});
+		expect(structural.run()).toEqual([
+			expect.objectContaining({ items: [{ id: 1, label: 'one' }] }),
+		]);
+	});
+
+	it('keeps an opaque keyed iterable on the owning-component path', () => {
+		const value = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+function visible<T>(items: readonly T[]): readonly T[] {
+	return items.slice();
+}
+
+export function Card() @{
+	const [rows] = useState([{ id: 1, label: 'one' }]);
+	<view>
+		@for (const row of visible(rows); key row.id) {
+			<text>{row.label as string}</text>
+		}
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/OpaqueStructuralStateCard.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			),
+		).card({});
+
+		expect(value.computations).toEqual([
+			expect.objectContaining({
+				kind: 'structural',
+				purity: 'unknown',
+			}),
+		]);
+		expect(value.computations![0]).not.toHaveProperty('run');
+	});
+
+	it('replays pure state-driven @if and @switch descriptors together', () => {
+		const value = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+export function Card() @{
+	const [mode] = useState<'then' | 'case' | 'default'>('then');
+	<view>
+		<view>
+			@if (mode === 'then') {
+				<text>then</text>
+			} @else {
+				<text>else</text>
+			}
+		</view>
+		<view>
+			@switch (mode) {
+				@case 'case': { <text>case</text> }
+				@default: { <text>default</text> }
+			}
+		</view>
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/PureBranches.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			),
+		).card({});
+
+		expect(value.computations).toHaveLength(1);
+		const structural = value.computations![0];
+		expect(structural).toMatchObject({
+			kind: 'structural',
+			purity: 'descriptor-pure',
+			escape: 'component-render',
+			slots: expect.arrayContaining([0, 1]),
+			run: expect.any(Function),
+		});
+		expect(structural.run()).toEqual([
+			expect.objectContaining({ kind: 'if', condition: true }),
+			expect.objectContaining({ kind: 'switch', value: 'then' }),
+		]);
+	});
+
+	it('keeps opaque @if conditions and @switch case expressions on the owner path', () => {
+		const value = evaluate(
+			compiled(
+				`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { useState } from 'octane';
+
+function opaque(value: string): string {
+	return value;
+}
+
+export function Card() @{
+	const [mode] = useState('then');
+	<view>
+		<view>
+			@if (opaque(mode) === 'then') { <text>then</text> }
+		</view>
+		<view>
+			@switch (mode) {
+				@case opaque('case'): { <text>case</text> }
+			}
+		</view>
+	</view>
+}
+`,
+				{
+					target: 'universal',
+					thread: 'background',
+					backend: Backend,
+					module: 'src/OpaqueBranches.lynx.tsrx',
+					backgroundProgram: true,
+				},
+			),
+		).card({});
+
+		expect(value.computations).toHaveLength(1);
+		expect(value.computations![0]).toMatchObject({
+			kind: 'structural',
+			purity: 'unknown',
+			escape: 'component-render',
+		});
+		expect(value.computations![0]).not.toHaveProperty('run');
 	});
 
 	it('declines unproved output evaluation without enabling getter-aware hooks', () => {
@@ -795,6 +1176,70 @@ export function Card() @{
 
 		expect(code).not.toContain('__useStateWithGetter as');
 		expect(code).not.toContain('component-render');
+	});
+
+	it('keeps a provider whose value reads state on the component path', () => {
+		const code = compiled(
+			`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { createContext, useContext, useState } from 'octane';
+
+const Theme = createContext('none');
+
+function Consumer() @{
+	const theme = useContext(Theme);
+	<text>{('theme:' + theme) as string}</text>
+}
+
+export function Card() @{
+	const [word, setWord] = useState('a');
+	const theme = 't' + word;
+	<Theme.Provider value={theme}>
+		<view>
+			<text bindtap={() => setWord(word + 'b')}>{('word:' + word) as string}</text>
+			<Consumer />
+		</view>
+	</Theme.Provider>
+}
+`,
+			{
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/ProviderStateCard.lynx.tsrx',
+				backgroundProgram: true,
+			},
+		);
+
+		// A replay would repaint `word:ab` beside a consumer still reading `ta`.
+		expect(code).not.toContain('component-render');
+	});
+
+	it('keeps state replay inside a provider whose value reads no state', () => {
+		const code = compiled(
+			`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { createContext, useState } from 'octane';
+
+const Theme = createContext('none');
+
+export function Card() @{
+	const [word, setWord] = useState('a');
+	<Theme.Provider value="fixed">
+		<view>
+			<text bindtap={() => setWord(word + 'b')}>{('word:' + word) as string}</text>
+		</view>
+	</Theme.Provider>
+}
+`,
+			{
+				target: 'universal',
+				thread: 'background',
+				backend: Backend,
+				module: 'src/ProviderStaticCard.lynx.tsrx',
+				backgroundProgram: true,
+			},
+		);
+
+		expect(code).toContain('component-render');
 	});
 
 	it('does not specialize a local function that merely uses a built-in hook name', () => {
@@ -1442,6 +1887,81 @@ export function App(props: { groups: readonly { id: number; rows: readonly numbe
 			],
 		});
 		expect(result.code).not.toContain('lynxBlockFeatureRequirements');
+	});
+
+	it('records a const memo wrapper of a local component as that local row', () => {
+		const result = compileCard(`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { memo as remember, useState } from 'octane';
+
+const Twice = remember(Once, (a, b) => a.id === b.id);
+const Once = remember(HookedRow);
+
+function HookedRow() @{
+	const [value] = useState('row');
+	<view><text>{value as string}</text></view>
+}
+
+export function App(props: { rows: readonly number[] }) @{
+	<view>
+		@for (const row of props.rows; key row) {
+			<Once />
+		}
+		@for (const row of props.rows; key row) {
+			<Twice />
+		}
+	</view>
+}
+`);
+
+		const hooks = [{ name: 'useState', line: 8, column: 17 }];
+		expect(result.lynxBlockFeatureRequirements?.keyedRanges.map((range) => range.row)).toEqual([
+			{ kind: 'local-component', name: 'Once', hooks },
+			{ kind: 'local-component', name: 'Twice', hooks },
+		]);
+	});
+
+	it('keeps memo wrappers it cannot prove immutable and local as external rows', () => {
+		const result = compileCard(`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { memo } from 'octane';
+import { memo as lookalike } from './memo';
+import External from './External.tsrx';
+
+function Row() @{
+	<view />
+}
+
+function Inner() @{
+	<view />
+}
+
+const Imported = memo(External);
+const Foreign = lookalike(Row);
+const Rewrapped = memo(Inner);
+
+export function App(props: { rows: readonly number[] }) @{
+	<view>
+		@for (const row of props.rows; key row) {
+			<Imported />
+		}
+		@for (const row of props.rows; key row) {
+			<Foreign />
+		}
+		@for (const row of props.rows; key row) {
+			<Rewrapped />
+		}
+	</view>
+}
+
+export function reset() {
+	Inner = Row;
+}
+`);
+
+		expect(result.lynxBlockFeatureRequirements?.keyedRanges.map((range) => range.row)).toEqual([
+			{ kind: 'external-component', name: 'Imported' },
+			{ kind: 'external-component', name: 'Foreign' },
+			{ kind: 'external-component', name: 'Rewrapped' },
+		]);
 	});
 
 	it('records template roles that structural program addressing cannot prove safe', () => {

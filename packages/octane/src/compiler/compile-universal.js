@@ -2478,7 +2478,7 @@ function meaningfulTemplateNode(node) {
 	return node?.type !== 'JSXText' || normalizeJsxText(node.value ?? '') !== '';
 }
 
-function keyedRangeRowRequirement(row, components) {
+function keyedRangeRowRequirement(row, components, state) {
 	if (row === null) return Object.freeze({ kind: 'unknown', name: null });
 	if (row.type !== 'JSXElement' && row.type !== 'Element') {
 		return Object.freeze({ kind: 'unknown', name: null });
@@ -2486,13 +2486,34 @@ function keyedRangeRowRequirement(row, components) {
 	const name = jsxName(row);
 	if (name === null) return Object.freeze({ kind: 'dynamic-component', name: null });
 	if (!isComponentElement(row)) return Object.freeze({ kind: 'inline-host', name });
-	const component = components.get(name);
+	const component = components.get(name) ?? memoWrappedLocalComponent(row, components, state);
 	if (component === undefined) return Object.freeze({ kind: 'external-component', name });
 	return Object.freeze({
 		kind: 'local-component',
 		name,
 		hooks: Object.freeze(component.hooks.map((hook) => Object.freeze({ ...hook }))),
 	});
+}
+
+/**
+ * The local component behind a row authored as `const Row = memo(Local)`.
+ *
+ * `memo` renders the wrapped component's own body, so the wrapper row carries
+ * that component's hook inventory. Every hop must still be an immutable
+ * module-root binding; anything else stays an external row.
+ */
+function memoWrappedLocalComponent(row, components, state) {
+	const trusted = state.immutableLocalComponents;
+	let name = immutableLocalComponentName(row, state);
+	const visited = new Set();
+	while (name !== null && !visited.has(name)) {
+		visited.add(name);
+		const component = components.get(name);
+		if (component !== undefined) return component;
+		const target = trusted.memoTargets.get(name);
+		name = target !== undefined && trusted.names.has(target) ? target : null;
+	}
+	return undefined;
 }
 
 function keyedRangeRowNode(node) {
@@ -2750,7 +2771,7 @@ function lynxBlockFeatureRequirements(ast, state) {
 				empty: node.empty != null,
 				nested: false,
 				lastChild,
-				row: keyedRangeRowRequirement(rowNode, components),
+				row: keyedRangeRowRequirement(rowNode, components, state),
 			};
 			const parentRange = rangeAncestors[rangeAncestors.length - 1];
 			if (parentRange !== undefined) parentRange.nested = true;
@@ -2881,6 +2902,8 @@ function collectComponentNames(ast) {
 function collectImmutableLocalComponents(ast) {
 	const names = new Set();
 	const memoImports = new Set();
+	/** `const Wrapper = memo(Wrapped)` bindings, as wrapper name -> wrapped name. */
+	const memoTargets = new Map();
 	for (const statement of ast.body ?? []) {
 		if (statement.type === 'ImportDeclaration' && statement.source?.value === 'octane') {
 			for (const specifier of statement.specifiers ?? []) {
@@ -2937,6 +2960,7 @@ function collectImmutableLocalComponents(ast) {
 					!names.has(binding.id.name)
 				) {
 					names.add(binding.id.name);
+					memoTargets.set(binding.id.name, wrapped.name);
 					added = true;
 				}
 			}
@@ -2984,7 +3008,7 @@ function collectImmutableLocalComponents(ast) {
 		forEachRuntimeAstChild(node, visit);
 	};
 	visit(ast);
-	return { names, lexical };
+	return { names, memoTargets, lexical };
 }
 
 function collectExplicitThreeHostIntrinsics(ast, renderer) {
@@ -3515,17 +3539,18 @@ function templateProgramForComponent(node, state) {
 }
 
 /**
- * Prove that one parent value reaches a component row only as the boolean
- * result of comparing it with that row's key.
+ * Prove that one parent value reaches a component row only through one strict
+ * equality or inequality predicate comparing it with that row's key.
  *
  * This is the universal/Lynx counterpart of compile.js's
  * `keyedSelectionDepIndex`. It is intentionally narrower: the row must already
  * satisfy `templateProgramForComponent`, the key is one direct item property,
- * and every other outer capture must be passed as a bare prop value. Property
- * reads on an outer object could hide a getter or a mutation behind stable
- * identity, so they fail closed. The proof also records whether the component
- * props omit the loop index, allowing shifted survivors to keep their row
- * descriptors. The full range path remains the fallback.
+ * Pure template, conditional, logical, binary, and unary operators may wrap the
+ * predicate, while every other outer capture must be passed as a bare prop
+ * value. Property reads on an outer object could hide a getter or a mutation
+ * behind stable identity, so they fail closed. The proof also records whether
+ * the component props omit the loop index, allowing shifted survivors to keep
+ * their row descriptors. The full range path remains the fallback.
  */
 function keyedSelectionForComponent(node, component, state, itemBinding, indexBinding) {
 	if (!state.sparseKeyedSelection || itemBinding.type !== 'Identifier') return null;
@@ -3563,16 +3588,49 @@ function keyedSelectionForComponent(node, component, state, itemBinding, indexBi
 			expression.property.name === keyProperty
 		);
 	};
+	const selectionCandidates = (value) => {
+		const candidates = [];
+		const visit = (candidate) => {
+			const expression = unwrapFirstScreenExpression(candidate);
+			if (!expression || typeof expression !== 'object') return;
+			if (
+				expression.type === 'BinaryExpression' &&
+				(expression.operator === '===' || expression.operator === '!==')
+			) {
+				const left = unwrapFirstScreenExpression(expression.left);
+				const right = unwrapFirstScreenExpression(expression.right);
+				const selected = isItemKey(left) ? right : isItemKey(right) ? left : null;
+				if (selected?.type === 'Identifier') candidates.push(selected);
+				return;
+			}
+			if (expression.type === 'TemplateLiteral') {
+				for (const child of expression.expressions ?? []) visit(child);
+				return;
+			}
+			if (expression.type === 'ConditionalExpression') {
+				visit(expression.test);
+				visit(expression.consequent);
+				visit(expression.alternate);
+				return;
+			}
+			if (expression.type === 'BinaryExpression' || expression.type === 'LogicalExpression') {
+				visit(expression.left);
+				visit(expression.right);
+				return;
+			}
+			if (expression.type === 'UnaryExpression') visit(expression.argument);
+		};
+		visit(value);
+		return candidates;
+	};
 
 	let selected = null;
 	for (const attribute of component.openingElement?.attributes ?? component.attributes ?? []) {
 		const value = attribute.value;
 		if (value?.type !== 'JSXExpressionContainer') continue;
 		const expression = unwrapFirstScreenExpression(value.expression);
-		if (expression?.type !== 'BinaryExpression' || expression.operator !== '===') continue;
-		const left = unwrapFirstScreenExpression(expression.left);
-		const right = unwrapFirstScreenExpression(expression.right);
-		const candidate = isItemKey(left) ? right : isItemKey(right) ? left : null;
+		const candidates = selectionCandidates(expression);
+		const candidate = candidates.length === 1 ? candidates[0] : null;
 		if (
 			candidate?.type !== 'Identifier' ||
 			candidate.name === itemBinding.name ||
@@ -3980,63 +4038,86 @@ function dirtyComponentCandidate(render, hooks, state) {
 	const sources = [];
 	const derived = [];
 	const replacements = [];
+	// Names read by hook arguments the runtime retains and calls after render.
+	const retainedRefs = [];
+	// Every name the setup has bound so far. A linked source is re-read by each
+	// component render, so one that reads these would drift under replay.
+	const setupBindings = new Set();
 	for (const statement of render.setup ?? []) {
 		if (typeOnlySetupStatement(statement)) continue;
-		if (
-			statement.type !== 'VariableDeclaration' ||
-			statement.kind !== 'const' ||
-			statement.declarations?.length !== 1
-		) {
+		if (statement.type !== 'VariableDeclaration' || statement.kind !== 'const') {
 			return null;
 		}
-		const declaration = statement.declarations[0];
-		const value = unwrapFirstScreenExpression(declaration.init);
-		const hookName =
-			value?.type === 'CallExpression' && value.callee?.type === 'Identifier'
-				? state.runtimeImports.get(value.callee.name)
-				: null;
-		if (hookName === 'useState' || hookName === 'useReducer') {
-			const pattern = declaration.id;
-			const elements = pattern?.type === 'ArrayPattern' ? (pattern.elements ?? []) : [];
+		for (const declaration of statement.declarations ?? []) {
+			const value = unwrapFirstScreenExpression(declaration.init);
+			const hookName =
+				value?.type === 'CallExpression' && value.callee?.type === 'Identifier'
+					? state.runtimeImports.get(value.callee.name)
+					: null;
+			if (hookName === 'useState' || hookName === 'useLinkedState' || hookName === 'useReducer') {
+				const pattern = declaration.id;
+				const elements = pattern?.type === 'ArrayPattern' ? (pattern.elements ?? []) : [];
+				if (
+					pattern?.type !== 'ArrayPattern' ||
+					elements[0]?.type !== 'Identifier' ||
+					elements.slice(3).some((element) => element !== null) ||
+					elements.some((element) => element?.type === 'RestElement') ||
+					(elements[2] !== null && elements[2] !== undefined && elements[2].type !== 'Identifier')
+				) {
+					return null;
+				}
+				if (
+					hookName === 'useLinkedState' &&
+					(value.arguments ?? []).some((argument) =>
+						dirtyExpressionReferences(argument).some((name) => setupBindings.has(name)),
+					)
+				) {
+					return null;
+				}
+				for (const element of elements) {
+					if (element?.type === 'Identifier') setupBindings.add(element.name);
+				}
+				const getter =
+					elements[2]?.name ??
+					allocName(state, `${state.planPrefix || '__octane'}Get${sources.length}`);
+				if (elements[2] == null) {
+					const nextElements = [
+						elements[0],
+						elements[1] ?? null,
+						generatedIdentifier(getter, pattern),
+					];
+					replacements.push([
+						pattern,
+						inheritGeneratedOrigin({ ...pattern, elements: nextElements }, pattern),
+					]);
+				}
+				sources.push({ value: elements[0].name, getter, hook: hookName, origin: declaration });
+				if (hookName === 'useReducer') {
+					// Dispatch reduces with the reducer retained from the last component
+					// render. The initial argument and init function run only at mount.
+					const reducer = value.arguments?.[0];
+					if (reducer != null) retainedRefs.push(...dirtyExpressionReferences(reducer));
+				}
+				continue;
+			}
 			if (
-				pattern?.type !== 'ArrayPattern' ||
-				elements[0]?.type !== 'Identifier' ||
-				elements.slice(3).some((element) => element !== null) ||
-				elements.some((element) => element?.type === 'RestElement') ||
-				(elements[2] !== null && elements[2] !== undefined && elements[2].type !== 'Identifier')
+				declaration.id?.type !== 'Identifier' ||
+				declaration.init == null ||
+				!dirtyPureExpression(declaration.init)
 			) {
 				return null;
 			}
-			const getter =
-				elements[2]?.name ??
-				allocName(state, `${state.planPrefix || '__octane'}Get${sources.length}`);
-			if (elements[2] == null) {
-				const nextElements = [
-					elements[0],
-					elements[1] ?? null,
-					generatedIdentifier(getter, pattern),
-				];
-				replacements.push([
-					pattern,
-					inheritGeneratedOrigin({ ...pattern, elements: nextElements }, pattern),
-				]);
-			}
-			sources.push({ value: elements[0].name, getter, hook: hookName, origin: declaration });
-			continue;
+			setupBindings.add(declaration.id.name);
+			derived.push({
+				name: declaration.id.name,
+				statement:
+					statement.declarations.length === 1
+						? statement
+						: inheritGeneratedOrigin({ ...statement, declarations: [declaration] }, statement),
+				refs: dirtyExpressionReferences(declaration.init),
+				deps: null,
+			});
 		}
-		if (
-			declaration.id?.type !== 'Identifier' ||
-			declaration.init == null ||
-			!dirtyPureExpression(declaration.init)
-		) {
-			return null;
-		}
-		derived.push({
-			name: declaration.id.name,
-			statement,
-			refs: dirtyExpressionReferences(declaration.init),
-			deps: null,
-		});
 	}
 	if (
 		sources.length === 0 ||
@@ -4061,6 +4142,11 @@ function dirtyComponentCandidate(render, hooks, state) {
 		entry.deps = deps;
 		bindingDeps.set(entry.name, deps);
 	}
+	// Replay does not rerun setup, so a retained closure that reads a replayed
+	// binding would keep that binding's value from the last component render.
+	// Checked after every binding is known: a reducer may read its own state or a
+	// later declaration, since it runs only after render completes.
+	if (retainedRefs.some((ref) => bindingDeps.get(ref)?.size > 0)) return null;
 	return { sources, derived, bindingDeps, replacements };
 }
 
@@ -4079,18 +4165,20 @@ function dirtyComputationArrayAst(candidate, values, root, state, origin) {
 		}
 		if (deps.size === 0) continue;
 		const kind = structuralSlots.has(slot) ? 'structural' : 'scalar';
+		const replayable = kind === 'scalar' || state.dirtyStructuralReplayExpressions.has(expression);
 		if (kind === 'scalar' && !dirtyPureExpression(expression)) return null;
 		const ordered = [...deps].sort((left, right) => left - right);
-		const key = `${kind}:${ordered.join(',')}`;
+		const key = `${kind}:${replayable ? 'replay' : 'owner'}:${ordered.join(',')}`;
 		const group = groups.get(key) ?? {
 			kind,
+			replayable,
 			deps: ordered,
 			slots: [],
-			values: kind === 'scalar' ? [] : null,
-			refs: kind === 'scalar' ? [] : null,
+			values: replayable ? [] : null,
+			refs: replayable ? [] : null,
 		};
 		group.slots.push(slot);
-		if (kind === 'scalar') {
+		if (replayable) {
 			group.values.push(expression);
 			group.refs.push(...refs);
 		}
@@ -4101,7 +4189,7 @@ function dirtyComputationArrayAst(candidate, values, root, state, origin) {
 	const descriptors = [];
 	for (const group of groups.values()) {
 		let run = null;
-		if (group.kind === 'scalar') {
+		if (group.replayable) {
 			const required = new Set();
 			const visit = (name) => {
 				const entry = derivedByName.get(name);
@@ -4144,7 +4232,10 @@ function dirtyComputationArrayAst(candidate, values, root, state, origin) {
 					b.prop(
 						'init',
 						b.literal('purity', '"purity"'),
-						jsonValueToAst(group.kind === 'scalar' ? 'pure' : 'unknown', origin),
+						jsonValueToAst(
+							group.kind === 'scalar' ? 'pure' : group.replayable ? 'descriptor-pure' : 'unknown',
+							origin,
+						),
 					),
 					b.prop(
 						'init',
@@ -4724,9 +4815,37 @@ function compileActivityElementAst(node, context, state) {
 	return addDynamicAst(context, generatedCall(state.helpers.activity, [mode, body], node));
 }
 
+/**
+ * Whether a provider's props read a binding the dirty candidate can replay.
+ *
+ * Provider props are evaluated by the component render, never by a dirty
+ * computation. A state-only replay of the provider's children would therefore
+ * re-render them against the previous context value.
+ */
+function providerPropsReadDirtyBinding(attributes, dirtyCandidate) {
+	for (const attribute of attributes) {
+		const expression =
+			attribute.type === 'JSXSpreadAttribute' || attribute.type === 'SpreadAttribute'
+				? attribute.argument
+				: attribute.value?.type === 'JSXExpressionContainer'
+					? attribute.value.expression
+					: null;
+		if (expression == null || expression.type === 'JSXEmptyExpression') continue;
+		for (const reference of dirtyExpressionReferences(expression)) {
+			if (dirtyCandidate.bindingDeps.has(reference)) return true;
+		}
+	}
+	return false;
+}
+
 function compileContextProviderValueAst(node, state, dirtyCandidate = null) {
 	const providerContext = contextProviderExpressionAst(node, state);
 	if (providerContext === null) return null;
+	const attributes = node.openingElement?.attributes ?? node.attributes ?? [];
+	if (dirtyCandidate !== null && providerPropsReadDirtyBinding(attributes, dirtyCandidate)) {
+		// Keep the subtree on the component path so the new value is provided.
+		dirtyCandidate = null;
+	}
 	const childNodes = node.children ?? [];
 	const meaningfulChildren = childNodes.filter(
 		(child) => child.type !== 'JSXText' || normalizeJsxText(child.value) !== '',
@@ -4752,7 +4871,6 @@ function compileContextProviderValueAst(node, state, dirtyCandidate = null) {
 			node,
 		);
 	}
-	const attributes = node.openingElement?.attributes ?? node.attributes ?? [];
 	const propsObject = compilePlainPropsObjectAst(attributes, state, node);
 	const propsName = generatedIdentifier('__octaneContextProps', node);
 	const selectedChildren =
@@ -5106,7 +5224,13 @@ function compileForAst(node, context, state) {
 	} else if (node.empty) {
 		args.push(compileBlockValueAst(node.empty?.body ?? [], state, [], node.empty));
 	}
-	return addDynamicAst(context, generatedCall(state.helpers.for, args, node));
+	const range = generatedCall(state.helpers.for, args, node);
+	// Recreating this descriptor does not enumerate the iterable or execute a
+	// row body. The Block runtime may therefore project a state-only update into
+	// this range without re-entering the owning component; all structural work
+	// still goes through the ordinary keyed range implementation.
+	if (dirtyPureExpression(node.right)) state.dirtyStructuralReplayExpressions.add(range);
+	return addDynamicAst(context, range);
 }
 
 function compileIfAst(node, context, state) {
@@ -5126,7 +5250,12 @@ function compileIfAst(node, context, state) {
 	}
 	const args = [rewriteSourceAst(node.test, state), consequent];
 	if (alternate !== null) args.push(alternate);
-	return addDynamicAst(context, generatedCall(state.helpers.if, args, node));
+	const branch = generatedCall(state.helpers.if, args, node);
+	// Descriptor construction evaluates only the condition. Branch bodies stay
+	// behind thunks and continue through the ordinary structural range renderer,
+	// so a state-only pure condition can be replayed without entering its owner.
+	if (dirtyPureExpression(node.test)) state.dirtyStructuralReplayExpressions.add(branch);
+	return addDynamicAst(context, branch);
 }
 
 function compileIfValueAst(node, state) {
@@ -5154,7 +5283,16 @@ function compileSwitchAst(node, context, state) {
 		inheritGeneratedOrigin(b.array(cases), node),
 	];
 	if (fallback !== null) args.push(fallback);
-	return addDynamicAst(context, generatedCall(state.helpers.switch, args, node));
+	const branch = generatedCall(state.helpers.switch, args, node);
+	// The discriminant and case values are the only eager user expressions in a
+	// switch descriptor. Keep opaque calls/getters on the owner-render path.
+	if (
+		dirtyPureExpression(node.discriminant) &&
+		(node.cases ?? []).every((item) => item.test == null || dirtyPureExpression(item.test))
+	) {
+		state.dirtyStructuralReplayExpressions.add(branch);
+	}
+	return addDynamicAst(context, branch);
 }
 
 function compileTryAst(node, context, state) {
@@ -6696,6 +6834,7 @@ export function lowerUniversalRendererRegionAst(
 			options.profile !== true,
 		profileFilename: options.profileFilename,
 		helpers: {},
+		dirtyStructuralReplayExpressions: new WeakSet(),
 		componentNames: collectComponentNames(analysisAst),
 		runtimeImports: new Map(),
 		planPrefix: prefix,
@@ -7023,6 +7162,7 @@ export function compileUniversal(
 			options.profile !== true,
 		profileFilename: options.profileFilename,
 		helpers: {},
+		dirtyStructuralReplayExpressions: new WeakSet(),
 		componentNames: collectComponentNames(ast),
 		runtimeImports: new Map(),
 		// The `lynx` target keeps the universal front-end and descriptor ABI but

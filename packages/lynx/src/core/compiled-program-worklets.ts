@@ -141,6 +141,8 @@ export interface LynxCompiledProgramWorkletStore<Node extends LynxElementRef> {
 		slot: number,
 		value: unknown,
 	): boolean;
+	/** Reject a ref that more than one live host still claims. */
+	settle(): void;
 	close(): void;
 }
 
@@ -150,8 +152,16 @@ export function createLynxCompiledProgramWorkletStore<Node extends LynxElementRe
 	registry: LynxMainThreadWorkletRegistry,
 ): LynxCompiledProgramWorkletStore<Node> {
 	const events = new Map<Node, Map<string, ActiveEvent>>();
+	// `refs` is each host's claim; `refOwners` is the host a ref currently targets.
 	const refs = new Map<Node, LynxMainThreadRefDescriptor>();
 	const refOwners = new Map<string, Node>();
+	// A frame can move a ref by naming its new host before it clears the old
+	// one, so for that window two hosts claim it. The newest claim targets the
+	// ref; releasing it falls back to the one before, which is how a rejected
+	// frame's rollback hands the ref back. `settle` rejects any claim still
+	// shared once the frame is done. Only contested refs have an entry, so an
+	// ordinary ref costs nothing here.
+	let contested: Map<string, Node[]> | null = null;
 
 	const eventMap = (node: Node): Map<string, ActiveEvent> => {
 		let result = events.get(node);
@@ -211,22 +221,34 @@ export function createLynxCompiledProgramWorkletStore<Node extends LynxElementRe
 	const removeRef = (node: Node): void => {
 		const current = refs.get(node);
 		if (current === undefined) return;
-		registry.updateRef(current, null);
+		const id = current._wvid;
+		const claims = contested?.get(id);
+		const owner = refOwners.get(id);
+		let successor: Node | undefined;
+		if (claims !== undefined) {
+			for (let index = claims.length - 1; successor === undefined && index >= 0; index--) {
+				if (claims[index] !== node) successor = claims[index];
+			}
+		}
+		if (owner === node) registry.updateRef(current, successor ?? null);
 		registry.releaseRef(current);
 		refs.delete(node);
-		if (refOwners.get(current._wvid) === node) refOwners.delete(current._wvid);
+		if (claims !== undefined) {
+			claims.splice(claims.indexOf(node), 1);
+			if (claims.length < 2) contested!.delete(id);
+		}
+		if (owner !== node) return;
+		if (successor === undefined) refOwners.delete(id);
+		else refOwners.set(id, successor);
 	};
 	const installRef = (node: Node, value: unknown): void => {
 		const next = refDescriptor(value);
 		const current = refs.get(node);
 		if (current?._wvid === next?._wvid) return;
 		if (next !== null) {
-			const owner = refOwners.get(next._wvid);
-			if (owner !== undefined && owner !== node)
-				fail(`ref ${JSON.stringify(next._wvid)} is already mounted`);
 			registry.retainRef(next, null);
 			try {
-				registry.updateRef(next, node);
+				registry.mountRef(next, node);
 			} catch (error) {
 				registry.releaseRef(next);
 				throw error;
@@ -234,8 +256,15 @@ export function createLynxCompiledProgramWorkletStore<Node extends LynxElementRe
 		}
 		if (current !== undefined) removeRef(node);
 		if (next !== null) {
+			const id = next._wvid;
+			const owner = refOwners.get(id);
+			if (owner !== undefined) {
+				const claims = (contested ??= new Map()).get(id);
+				if (claims === undefined) contested.set(id, [owner, node]);
+				else claims.push(node);
+			}
 			refs.set(node, next);
-			refOwners.set(next._wvid, node);
+			refOwners.set(id, node);
 		}
 	};
 	const deactivateNode = (node: Node): void => {
@@ -432,6 +461,10 @@ export function createLynxCompiledProgramWorkletStore<Node extends LynxElementRe
 			if (site.kind === 'event') installEvent(node, site, value);
 			else installRef(node, value);
 			return true;
+		},
+		settle() {
+			if (contested === null) return;
+			for (const id of contested.keys()) fail(`ref ${JSON.stringify(id)} is already mounted`);
 		},
 		close() {
 			const errors: unknown[] = [];

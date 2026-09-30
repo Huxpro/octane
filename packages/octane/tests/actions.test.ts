@@ -9,6 +9,7 @@ import {
 	SelfFormStatus,
 	OptimisticForm,
 	BareOptimistic,
+	ActionIdentity,
 	DirectAction,
 	RawForm,
 } from './_fixtures/actions.tsrx';
@@ -246,6 +247,26 @@ describe('useOptimistic', () => {
 });
 
 describe('direct dispatch (formAction(payload) outside a form)', () => {
+	it('keeps one dispatcher and runs queued work with the latest action', async () => {
+		// The reference contract the Universal hook mirrors: a dispatcher captured
+		// on the first render is the same dispatcher after the inline action
+		// changed, and queued work runs the action from the latest render.
+		const dispatchers: Array<(payload: string) => void> = [];
+		const capture = (dispatch: (payload: string) => void) => dispatchers.push(dispatch);
+		const r = mount(ActionIdentity, { label: 'v1', capture });
+		r.root.render(ActionIdentity, { label: 'v2', capture });
+		flushSync(() => {});
+		const [first] = dispatchers;
+		expect(dispatchers.length).toBeGreaterThan(1);
+		expect(dispatchers.every((dispatch) => dispatch === first)).toBe(true);
+
+		first!('beta');
+		await settle();
+		expect(r.find('#state').textContent).toBe('init|v2:beta');
+		expect(dispatchers.every((dispatch) => dispatch === first)).toBe(true);
+		r.unmount();
+	});
+
 	it('runs the action with the raw payload and tracks isPending', async () => {
 		const d = deferred();
 		const action = (_prev: number, payload: number) => d.promise.then(() => payload * 2);

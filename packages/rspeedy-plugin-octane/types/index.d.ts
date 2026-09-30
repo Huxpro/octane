@@ -74,7 +74,9 @@ export interface OctaneRspeedyPluginOptions {
 	/**
 	 * @experimental Compile every eligible native root through Lynx Element
 	 * Template metadata and select the matching whole-root runtime backend.
-	 * The build fails closed when any root cannot be lowered.
+	 * The build fails closed when any root cannot be lowered, when the
+	 * application is not compiled-program eligible, or when it is not a one-shot
+	 * production build; it never falls back to the general application.
 	 */
 	experimentalElementTemplate?: boolean;
 }

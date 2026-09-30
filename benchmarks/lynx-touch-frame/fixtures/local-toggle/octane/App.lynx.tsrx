@@ -43,8 +43,8 @@ export function App() @{
 		});
 	}
 	const [active, setActive] = useState(false);
-	const pageRef = useMainThreadRef<object>();
-	const targetRef = useMainThreadRef<object>();
+	const pageRef = useMainThreadRef<OctaneBenchMainThreadElement>();
+	const targetRef = useMainThreadRef<OctaneBenchMainThreadElement>();
 	const mtsActive = useMainThreadRef(false);
 
 	const observeTouch = (event: Issue197TouchEvent) => {
@@ -53,7 +53,7 @@ export function App() @{
 		if (target === null || target === undefined) {
 			throw new Error('ISSUE197_OBSERVER_FAILURE local-toggle target ref missing at touchstart');
 		}
-		const before = __GetComputedStyleByKey(target, 'background-color');
+		const before = target.getComputedStyleProperty('background-color');
 		const inputPlatformTimestamp = event.timestamp;
 		if (__BENCH_PROFILE__) {
 			lynx.performance.profileMark('Issue197::T2::local-toggle::mts-input');
@@ -61,7 +61,7 @@ export function App() @{
 		let changedFrameOrdinal = 0;
 		const poll = (changedVsyncPlatformTimestamp: number) => {
 			changedFrameOrdinal += 1;
-			const after = __GetComputedStyleByKey(target, 'background-color');
+			const after = target.getComputedStyleProperty('background-color');
 			if (after !== before) {
 				if (__BENCH_PROFILE__) {
 					lynx.performance.profileMark('Issue197::T2::local-toggle::changed-vsync');
@@ -102,8 +102,7 @@ export function App() @{
 		if (target === null || target === undefined) return;
 		const next = !mtsActive.current;
 		mtsActive.current = next;
-		__AddInlineStyle(target, 'background-color', next ? ACTIVE_COLOR : IDLE_COLOR);
-		__FlushElementTree();
+		target.setStyleProperty('background-color', next ? ACTIVE_COLOR : IDLE_COLOR);
 	};
 
 	<view class="page" main-thread:ref={pageRef} main-thread:capture-bindtouchstart={observeTouch}>

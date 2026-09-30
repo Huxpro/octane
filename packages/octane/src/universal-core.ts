@@ -63,6 +63,12 @@ const UNIVERSAL_RENDERER_REGION = Symbol.for('octane.universal.renderer-region')
 const RENDERER_REGION_OWNER = Symbol.for('octane.renderer-region.owner');
 const LAZY_COMPONENT = Symbol.for('octane.lazy');
 const UNIVERSAL_COMPONENT_REVISION = Symbol('octane.universal.component-revision');
+/**
+ * The component a default-compare \`memo\` wrapper renders. A native core whose
+ * own reconciler already skips a hook-free component on shallow-equal props may
+ * render that component directly; a custom comparator never carries this mark.
+ */
+const UNIVERSAL_MEMO_INNER = Symbol.for('octane.universal.memo-inner');
 
 const NO_CHILDREN = Symbol('octane.universal.no-children');
 const NO_KEY = Symbol('octane.universal.no-key');
@@ -1797,6 +1803,19 @@ const PENDING_UNIVERSAL_PASSIVE_ROOTS = new Set<UniversalRootImpl<any, any>>();
 let UNIVERSAL_SYNC_DEPTH = 0;
 let UNIVERSAL_COMMIT_TASK_DEPTH = 0;
 let UNIVERSAL_DISCRETE_EVENT_DEPTH = 0;
+
+/** Enter the update-priority scope owned by a renderer-specific event bridge. */
+export function runUniversalEventScope<T>(priority: UniversalEventPriority, run: () => T): T {
+	if (priority !== 'discrete' && priority !== 'continuous' && priority !== 'default') {
+		throw new TypeError(`Unknown universal event priority ${JSON.stringify(priority)}.`);
+	}
+	if (priority === 'discrete') UNIVERSAL_DISCRETE_EVENT_DEPTH++;
+	try {
+		return run();
+	} finally {
+		if (priority === 'discrete') UNIVERSAL_DISCRETE_EVENT_DEPTH--;
+	}
+}
 const UNIVERSAL_SYNC_DRAIN_LIMIT = 100;
 let NEXT_HOOK_SLOT = 0;
 let NEXT_OWNER_ID = 1;
@@ -5875,6 +5894,20 @@ function universalTransitionBatchForRecordUpdate(
 	return universalTransitionBatchForUpdate();
 }
 
+function scheduleUniversalOwnerMicrotask(record: UniversalOwnerRecord, callback: () => void): void {
+	const scopeRoot = record.root as {
+		hookScopeStandIn?: boolean;
+		hookScopeTransitions?: boolean;
+	};
+	if (scopeRoot.hookScopeStandIn !== true || scopeRoot.hookScopeTransitions === true) {
+		record.root.__scheduleMicrotask(callback);
+		return;
+	}
+	const scheduler = readGlobalMicrotaskScheduler();
+	if (scheduler !== undefined) scheduler.call(globalThis, callback);
+	else void Promise.resolve().then(callback);
+}
+
 function stageUniversalTransitionUpdate(
 	batch: UniversalTransitionBatch,
 	owner: UniversalOwnerRecord,
@@ -6259,15 +6292,14 @@ function visibleStateValue<T>(record: UniversalOwnerRecord, slot: unknown, fallb
  * that calls them.
  *
  * This is the seam that lets it. The scope owns one component's cells and
- * nothing else: no child owners, no insertion phase, no transitions, no
- * suspended replay. What it hands back is the render/commit/abort protocol the universal
+ * nothing else: no child owners and no suspended replay. What it hands back is
+ * the render/commit/abort protocol the universal
  * root already uses, so a core that adopts it inherits the update-queue
  * semantics instead of restating them — which is the point, because a restated
- * queue is where semantic drift enters. A core may additionally accept layout
- * effects by scheduling their work at its own accepted-commit boundary. A core
- * may separately supply a passive scheduler; keeping the two services distinct
- * preserves the public phase ordering instead of relabeling passive work as
- * layout work.
+ * queue is where semantic drift enters. A core may additionally accept
+ * insertion and layout effects by scheduling their work at ordered
+ * accepted-commit boundaries. A core may separately supply a passive scheduler;
+ * keeping the three services distinct preserves the public phase ordering.
  *
  * Nothing in `UniversalRootImpl` becomes reachable from a core that uses this:
  * the owner record's root is a two-member stand-in, and the one call the hook
@@ -6288,8 +6320,13 @@ export interface UniversalHookScopeServices {
 	 */
 	readonly readContext?: <T>(context: UniversalContext<T>) => T;
 	/**
+	 * Publish insertion-effect cleanup/create work in the adopting renderer's
+	 * first accepted lifecycle phase. Absence keeps insertion effects refused.
+	 */
+	readonly scheduleInsertionEffectCommit?: (task: () => void) => void;
+	/**
 	 * Publish layout-effect cleanup/create work after the host has accepted the
-	 * render this scope just committed. Absence keeps every effect refused.
+	 * render this scope just committed. Absence keeps layout effects refused.
 	 */
 	readonly scheduleLayoutEffectCommit?: (task: () => void) => void;
 	/**
@@ -6306,6 +6343,16 @@ export interface UniversalHookScopeServices {
 	readonly scheduleTransitionRender?: () => void;
 	/** Queue transition promotion on the adopting renderer's resolved microtask service. */
 	readonly scheduleMicrotask?: (task: () => void) => void;
+	/**
+	 * Allocate the opaque value for a `useId` cell this scope is mounting, from
+	 * the adopting core's root namespace. A core that shares one allocator across
+	 * its scopes and calls it in tree order reproduces a root's positional ids,
+	 * which is what lets it adopt a tree another thread already painted. The
+	 * value becomes the cell once the scope commits; an aborted draft allocates
+	 * again on its next render, so the core owns rewinding abandoned work.
+	 * Absence keeps the scope-local namespace.
+	 */
+	readonly allocateId?: () => string;
 }
 
 export interface UniversalHookScope {
@@ -6351,8 +6398,13 @@ export interface UniversalHookScope {
 	commit(visible?: boolean, holdTransitions?: boolean): void;
 	/** Drop the last render's cells, leaving the committed ones in place. */
 	abort(retryTransitions?: boolean): void;
-	/** Settle and discard every promoted, drafted, or held transition owned by this scope. */
-	finishTransitions(): void;
+	/**
+	 * Settle and discard every promoted, drafted, or held transition owned by
+	 * this scope. With `retainScheduled`, promoted lanes that no render has
+	 * consumed yet stay scheduled for the transition render their promotion
+	 * already requested, so an accepted attempt cannot discard later work.
+	 */
+	finishTransitions(retainScheduled?: boolean): void;
 	/** Release the cells. A setter that fires afterwards is ignored. */
 	dispose(): void;
 }
@@ -6370,7 +6422,8 @@ const HOOK_SCOPE_BATCHES: ReadonlySet<UniversalTransitionBatch> =
 const HOOK_SCOPE_REPLAY_ENTRIES: readonly SuspendedMemoEntry[] = Object.freeze([]);
 // Keeps every scope's `useId` values distinct from every other scope's — and,
 // through the `h`/`u` prefix split, from every root's — the same promise
-// `UniversalRootImpl.formatId` makes across roots.
+// `UniversalRootImpl.formatId` makes across roots. A scope whose core supplies
+// `allocateId` draws from that core's namespace instead.
 let NEXT_HOOK_SCOPE_ID = 0;
 
 /**
@@ -6434,12 +6487,12 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			services.scheduleMicrotask?.(task);
 		},
 	} as unknown as UniversalRootImpl<any, any>;
-	const scopeId = (NEXT_HOOK_SCOPE_ID++).toString(36);
+	const allocateId = services.allocateId;
+	const scopeId = allocateId === undefined ? (NEXT_HOOK_SCOPE_ID++).toString(36) : '';
 	const hookRoot: KernelHookRootServices<UniversalContext<any>> = {
 		warmMemoToken: {},
-		formatId(index: number): string {
-			return `:octane-h${scopeId}-${index.toString(36)}:`;
-		},
+		formatId:
+			allocateId ?? ((index: number): string => `:octane-h${scopeId}-${index.toString(36)}:`),
 		// The adopting core owns the provider chain. Without an explicit reader,
 		// retain the old fail-closed contract instead of silently serving defaults
 		// to a component that may actually be under a provider.
@@ -6503,7 +6556,8 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			if (
 				owner.seenEffects.some(
 					(effect) =>
-						effect.phase === 'insertion' ||
+						(effect.phase === 'insertion' &&
+							services.scheduleInsertionEffectCommit === undefined) ||
 						(effect.phase === 'layout' && services.scheduleLayoutEffectCommit === undefined) ||
 						(effect.phase === 'passive' && services.schedulePassiveEffectCommit === undefined),
 				)
@@ -6550,7 +6604,7 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			for (const slot of slots) {
 				const hook = record.hooks.get(slot);
 				if (hook?.kind === 'reducer') sources.push(hook.get);
-				else if (hook?.kind === 'state' && !('linked' in hook)) sources.push(hook.get);
+				else if (hook?.kind === 'state' && typeof hook.get === 'function') sources.push(hook.get);
 				else return false;
 			}
 			const owner = draftOwner(record, null, HOOK_SCOPE_REPLAY);
@@ -6650,24 +6704,27 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			const nextEffects = owner === null ? previousEffects : [...owner.seenEffects];
 			const previousBySlot = new Map(previousEffects.map((effect) => [effect.slot, effect]));
 			const nextBySlot = new Map(nextEffects.map((effect) => [effect.slot, effect]));
+			let insertionCleanupTasks: (() => void)[] | null = null;
+			let insertionCreateTasks: (() => void)[] | null = null;
 			const layoutCleanupTasks: (() => void)[] = [];
 			const layoutCreateTasks: (() => void)[] = [];
-			// The scope used to allocate exactly the two layout task arrays above on
-			// every commit. Keep the passive pair lazy so pages with no passive
+			// Keep insertion and passive task pairs lazy so pages without either
 			// lifecycle pay no additional allocation on the Block hot path.
 			let passiveCleanupTasks: (() => void)[] | null = null;
 			let passiveCreateTasks: (() => void)[] | null = null;
 			for (const previous of previousEffects) {
 				const next = nextBySlot.get(previous.slot);
 				if (
-					(previousVisible && !nextVisible) ||
+					(previous.phase !== 'insertion' && previousVisible && !nextVisible) ||
 					next === undefined ||
 					next.phase !== previous.phase ||
 					!depsEqual(previous.deps, next.deps)
 				) {
 					const cleanup = next?.previous === previous ? next : previous;
 					if (cleanup.mounted) {
-						if (previous.phase === 'passive') {
+						if (previous.phase === 'insertion') {
+							(insertionCleanupTasks ??= []).push(() => runEffectCleanup(cleanup));
+						} else if (previous.phase === 'passive') {
 							(passiveCleanupTasks ??= []).push(() => runEffectCleanup(cleanup));
 						} else {
 							layoutCleanupTasks.push(() => runEffectCleanup(cleanup));
@@ -6678,13 +6735,18 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			for (const next of nextEffects) {
 				const previous = previousBySlot.get(next.slot);
 				if (
-					nextVisible &&
+					(next.phase === 'insertion' || nextVisible) &&
 					(previous === undefined ||
 						previous.phase !== next.phase ||
 						!depsEqual(previous.deps, next.deps) ||
 						!previous.mounted)
 				) {
-					const tasks = next.phase === 'passive' ? (passiveCreateTasks ??= []) : layoutCreateTasks;
+					const tasks =
+						next.phase === 'insertion'
+							? (insertionCreateTasks ??= [])
+							: next.phase === 'passive'
+								? (passiveCreateTasks ??= [])
+								: layoutCreateTasks;
 					tasks.push(() => {
 						if (!record.disposed && record.hooks.get(next.slot) === next) runEffectCreate(next);
 					});
@@ -6693,6 +6755,10 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			if (owner !== null) {
 				for (const [slot, hook] of owner.hooks) {
 					if (hook.kind === 'effect' && !nextBySlot.has(slot)) owner.hooks.delete(slot);
+					else if (hook.kind === 'effect-event') {
+						hook.cell.impl = hook.next;
+						hook.cell.active = true;
+					}
 				}
 				record.hooks = owner.hooks;
 				record.effectOrder = nextEffects;
@@ -6710,6 +6776,15 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				} else {
 					for (const batch of transitionBatches) finishUniversalTransitionRoot(batch, root);
 				}
+			}
+			if (insertionCleanupTasks !== null || insertionCreateTasks !== null) {
+				const tasks =
+					insertionCleanupTasks === null
+						? insertionCreateTasks!
+						: insertionCreateTasks === null
+							? insertionCleanupTasks
+							: [...insertionCleanupTasks, ...insertionCreateTasks];
+				services.scheduleInsertionEffectCommit?.(() => runCommitTasks(tasks));
 			}
 			if (layoutCleanupTasks.length !== 0 || layoutCreateTasks.length !== 0) {
 				services.scheduleLayoutEffectCommit?.(() =>
@@ -6737,15 +6812,17 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 				services.scheduleTransitionRender?.();
 			}
 		},
-		finishTransitions(): void {
+		finishTransitions(retainScheduled = false): void {
 			const batches = new Set([
-				...(scheduledTransitionBatches ?? EMPTY_UNIVERSAL_TRANSITION_BATCHES),
+				...(retainScheduled
+					? EMPTY_UNIVERSAL_TRANSITION_BATCHES
+					: (scheduledTransitionBatches ?? EMPTY_UNIVERSAL_TRANSITION_BATCHES)),
 				...(heldTransitionBatches ?? EMPTY_UNIVERSAL_TRANSITION_BATCHES),
 				...draftTransitionBatches,
 			]);
 			draft = null;
 			draftTransitionBatches = EMPTY_UNIVERSAL_TRANSITION_BATCHES;
-			scheduledTransitionBatches = null;
+			if (!retainScheduled) scheduledTransitionBatches = null;
 			heldTransitionBatches = null;
 			for (const batch of batches) finishUniversalTransitionRoot(batch, root);
 		},
@@ -6760,19 +6837,29 @@ export function createUniversalHookScope(services: UniversalHookScopeServices): 
 			scheduledTransitionBatches = null;
 			heldTransitionBatches = null;
 			record.disposed = true;
+			const insertionTasks: (() => void)[] = [];
 			const layoutTasks: (() => void)[] = [];
 			const passiveTasks: (() => void)[] = [];
 			try {
 				for (const effect of record.effectOrder) {
 					if (!effect.mounted) continue;
-					(effect.phase === 'passive' ? passiveTasks : layoutTasks).push(() =>
-						runEffectCleanup(effect),
-					);
+					(effect.phase === 'insertion'
+						? insertionTasks
+						: effect.phase === 'passive'
+							? passiveTasks
+							: layoutTasks
+					).push(() => runEffectCleanup(effect));
 				}
 			} finally {
 				record.effectOrder = [];
+				for (const hook of record.hooks.values()) {
+					if (hook.kind === 'effect-event') hook.cell.active = false;
+				}
 				record.hooks.clear();
 				record.updates.clear();
+			}
+			if (insertionTasks.length !== 0) {
+				services.scheduleInsertionEffectCommit?.(() => runCommitTasks(insertionTasks));
 			}
 			if (layoutTasks.length !== 0) {
 				services.scheduleLayoutEffectCommit?.(() => runCommitTasks(layoutTasks));
@@ -7527,6 +7614,95 @@ export function useTransition(slot?: unknown): [boolean, typeof startTransition]
 	});
 }
 
+interface UniversalActionStateController<State, Payload> {
+	/** The resolved tail keeps every dispatch on the last completed result. */
+	chain: Promise<State>;
+	/** Number of queued or running actions; the visible hook state stores only its zero/non-zero edge. */
+	pending: number;
+	/** One dispatcher for the hook's lifetime, like the DOM runtime's slot dispatcher. */
+	dispatch: (payload: Payload) => Promise<State>;
+}
+
+/**
+ * Surface an action failure the way the DOM runtime does: the nearest
+ * semantic error boundary owns it. Without one, the root's `onUncaughtError`
+ * reports it, and otherwise it is rethrown on the owner's host microtask
+ * service — the Universal host's uncaught-error channel, where the DOM runtime
+ * would `console.error`. A hook-scope owner has no semantic parent, so an
+ * adopting core's failure always takes the host channel.
+ */
+function reportUniversalActionError(record: UniversalOwnerRecord, error: unknown): void {
+	if (routeUniversalOwnerError(record, error)) return;
+	if (reportUniversalUncaughtError(record.root, error)) return;
+	scheduleUniversalOwnerMicrotask(record, () => {
+		throw error;
+	});
+}
+
+function createUniversalActionStateController<State, Payload>(
+	record: UniversalOwnerRecord,
+	initialState: State,
+	action: EffectEventCell,
+	setState: (value: State) => void,
+	setPending: (value: boolean) => void,
+): UniversalActionStateController<State, Payload> {
+	const controller: UniversalActionStateController<State, Payload> = {
+		chain: Promise.resolve(initialState),
+		pending: 0,
+		dispatch(payload: Payload): Promise<State> {
+			controller.pending++;
+			if (controller.pending === 1) setPending(true);
+			// Each run sees the previous completed result. Both settlement paths
+			// resolve the tail so one failed action cannot stall later dispatches.
+			controller.chain = controller.chain.then(
+				(previousState) =>
+					new Promise<State>((resolveResult) => {
+						const finish = (): void => {
+							controller.pending--;
+							if (controller.pending === 0) setPending(false);
+						};
+						// Like the DOM runtime, the action runs in a transition: updates it
+						// raises, including the result and the pending edge, join that
+						// transition, and optimistic updates hold until it settles.
+						startTransition(() => {
+							let produced: Promise<State>;
+							try {
+								// Read the action when the work runs, not when it was queued:
+								// the cell holds the last accepted render's action.
+								produced = Promise.resolve(
+									(action.impl as (previous: State, payload: Payload) => State | Promise<State>)(
+										previousState,
+										payload,
+									),
+								);
+							} catch (error) {
+								finish();
+								reportUniversalActionError(record, error);
+								resolveResult(previousState);
+								return;
+							}
+							produced.then(
+								(value) => {
+									setState(value);
+									finish();
+									resolveResult(value);
+								},
+								(error: unknown) => {
+									finish();
+									reportUniversalActionError(record, error);
+									resolveResult(previousState);
+								},
+							);
+							return produced;
+						});
+					}),
+			);
+			return controller.chain;
+		},
+	};
+	return controller;
+}
+
 export function useActionState<State, Payload>(
 	action: (previousState: State, payload: Payload) => State | Promise<State>,
 	initialState: State,
@@ -7535,43 +7711,29 @@ export function useActionState<State, Payload>(
 ): [State, (payload: Payload) => void, boolean] {
 	const slot = maybeSlot ?? (typeof _permalinkOrSlot === 'string' ? undefined : _permalinkOrSlot);
 	const base = resolveHookSlot(slot);
-	const root = currentDraftOwner().record.root;
+	const record = currentDraftOwner().record;
 	return withSlot(base, () => {
-		const [state, setState, getState] = useState(initialState, 'state');
+		const [state, setState] = useState(initialState, 'state');
 		const [pending, setPending] = useState(false, 'pending');
-		const dispatch = useCallback(
-			(payload: Payload) => {
-				let result: State | Promise<State>;
-				try {
-					result = action(getState(), payload);
-				} catch (error) {
-					root.__scheduleMicrotask(() => {
-						throw error;
-					});
-					return;
-				}
-				if (result != null && typeof (result as any).then === 'function') {
-					setPending(true);
-					Promise.resolve(result).then(
-						(value) => {
-							setState(value);
-							setPending(false);
-						},
-						(error) => {
-							setPending(false);
-							root.__scheduleMicrotask(() => {
-								throw error;
-							});
-						},
-					);
-				} else {
-					setState(result as State);
-				}
-			},
-			[action],
-			'dispatch',
+		// Queued work reads the latest accepted action through this cell, so the
+		// dispatcher itself never depends on `action` and keeps one identity.
+		const actionCell = committedCallbackHook(action, 'action').cell;
+		// Action users pay for one controller cell. The queue object is not
+		// recreated on ordinary renders and no queue bookkeeping reaches
+		// components that do not call this hook.
+		const controller = useMemo(
+			() =>
+				createUniversalActionStateController<State, Payload>(
+					record,
+					initialState,
+					actionCell,
+					setState,
+					setPending,
+				),
+			[],
+			'queue',
 		);
-		return [state, dispatch, pending];
+		return [state, controller.dispatch, pending];
 	});
 }
 
@@ -7614,6 +7776,24 @@ export function useFormStatus(): FormStatus {
 	return UNIVERSAL_FORM_STATUS;
 }
 
+interface UniversalOptimisticEntry<Action> {
+	action: Action;
+	batch: UniversalTransitionBatch | null;
+	expired: boolean;
+}
+
+interface UniversalOptimisticController<Action> {
+	entries: UniversalOptimisticEntry<Action>[];
+	add(action: Action): void;
+}
+
+const UNIVERSAL_OPTIMISTIC_DEFAULT_REDUCER = <State, Action>(
+	_state: State,
+	action: Action,
+): State => action as unknown as State;
+const BUMP_UNIVERSAL_OPTIMISTIC_VERSION = (version: unknown): number =>
+	(typeof version === 'number' ? version : 0) + 1;
+
 export function useOptimistic<State>(passthrough: State): [State, (action: State) => void];
 export function useOptimistic<State, Action = State>(
 	passthrough: State,
@@ -7628,8 +7808,7 @@ export function useOptimistic<State, Action = State>(
 	passthrough: State,
 	...reducerAndSlot: unknown[]
 ): [State, (action: Action) => void] {
-	const defaultReducer = (_state: State, action: Action) => action as unknown as State;
-	let reducer: (state: State, action: Action) => State = defaultReducer;
+	let reducer = UNIVERSAL_OPTIMISTIC_DEFAULT_REDUCER as (state: State, action: Action) => State;
 	let slot: unknown;
 	if (reducerAndSlot.length === 1) {
 		if (typeof reducerAndSlot[0] === 'function') {
@@ -7643,8 +7822,98 @@ export function useOptimistic<State, Action = State>(
 		}
 		slot = reducerAndSlot[reducerAndSlot.length - 1];
 	}
-	const [optimistic, dispatch] = useReducer(reducer, passthrough, slot);
-	return [Object.is(optimistic, passthrough) ? passthrough : optimistic, dispatch];
+	const base = resolveHookSlot(slot);
+	const owner = currentDraftOwner();
+	const record = owner.record;
+	return withSlot(base, () => {
+		// Optimistic publication deliberately bypasses the active transition lane.
+		// Its paired batch marker is what reverts the value atomically when that
+		// transition is accepted; a rejected draft leaves the marker queued.
+		const versionSlot = resolveHookSlot('version');
+		useState(0, 'version');
+		const controller = useMemo<UniversalOptimisticController<Action>>(
+			() => {
+				const entries: UniversalOptimisticEntry<Action>[] = [];
+				const enqueueUrgentMarker = (): void => {
+					enqueueUniversalHookUpdate(
+						record,
+						versionSlot,
+						'state',
+						BUMP_UNIVERSAL_OPTIMISTIC_VERSION,
+						null,
+					);
+				};
+				const bump = (): void => {
+					enqueueUrgentMarker();
+					scheduleOwner(record, versionSlot);
+				};
+				return {
+					entries,
+					add(action: Action): void {
+						if (record.disposed) return;
+						const renderingOwner = findDraftOwner(record);
+						const batch =
+							renderingOwner === null ? universalTransitionBatchForRecordUpdate(record) : null;
+						const entry: UniversalOptimisticEntry<Action> = {
+							action,
+							batch,
+							expired: false,
+						};
+						entries.push(entry);
+						if (renderingOwner !== null) {
+							renderingOwner.needsRender = true;
+							scheduleUniversalOwnerMicrotask(record, () => {
+								if (entry.expired || record.disposed) return;
+								entry.expired = true;
+								bump();
+							});
+							return;
+						}
+						enqueueUrgentMarker();
+						if (batch !== null) {
+							stageUniversalTransitionUpdate(
+								batch,
+								record,
+								versionSlot,
+								'state',
+								BUMP_UNIVERSAL_OPTIMISTIC_VERSION,
+							);
+							scheduleOwner(record, versionSlot);
+						} else {
+							scheduleOwner(record, versionSlot);
+							scheduleUniversalOwnerMicrotask(record, () => {
+								if (entry.expired || record.disposed) return;
+								entry.expired = true;
+								bump();
+							});
+						}
+					},
+				};
+			},
+			[],
+			'controller',
+		);
+		const attempt = currentAttempt();
+		const markerBatches = record.updates.get(versionSlot)?.batches;
+		let optimistic = passthrough;
+		let retained = 0;
+		for (const entry of controller.entries) {
+			let visible = !entry.expired;
+			let retain = visible;
+			if (entry.batch !== null) {
+				const queued = markerBatches?.some((batch) => batch === entry.batch) === true;
+				const reverting = attempt.transitionRender && attempt.transitionBatches.has(entry.batch);
+				visible = queued && !reverting;
+				// A transition attempt is speculative until native acceptance. Keep its
+				// payload available so abort can replay the optimistic value.
+				retain = queued || reverting;
+			}
+			if (visible) optimistic = reducer(optimistic, entry.action);
+			if (retain) controller.entries[retained++] = entry;
+		}
+		controller.entries.length = retained;
+		return [optimistic, controller.add];
+	});
 }
 
 export function useContext<T>(context: UniversalContext<T>): T {
@@ -7940,22 +8209,31 @@ export function useImperativeHandle<T>(
 }
 
 export function useEffectEvent<T extends (...args: any[]) => any>(fn: T, slot?: unknown): T {
+	return committedCallbackHook(fn, slot).value as T;
+}
+
+/**
+ * One callback cell whose `impl` every commit path replaces with the accepted
+ * render's callback. A rejected or aborted draft never publishes its callback,
+ * and the cell outlives disposal so already-queued work keeps its last value.
+ */
+function committedCallbackHook(fn: (...args: any[]) => any, slot: unknown): EffectEventHook {
 	const owner = currentDraftOwner();
 	const resolved = resolveHookSlot(slot);
 	let hook = owner.hooks.get(resolved) as EffectEventHook | undefined;
 	if (hook?.kind !== 'effect-event') {
-		const cell = { impl: fn as (...args: any[]) => any, active: false };
-		const value = ((...args: any[]) => {
+		const cell = { impl: fn, active: false };
+		const value = (...args: any[]) => {
 			if (!cell.active) throw new Error('A universal Effect Event cannot run before commit.');
 			return cell.impl(...args);
-		}) as T;
+		};
 		hook = { kind: 'effect-event', cell, next: fn, value };
 	} else {
 		hook = { ...hook, next: fn };
 	}
 	owner.hooks.set(resolved, hook);
 	owner.clonedHooks.add(resolved);
-	return hook.value as T;
+	return hook;
 }
 
 export function useDebugValue(): void {}
@@ -8068,6 +8346,9 @@ export function memo<P>(
 	Object.defineProperty(wrapper, UNIVERSAL_COMPONENT_REVISION, {
 		get: () => universalComponentRevision(component),
 	});
+	if (compare === undefined && metadata !== UNIVERSAL_LAZY_METADATA) {
+		Object.defineProperty(wrapper, UNIVERSAL_MEMO_INNER, { value: component });
+	}
 	if (typeof __OCTANE_PROFILE_ENABLED__ !== 'undefined' && __OCTANE_PROFILE_ENABLED__) {
 		__profileComponentSource(wrapper, component);
 	}

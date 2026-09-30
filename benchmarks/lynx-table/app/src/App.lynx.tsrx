@@ -30,11 +30,16 @@ function countRowRender(): void {
 // Each tick runs in its own task so every mutation goes through a full render
 // cycle instead of batching. Lynx for Web provides MessageChannel; the Native
 // background runtime exposes lynx.setTimeout instead. Mirrors Vue and React.
+// Select by the engine, not by the API: iOS's JavaScriptCore background runtime
+// also defines MessageChannel, and taking the Web path there silently disables
+// every Native receipt.
 const STORM_UPDATE_TICKS = 50;
 const STORM_SELECT_TICKS = 30;
 
+declare const SystemInfo: { readonly platform?: string } | undefined;
+const _lynxForWeb = typeof SystemInfo !== 'undefined' && SystemInfo?.platform === 'web';
 const _stormChannel =
-	typeof MessageChannel === 'function' ? new MessageChannel() : null;
+	_lynxForWeb && typeof MessageChannel === 'function' ? new MessageChannel() : null;
 let _stormPending: (() => void) | null = null;
 if (_stormChannel !== null) {
 	_stormChannel.port1.onmessage = () => {
@@ -61,6 +66,7 @@ interface StormEvidence {
 }
 
 type BenchmarkActionResult = void | StormEvidence | Promise<void | StormEvidence>;
+let nativeInteractionOrdinal = 0;
 
 function runStorm(ticks: number, step: (t: number) => void): void | Promise<StormEvidence> {
 	if (_stormChannel === null) {
@@ -157,6 +163,7 @@ function measureNative(name: string, action: () => BenchmarkActionResult): Promi
 		return Promise.reject(new Error('Octane Native benchmark has no pre-state.'));
 	}
 	const pipelineBefore = ackPipelineSnapshot();
+	const interactionOrdinal = ++nativeInteractionOrdinal;
 	const startMs = Date.now();
 	let result: BenchmarkActionResult;
 	try {
@@ -178,6 +185,7 @@ function measureNative(name: string, action: () => BenchmarkActionResult): Promi
 						'__NATIVE_BENCH_RESULT__',
 						JSON.stringify({
 							protocol: 'lynx-native-bench-v2',
+							interactionOrdinal,
 							name,
 							source: 'native-tap',
 							boundary: 'native-input-handler-to-second-native-frame',

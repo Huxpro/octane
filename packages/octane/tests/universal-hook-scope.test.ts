@@ -21,22 +21,29 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	__useLinkedStateWithGetter,
 	createContext,
 	createUniversalHookScope,
 	startTransition,
+	useActionState,
 	useCallback,
 	useContext,
 	useEffect,
+	useEffectEvent,
 	useId,
+	useImperativeHandle,
 	useInsertionEffect,
 	useLayoutEffect,
+	useLinkedState,
 	useMemo,
+	useOptimistic,
 	useRef,
 	useState,
 	useReducer,
 	useSyncExternalStore,
 	useTransition,
 	type UniversalContext,
+	type UniversalHookScope,
 } from 'octane/universal/native';
 
 /** A scope plus the schedule calls it made, which is half of what is asserted. */
@@ -62,7 +69,381 @@ function scopeWithLog() {
 	};
 }
 
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((accept) => {
+		resolve = accept;
+	});
+	return { promise, resolve };
+}
+
+/**
+ * A transition-capable scope whose host microtasks run on the real queue.
+ * Errors a host microtask throws are collected instead of escaping the test.
+ */
+function actionScope() {
+	const errors: unknown[] = [];
+	const scope = createUniversalHookScope({
+		renderer: 'test',
+		scheduleRender() {},
+		scheduleTransitionRender() {},
+		scheduleMicrotask(task) {
+			queueMicrotask(() => {
+				try {
+					task();
+				} catch (error) {
+					errors.push(error);
+				}
+			});
+		},
+	});
+	return {
+		scope,
+		errors,
+		/** Render every promoted transition lane when one is waiting, then commit. */
+		pass<T>(setup: () => T): T {
+			const value = scope.hasTransitionWork() ? scope.renderTransition(setup) : scope.render(setup);
+			scope.commit();
+			return value;
+		},
+	};
+}
+
+async function drainActions(): Promise<void> {
+	for (let index = 0; index < 20; index++) await Promise.resolve();
+}
+
 describe('universal hook scope', () => {
+	it('shows an out-of-action optimistic value once and then reverts through host scheduling', () => {
+		const renders: unknown[] = [];
+		const microtasks: Array<() => void> = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				renders.push(slot);
+			},
+			scheduleTransitionRender() {},
+			scheduleMicrotask(task) {
+				microtasks.push(task);
+			},
+		});
+		let add!: (value: number) => void;
+		const render = (): number =>
+			scope.render(() => {
+				const [value, update] = useOptimistic(
+					10,
+					(current: number, next: number) => current + next,
+					'optimistic',
+				);
+				add = update;
+				return value;
+			});
+
+		expect(render()).toBe(10);
+		scope.commit();
+		add(5);
+		expect(renders).toHaveLength(1);
+		expect(render()).toBe(15);
+		scope.commit();
+		expect(microtasks).toHaveLength(1);
+		microtasks.shift()!();
+		expect(renders).toHaveLength(2);
+		expect(render()).toBe(10);
+		scope.commit();
+		scope.dispose();
+	});
+
+	it('keeps an action-state queue running after reporting an action error', async () => {
+		const { errors, pass, scope } = actionScope();
+		const calls: Array<[number, number]> = [];
+		const setup = () => {
+			const [state, run, pending] = useActionState(
+				(previous: number, payload: number) => {
+					calls.push([previous, payload]);
+					if (payload < 0) throw new Error('action failed');
+					return previous + payload;
+				},
+				10,
+				undefined,
+				'action',
+			);
+			return { state, run, pending };
+		};
+
+		const mounted = pass(setup);
+		expect(mounted).toMatchObject({ state: 10, pending: false });
+		mounted.run(-1);
+		mounted.run(5);
+		await drainActions();
+
+		expect(calls).toEqual([
+			[10, -1],
+			[10, 5],
+		]);
+		// A scope has no semantic parent that could own a boundary, so the error
+		// surfaces exactly once through the adopting host's microtask service.
+		expect(errors).toEqual([new Error('action failed')]);
+		expect(pass(setup)).toMatchObject({ state: 15, pending: false });
+		scope.dispose();
+	});
+
+	it('keeps one action-state dispatcher and runs queued work with the latest accepted action', async () => {
+		const { pass, scope } = actionScope();
+		const gate = deferred<void>();
+		const calls: string[] = [];
+		const setup = (version: string) => () => {
+			const [state, run, pending] = useActionState(
+				async (previous: string, payload: string) => {
+					calls.push(`${version}:${payload}`);
+					if (payload === 'first') await gate.promise;
+					return `${previous}|${version}:${payload}`;
+				},
+				'init',
+				undefined,
+				'action',
+			);
+			return { state, run, pending };
+		};
+
+		const first = pass(setup('v1'));
+		const second = pass(setup('v2'));
+		// The DOM runtime hands out one dispatcher for the hook's lifetime, even
+		// when the action is a fresh inline closure on every render.
+		expect(second.run).toBe(first.run);
+
+		first.run('first');
+		first.run('second');
+		await drainActions();
+		// The dispatcher captured on the first render runs the accepted action.
+		expect(calls).toEqual(['v2:first']);
+
+		// A rejected attempt must not publish its action to queued work.
+		scope.render(setup('rejected'));
+		scope.abort();
+		const third = pass(setup('v3'));
+		expect(third).toMatchObject({ state: 'init', pending: true });
+		expect(third.run).toBe(first.run);
+
+		gate.resolve();
+		await drainActions();
+		expect(calls).toEqual(['v2:first', 'v3:second']);
+		const settled = pass(setup('v3'));
+		expect(settled).toMatchObject({ state: 'init|v2:first|v3:second', pending: false });
+		expect(settled.run).toBe(first.run);
+		scope.dispose();
+	});
+
+	it('runs action-state work in a transition so optimistic updates hold until it settles', async () => {
+		const { pass, scope } = actionScope();
+		const gate = deferred<void>();
+		let addOptimistic!: (value: number) => void;
+		const setup = () => {
+			const [state, run, pending] = useActionState(
+				async (previous: number, payload: number) => {
+					addOptimistic(payload);
+					await gate.promise;
+					return previous + payload;
+				},
+				10,
+				undefined,
+				'action',
+			);
+			const [optimistic, add] = useOptimistic(
+				state,
+				(current: number, next: number) => current + next,
+				'optimistic',
+			);
+			addOptimistic = add;
+			return { state, optimistic, pending, run };
+		};
+
+		pass(setup).run(5);
+		await drainActions();
+		expect(pass(setup)).toMatchObject({ state: 10, optimistic: 15, pending: true });
+		// Outside a transition an optimistic value reverts on the next microtask.
+		// Inside the action's transition it holds until the action settles.
+		await drainActions();
+		expect(pass(setup)).toMatchObject({ state: 10, optimistic: 15, pending: true });
+
+		gate.resolve();
+		await drainActions();
+		expect(pass(setup)).toMatchObject({ state: 15, optimistic: 15, pending: false });
+		scope.dispose();
+	});
+
+	it('publishes imperative handles only from accepted visible hook-scope drafts', () => {
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleLayoutEffectCommit(task) {
+				task();
+			},
+		});
+		const history: Array<string | null> = [];
+		let current: string | null = null;
+		const ref = (value: { readonly label: string } | null) => {
+			current = value?.label ?? null;
+			history.push(current);
+		};
+		const render = (label: string): void =>
+			scope.render(() => useImperativeHandle(ref, () => ({ label }), [label], 'handle'));
+
+		render('alpha');
+		expect(current).toBeNull();
+		expect(history).toEqual([]);
+		scope.commit();
+		expect(current).toBe('alpha');
+
+		render('beta');
+		expect(current).toBe('alpha');
+		scope.abort();
+		expect(history).toEqual(['alpha']);
+
+		render('beta');
+		scope.commit(false);
+		expect(current).toBeNull();
+		expect(history).toEqual(['alpha', null]);
+
+		render('gamma');
+		scope.commit(false);
+		expect(history).toEqual(['alpha', null]);
+		scope.commit(true);
+		expect(current).toBe('gamma');
+
+		scope.dispose();
+		expect(current).toBeNull();
+		expect(history).toEqual(['alpha', null, 'gamma', null]);
+	});
+
+	it('activates effect events only from the latest accepted hook-scope draft', () => {
+		const scope = createUniversalHookScope({ renderer: 'test', scheduleRender() {} });
+		const render = (value: string): (() => string) =>
+			scope.render(() => useEffectEvent(() => value, 'event'));
+
+		const event = render('alpha');
+		expect(() => event()).toThrow(/cannot run before commit/);
+		scope.commit();
+		expect(event()).toBe('alpha');
+
+		expect(render('beta')).toBe(event);
+		expect(event()).toBe('alpha');
+		scope.abort();
+		expect(event()).toBe('alpha');
+
+		expect(render('gamma')).toBe(event);
+		expect(event()).toBe('alpha');
+		scope.commit();
+		expect(event()).toBe('gamma');
+		scope.dispose();
+		expect(() => event()).toThrow(/cannot run before commit/);
+	});
+
+	it('publishes linked-state source generations only when the adopting host commits', () => {
+		const scheduled: unknown[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				scheduled.push(slot);
+			},
+		});
+		let update!: (value: string | ((previous: string) => string)) => void;
+		const render = (source: string): string =>
+			scope.render(() => {
+				const [value, setValue] = useLinkedState<string, string>(
+					source,
+					(next, previous) =>
+						previous === undefined ? `initial:${next}` : `${next}<-${previous.value}`,
+					undefined,
+					'linked',
+				);
+				update = setValue;
+				return value;
+			});
+		const pass = (source: string): string => {
+			const value = render(source);
+			scope.commit();
+			return value;
+		};
+
+		expect(pass('alpha')).toBe('initial:alpha');
+		update((value) => value + '!');
+		expect(scheduled).toEqual(['linked']);
+		expect(pass('alpha')).toBe('initial:alpha!');
+
+		expect(render('beta')).toBe('beta<-initial:alpha!');
+		scope.abort();
+		expect(pass('alpha')).toBe('initial:alpha!');
+		expect(pass('beta')).toBe('beta<-initial:alpha!');
+		scope.dispose();
+	});
+
+	it('projects local linked-state edits while preserving source reconciliation', () => {
+		const scheduled: unknown[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender(slot) {
+				scheduled.push(slot);
+			},
+		});
+		let update!: (value: string | ((previous: string) => string)) => void;
+		let getValue!: () => string;
+		const render = (source: string): string =>
+			scope.render(() => {
+				const [value, setValue, get] = __useLinkedStateWithGetter<string, string>(
+					source,
+					(next, previous) =>
+						previous === undefined ? `initial:${next}` : `${next}<-${previous.value}`,
+					undefined,
+					'linked',
+				);
+				update = setValue;
+				getValue = get;
+				return value;
+			});
+
+		expect(render('alpha')).toBe('initial:alpha');
+		scope.commit();
+		update((value) => value + '!');
+		expect(scheduled).toEqual(['linked']);
+
+		let projected = '';
+		expect(
+			scope.renderDirty(['linked'], (sources) => {
+				projected = sources[0]!() as string;
+			}),
+		).toBe(true);
+		expect(projected).toBe('initial:alpha!');
+		scope.abort();
+
+		expect(
+			scope.renderDirty(['linked'], (sources) => {
+				projected = sources[0]!() as string;
+			}),
+		).toBe(true);
+		scope.commit();
+		expect(getValue()).toBe('initial:alpha!');
+
+		expect(render('beta')).toBe('beta<-initial:alpha!');
+		scope.commit();
+		scope.dispose();
+	});
+
+	it('declines linked-state projection when no current-value getter exists', () => {
+		const scope = createUniversalHookScope({ renderer: 'test', scheduleRender() {} });
+		scope.render(() =>
+			useLinkedState<string, string>('alpha', (source) => `initial:${source}`, undefined, 'linked'),
+		);
+		scope.commit();
+		let ran = false;
+		expect(
+			scope.renderDirty(['linked'], () => {
+				ran = true;
+			}),
+		).toBe(false);
+		expect(ran).toBe(false);
+		scope.dispose();
+	});
+
 	it('keeps a state cell across renders and schedules when a committed setter writes it', () => {
 		const { scope, scheduled, pass } = scopeWithLog();
 
@@ -712,6 +1093,64 @@ describe('universal hook scope', () => {
 		scope.dispose();
 	});
 
+	it('publishes insertion effects in their own phase and keeps them connected while hidden', () => {
+		const insertion: (() => void)[] = [];
+		const layout: (() => void)[] = [];
+		const lifecycle: string[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleInsertionEffectCommit: (task) => insertion.push(task),
+			scheduleLayoutEffectCommit: (task) => layout.push(task),
+		});
+		const render = (version: number, visible: boolean): void => {
+			scope.render(() => {
+				useInsertionEffect(
+					() => {
+						lifecycle.push(`insertion:create:${version}`);
+						return () => lifecycle.push(`insertion:cleanup:${version}`);
+					},
+					[version],
+					'insertion',
+				);
+				useLayoutEffect(
+					() => {
+						lifecycle.push(`layout:create:${version}`);
+						return () => lifecycle.push(`layout:cleanup:${version}`);
+					},
+					[version],
+					'layout',
+				);
+			});
+			scope.commit(visible);
+		};
+
+		render(0, false);
+		expect(insertion).toHaveLength(1);
+		expect(layout).toEqual([]);
+		insertion.shift()!();
+		expect(lifecycle).toEqual(['insertion:create:0']);
+
+		render(1, false);
+		expect(insertion).toHaveLength(1);
+		expect(layout).toEqual([]);
+		insertion.shift()!();
+		expect(lifecycle.slice(-2)).toEqual(['insertion:cleanup:0', 'insertion:create:1']);
+
+		render(1, true);
+		expect(insertion).toEqual([]);
+		expect(layout).toHaveLength(1);
+		layout.shift()!();
+		expect(lifecycle.at(-1)).toBe('layout:create:1');
+
+		scope.dispose();
+		expect(insertion).toHaveLength(1);
+		expect(layout).toHaveLength(1);
+		insertion.shift()!();
+		layout.shift()!();
+		expect(lifecycle.slice(-2)).toEqual(['insertion:cleanup:1', 'layout:cleanup:1']);
+	});
+
 	it('refuses a context read instead of silently answering the default value', () => {
 		const { scope } = scopeWithLog();
 		const Theme = createContext('light');
@@ -751,6 +1190,37 @@ describe('universal hook scope', () => {
 		expect(a).not.toBe(b);
 		scope.dispose();
 		other.scope.dispose();
+	});
+
+	it('draws useId values from the adopting core namespace and keeps them once accepted', () => {
+		const issued: string[] = [];
+		const allocateId = (): string => {
+			const id = `:root-${issued.length}:`;
+			issued.push(id);
+			return id;
+		};
+		const scopes = [0, 1].map(() =>
+			createUniversalHookScope({ renderer: 'test', scheduleRender() {}, allocateId }),
+		);
+		const [page, row] = scopes as [UniversalHookScope, UniversalHookScope];
+
+		// Mounting instances in tree order draws their ids in that order, so a
+		// core that allocates positionally reproduces another thread's first tree.
+		expect(page.render(() => [useId('first'), useId('second')])).toEqual([':root-0:', ':root-1:']);
+		page.commit();
+		expect(row.render(() => useId('id'))).toBe(':root-2:');
+		// An abandoned draft keeps nothing; the next render asks the core again.
+		row.abort();
+		expect(row.render(() => useId('id'))).toBe(':root-3:');
+		row.commit();
+
+		// Accepted ids are cells: later renders reuse them without allocating.
+		expect(page.render(() => [useId('first'), useId('second')])).toEqual([':root-0:', ':root-1:']);
+		page.commit();
+		expect(row.render(() => useId('id'))).toBe(':root-3:');
+		row.commit();
+		expect(issued).toHaveLength(4);
+		for (const scope of scopes) scope.dispose();
 	});
 
 	it('runs a committed setter urgently inside startTransition instead of staging it', () => {
@@ -872,6 +1342,49 @@ describe('universal hook scope', () => {
 		expect(scope.hasTransitionWork()).toBe(false);
 		expect(urgent).toHaveLength(2);
 		expect(read('urgent')).toEqual([false, 1]);
+		scope.commit();
+		scope.dispose();
+	});
+
+	it('keeps a lane promoted during an accepted transition draft for its own render', () => {
+		const microtasks: (() => void)[] = [];
+		const transition: unknown[] = [];
+		const scope = createUniversalHookScope({
+			renderer: 'test',
+			scheduleRender() {},
+			scheduleTransitionRender() {
+				transition.push('render');
+			},
+			scheduleMicrotask(task) {
+				microtasks.push(task);
+			},
+		});
+		let setCount!: (value: number) => void;
+		const read = (lane: 'urgent' | 'transition') =>
+			(lane === 'transition' ? scope.renderTransition : scope.render)(() => {
+				const [count, update] = useState(0, 'count');
+				setCount = update;
+				return count;
+			});
+
+		expect(read('urgent')).toBe(0);
+		scope.commit();
+		startTransition(() => setCount(1));
+		microtasks.shift()!();
+		expect(read('transition')).toBe(1);
+
+		// A second lane promotes while the first draft awaits host acceptance.
+		startTransition(() => setCount(2));
+		microtasks.shift()!();
+		expect(transition).toEqual(['render', 'render']);
+		scope.commit();
+		// The accepted reveal settles what it rendered, not the queued lane.
+		scope.finishTransitions(true);
+		expect(scope.hasTransitionWork()).toBe(true);
+		expect(read('transition')).toBe(2);
+		scope.commit();
+		expect(scope.hasTransitionWork()).toBe(false);
+		expect(read('urgent')).toBe(2);
 		scope.commit();
 		scope.dispose();
 	});

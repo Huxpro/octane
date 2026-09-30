@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-25T08:35:13.495Z",
+  "scope": "One clean-device Android 10 / Lynx SDK 4.2 lifecycle cohort for the immutable current-product structural Element Template bundle at 10,000 rows. Each of five independent cold launches ran create, clear, and recreate on one page. This is correctness, bounded-owner, and operation-latency evidence at n=5; it is not a process-memory/GC, Android 11+, higher-scale, native-list, no-JIT, low-end, iOS, cross-framework, or default-switch claim.",
+  "candidate": {
+    "runnerCommit": "12c70b7cc917d50bc8cd2deb3a92423c371d5198",
+    "artifactBuildCommit": "be7615df441519a99e7478d951a8f494feed6af4",
+    "branch": "feat/optimal-lynx-app-adoption",
+    "productGraphUnchangedSinceArtifactBuild": true,
+    "interveningFiles": [
+      "benchmarks/lynx-table/stages/issue291-m0-native-probe.test.mjs",
+      "docs/reports/lynx-issue383-final-qualification/README.md",
+      "docs/reports/lynx-issue383-final-qualification/evidence/android-current-head-structural-element-template-create-scale.json",
+      "docs/reports/lynx-issue383-final-qualification/evidence/android-current-head-structural-element-template-create1000-abba.json",
+      "docs/reports/lynx-issue383-final-qualification/evidence/android-current-head-structural-element-template-create10000-et-only.json"
+    ]
+  },
+  "device": {
+    "model": "aries_10",
+    "product": "aries",
+    "android": "10",
+    "abi": "arm64-v8a",
+    "identity": "sha256:65f7793a960579f9dd5629ba23a76282cf5cd91b4cc4f6ca1ed25cd8f441f064",
+    "rawIdentityRetained": false,
+    "packageVersion": "1.0",
+    "lynxSdk": "4.2",
+    "batteryTemperatureTenthsC": {
+      "min": 350,
+      "max": 350
+    },
+    "thermalStatuses": [0]
+  },
+  "protocol": {
+    "runner": "octane-issue194-device-v1",
+    "nativeReceipt": "lynx-native-bench-v2",
+    "nativeBoundary": "native-input-handler-to-second-native-frame",
+    "mainReceipt": "octane-issue194-compact-main-v1",
+    "mainBoundary": "compact product receiver frame application through ACK and complete dispatch",
+    "ordering": "single-cell repeated cold launches",
+    "coldLaunchPerAttempt": true,
+    "devtool": "disabled by a background-only preflight before every attempt; no CDP connection used",
+    "input": "native ADB taps at the registered create and clear controls",
+    "semanticOracle": "0 to 10,000 rows, 10,000 to 0 rows, then 0 to 10,000 new rows; exact ids at each populated state; one transport ACK; two native frames; strict ownership census; and no observed error",
+    "wireShapePerOperation": {
+      "encodedBytes": 18,
+      "messages": 2,
+      "ackMessages": 1
+    },
+    "lifecycleCensusRequired": true
+  },
+  "instrumentedBundles": {
+    "structuralElementTemplate": {
+      "engine": "3.2",
+      "bytes": 245584,
+      "sha256": "c00df02fdd6da746ac787a196da4b5df064af3a3834bdcce79765e0b0a703f9c"
+    },
+    "disableDevtool": {
+      "bytes": 272537,
+      "sha256": "06a471fd03bb2ba58859726e24a41c2fba602c8ee8da624558bbbf957a46b020"
+    }
+  },
+  "cohort": {
+    "scale": 10000,
+    "targetAcceptedSamples": 5,
+    "acceptedSamples": 5,
+    "attempts": 5,
+    "invalidAttempts": 0,
+    "operationsPerSample": 3,
+    "acceptedOperations": 15,
+    "semanticOraclePassed": true,
+    "lifecycleCensusPassed": true,
+    "transportAcknowledged": 15,
+    "nativeFrames": 30,
+    "errors": 0,
+    "create": {
+      "nativeLatencyMs": {
+        "values": [21342, 21222, 21533, 21350, 20631],
+        "min": 20631,
+        "median": 21342,
+        "mean": 21215.6,
+        "max": 21533
+      },
+      "mainCommitWallMs": {
+        "values": [20721, 20585, 20889, 20723, 20009],
+        "min": 20009,
+        "median": 20721,
+        "mean": 20585.4,
+        "max": 20889
+      },
+      "frameBytes": {
+        "values": [338847, 338642, 339137, 338825, 338530],
+        "min": 338530,
+        "median": 338825,
+        "mean": 338796.2,
+        "max": 339137
+      },
+      "stateRows": {
+        "before": 0,
+        "after": 10000
+      },
+      "ownershipCensus": {
+        "handles": 10001,
+        "ranges": 2,
+        "listenerSlots": 20012,
+        "retainedHostRefs": 40028,
+        "recycledHandles": 0,
+        "recycledHostRefs": 0
+      }
+    },
+    "clear": {
+      "nativeLatencyMs": {
+        "values": [2580, 2393, 2585, 2597, 2604],
+        "min": 2393,
+        "median": 2585,
+        "mean": 2551.8,
+        "max": 2604
+      },
+      "mainCommitWallMs": {
+        "values": [2509, 2316, 2512, 2522, 2527],
+        "min": 2316,
+        "median": 2512,
+        "mean": 2477.2,
+        "max": 2527
+      },
+      "frameBytes": {
+        "values": [12, 12, 12, 12, 12],
+        "min": 12,
+        "median": 12,
+        "mean": 12,
+        "max": 12
+      },
+      "stateRows": {
+        "before": 10000,
+        "after": 0
+      },
+      "ownershipCensus": {
+        "handles": 1,
+        "ranges": 1,
+        "listenerSlots": 12,
+        "retainedHostRefs": 28,
+        "recycledHandles": 10000,
+        "recycledHostRefs": 40000
+      }
+    },
+    "recreate": {
+      "nativeLatencyMs": {
+        "values": [2933, 2927, 2934, 2934, 2954],
+        "min": 2927,
+        "median": 2934,
+        "mean": 2936.4,
+        "max": 2954
+      },
+      "mainCommitWallMs": {
+        "values": [2368, 2371, 2353, 2376, 2380],
+        "min": 2353,
+        "median": 2371,
+        "mean": 2369.6,
+        "max": 2380
+      },
+      "frameBytes": {
+        "values": [350160, 349396, 349831, 349610, 349625],
+        "min": 349396,
+        "median": 349625,
+        "mean": 349724.4,
+        "max": 350160
+      },
+      "stateRows": {
+        "before": 0,
+        "after": 10000
+      },
+      "ownershipCensus": {
+        "handles": 10001,
+        "ranges": 2,
+        "listenerSlots": 20012,
+        "retainedHostRefs": 40028,
+        "recycledHandles": 0,
+        "recycledHostRefs": 0
+      }
+    }
+  },
+  "sourceReport": {
+    "role": "create10000-structural-element-template-create-clear-recreate",
+    "sha256": "33630baa3e85108422bcc96218e2976a01406220cb3beec6aeecdb8d8132c5a1"
+  },
+  "sanitization": "This compact record excludes the raw device endpoint, local paths, per-event timestamps, process IDs, raw log lines, and generated row labels.",
+  "decision": {
+    "createClearRecreate": "stable correctness and bounded-owner gate passed at n=5: all 15 operations completed on the first attempt with exact state, ACK, two frames, and the expected ownership census",
+    "ownerLifecycle": "clear returned live logical ownership to the rows-0 baseline while retaining one bounded 10,000-handle / 40,000-host-ref recycle pool; recreate consumed that pool and restored the populated census exactly",
+    "latencyComparison": "not claimed because this is a single-cell cohort; recreate is reported as an operation result, not attributed causally to recycling",
+    "memoryQualification": "not claimed because Android 10 lifecycle census is not fresh-process peak, settled, after-clear, post-GC process memory on the required Android 11+ runtime",
+    "defaultSwitch": "not authorized",
+    "roadmapVerdict": "NO-GO remains unchanged",
+    "remaining": [
+      "20-cycle fresh-process peak, settled, after-clear, and post-GC memory on one Android 11+ device/runtime cohort",
+      "behavior above 10,000 rows within the resident native-node budget or through native-list virtualization",
+      "registered update-every-tenth, select, swap, remove, and storm operations plus native-list",
+      "no-JIT and low-end Android matrix",
+      "iOS correctness, latency, memory, and bytecode evidence",
+      "cross-framework and latest-upstream comparison with a shared supported receipt"
+    ]
+  }
+}

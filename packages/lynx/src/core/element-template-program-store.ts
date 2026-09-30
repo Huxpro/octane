@@ -171,6 +171,13 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 	const pageAddress = Object.freeze({ kind: 'page' as const, owner: 1 as const, slot: 0 as const });
 	const instances = new Map<number, TemplateInstance<Handle>>();
 	const ranges = new Map<string, TemplateRange>();
+	// Lynx 4.1 detaches an Element Template tree on remove, but Android keeps the
+	// tree's TextShadowNode JNI weak globals alive. Dropping the only reusable
+	// handle here would therefore leak the native allocation until the 51,200
+	// entry process table aborts. Keep committed removals by their exact compiled
+	// plan and repopulate every mutable slot before a later logical mount.
+	const recycled = new Map<UniversalProgramPlan, Handle[]>();
+	const pendingRecycled: TemplateInstance<Handle>[] = [];
 	const templates: (UniversalProgramPlan | undefined)[] = [undefined];
 	let journal: unknown[] | null = null;
 	let journalFirstHandle = 1;
@@ -219,6 +226,15 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 	};
 	const nativeBefore = (before: number | null): Handle | null =>
 		before === null ? null : instance(before).native;
+	const recycle = (value: TemplateInstance<Handle>): void => {
+		// Lynx 4.1 does not free a removed template instance on either platform:
+		// dropping the handle leaks it (on Android through TextShadowNode weak
+		// globals, on iOS as ~0.1 GB per 1,000-row create/clear cycle). A pooled
+		// handle therefore keeps its resident reservation.
+		let handles = recycled.get(value.plan);
+		if (handles === undefined) recycled.set(value.plan, (handles = []));
+		handles.push(value.native);
+	};
 	const validateAnchor = (
 		parent: LynxElementTemplateAddress,
 		anchor: LynxElementTemplateAddress | null,
@@ -356,9 +372,9 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 			}
 			throw error;
 		}
-		nativeBudget.releaseResident(1, value.plan.nodes);
 		unlink(value, range);
 		instances.delete(handle);
+		pendingRecycled.push(value);
 		undo.push(value, range, before, JournalOpcode.Remove);
 	};
 	const mount = (input: LynxCompiledProgramMount<LynxElementTemplateAddress>): void => {
@@ -483,6 +499,13 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 		}
 		const created: TemplateInstance<Handle>[] = [];
 		let pending: TemplateInstance<Handle> | null = null;
+		// Reserve every row the pool cannot supply before any native call, so a
+		// run that would exceed the resident bound is refused before it creates,
+		// inserts, or lays out a partial tree.
+		const pool = recycled.get(input.plan);
+		const fresh = Math.max(0, input.count - (pool?.length ?? 0));
+		if (fresh !== 0) nativeBudget.reserveResident(fresh, fresh * input.plan.nodes);
+		let reservedUnused = fresh;
 		try {
 			for (let row = 0; row < input.count; row++) {
 				const handle = input.firstHandle + row;
@@ -508,15 +531,21 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 					);
 				}
 				if (template.visibilitySlot !== undefined) attributes[template.visibilitySlot] = false;
-				nativeBudget.reserveResident(1, input.plan.nodes);
-				let native: Handle;
-				try {
+				let native = pool?.pop();
+				if (native === undefined) {
 					native = nativeBudget.run(input.plan.nodes, () =>
 						papi.create(template.templateId, attributes, [], handle),
 					);
-				} catch (error) {
-					nativeBudget.releaseResident(1, input.plan.nodes);
-					throw error;
+					reservedUnused--;
+				} else {
+					try {
+						for (let slot = 0; slot < attributes.length; slot++) {
+							nativeBudget.run(1, () => papi.setAttribute(native!, slot, attributes[slot]));
+						}
+					} catch (error) {
+						pool!.push(native);
+						throw error;
+					}
 				}
 				const value: TemplateInstance<Handle> = {
 					handle,
@@ -541,13 +570,16 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 			}
 		} catch (error) {
 			const errors: unknown[] = [error];
+			if (reservedUnused !== 0) {
+				nativeBudget.releaseResident(reservedUnused, reservedUnused * input.plan.nodes);
+			}
 			if (pending !== null) {
 				try {
 					// Native insertion may mutate before throwing. Without crossing back
 					// into ordinary Element inspection, removal is the only safe cleanup
 					// probe; failure faults the store rather than claiming a retryable tree.
 					nativeBudget.run(1, () => papi.remove(target.native, target.slot, pending!.native));
-					nativeBudget.releaseResident(1, pending.plan.nodes);
+					recycle(pending);
 				} catch (cleanupError) {
 					errors.push(cleanupError);
 				}
@@ -556,7 +588,7 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 				const value = created[index]!;
 				try {
 					nativeBudget.run(1, () => papi.remove(target.native, target.slot, value.native));
-					nativeBudget.releaseResident(1, value.plan.nodes);
+					recycle(value);
 				} catch (cleanupError) {
 					errors.push(cleanupError);
 				}
@@ -590,7 +622,7 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 						const value = instance(first + offset);
 						const target = nativeParent(value.parent);
 						nativeBudget.run(1, () => papi.remove(target.native, target.slot, value.native));
-						nativeBudget.releaseResident(1, value.plan.nodes);
+						recycle(value);
 						unlink(value, range);
 						instances.delete(value.handle);
 					}
@@ -604,16 +636,10 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 					const before = active.pop() as number | null;
 					const range = active.pop() as TemplateRange;
 					const value = active.pop() as TemplateInstance<Handle>;
-					nativeBudget.reserveResident(1, value.plan.nodes);
 					const target = nativeParent(value.parent);
-					try {
-						nativeBudget.run(1, () =>
-							papi.insert(target.native, target.slot, value.native, nativeBefore(before)),
-						);
-					} catch (error) {
-						nativeBudget.releaseResident(1, value.plan.nodes);
-						throw error;
-					}
+					nativeBudget.run(1, () =>
+						papi.insert(target.native, target.slot, value.native, nativeBefore(before)),
+					);
 					instances.set(value.handle, value);
 					relink(value, range);
 				} else if (opcode === JournalOpcode.Move) {
@@ -654,6 +680,7 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 		lastHandle = journalFirstHandle;
 		nextListener = journalFirstListener;
 		templates.length = journalFirstTemplates;
+		pendingRecycled.length = 0;
 		if (errors.length !== 0) {
 			faulted = true;
 			aggregate(errors, 'Element Template frame rollback failed.');
@@ -676,6 +703,8 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 		commit() {
 			activeJournal();
 			journal = null;
+			for (const value of pendingRecycled) recycle(value);
+			pendingRecycled.length = 0;
 		},
 		rollback,
 		define(template, plan) {
@@ -834,6 +863,13 @@ export function createLynxElementTemplateProgramStore<Handle extends LynxElement
 			}
 			if (instances.size === 0) {
 				ranges.clear();
+				for (const [plan, handles] of recycled) {
+					if (handles.length !== 0) {
+						nativeBudget.releaseResident(handles.length, handles.length * plan.nodes);
+					}
+				}
+				recycled.clear();
+				pendingRecycled.length = 0;
 				templates.length = 1;
 			}
 			if (errors.length !== 0) aggregate(errors, 'Element Template disposal failed.');

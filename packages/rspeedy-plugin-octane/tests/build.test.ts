@@ -344,6 +344,69 @@ function programCoverageProbe(reports: unknown[]) {
 	};
 }
 
+class BuildErrorProbePlugin {
+	constructor(private readonly messages: string[]) {}
+
+	apply(compiler: any) {
+		compiler.hooks.done.tap(this.constructor.name, (stats: any) => {
+			for (const error of stats.compilation.errors) this.messages.push(String(error.message));
+		});
+		compiler.hooks.failed.tap(this.constructor.name, (error: Error) => {
+			this.messages.push(String(error.message));
+		});
+	}
+}
+
+/** Build one explicit Element Template entry that must fail, returning every diagnostic. */
+async function collectElementTemplateBuildFailure(
+	mode: 'development' | 'production',
+	entry: string,
+): Promise<string> {
+	const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-element-template-refusal-'));
+	const messages: string[] = [];
+	const rspeedy = await createRspeedy({
+		cwd: APPLICATION_FIXTURE,
+		loadEnv: false,
+		environment: ['lynx'],
+		rspeedyConfig: {
+			mode,
+			environments: { lynx: {} },
+			dev: { hmr: false, liveReload: false },
+			output: {
+				cleanDistPath: true,
+				distPath: { root: join(temporaryRoot, 'dist') },
+				filenameHash: false,
+				sourceMap: false,
+			},
+			source: { entry: { main: entry } },
+			splitChunks: false,
+			plugins: [
+				pluginOctane({ dev: false, hmr: false, experimentalElementTemplate: true }),
+				{
+					name: 'octane:build-error-probe',
+					setup(api: any) {
+						api.modifyBundlerChain((chain: any) => {
+							chain.plugin('octane:build-error-probe').use(BuildErrorProbePlugin, [messages]);
+						});
+					},
+				},
+			],
+		},
+	});
+	try {
+		let rejection: unknown;
+		const result = await rspeedy.build().catch((error: unknown) => {
+			rejection = error;
+			return undefined;
+		});
+		await result?.close();
+		expect(rejection).toBeInstanceOf(Error);
+		return [(rejection as Error).message, ...messages].join('\n');
+	} finally {
+		rmSync(temporaryRoot, { recursive: true, force: true });
+	}
+}
+
 async function collectCoreSelections(
 	mode: 'development' | 'production',
 	entry: Record<string, string>,
@@ -597,10 +660,20 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'Activity',
 								'createContext',
 								'memo',
+								'startTransition',
+								'useActionState',
 								'useContext',
+								'useDebugValue',
+								'useEffectEvent',
+								'useId',
+								'useImperativeHandle',
+								'useInsertionEffect',
 								'useLayoutEffect',
+								'useLinkedState',
 								'useMemo',
+								'useOptimistic',
 								'useReducer',
+								'useRef',
 							],
 						},
 						mainThread: {
@@ -608,10 +681,20 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'Activity',
 								'createContext',
 								'memo',
+								'startTransition',
+								'useActionState',
 								'useContext',
+								'useDebugValue',
+								'useEffectEvent',
+								'useId',
+								'useImperativeHandle',
+								'useInsertionEffect',
 								'useLayoutEffect',
+								'useLinkedState',
 								'useMemo',
+								'useOptimistic',
 								'useReducer',
+								'useRef',
 							],
 						},
 					},
@@ -645,9 +728,18 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 											name: 'BlockEligibleRow',
 											hooks: [
 												expect.objectContaining({ name: 'useReducer' }),
+												expect.objectContaining({ name: 'useOptimistic' }),
+												expect.objectContaining({ name: 'useActionState' }),
+												expect.objectContaining({ name: 'useId' }),
+												expect.objectContaining({ name: 'useLinkedState' }),
 												expect.objectContaining({ name: 'useContext' }),
+												expect.objectContaining({ name: 'useDebugValue' }),
 												expect.objectContaining({ name: 'useMemo' }),
+												expect.objectContaining({ name: 'useInsertionEffect' }),
 												expect.objectContaining({ name: 'useLayoutEffect' }),
+												expect.objectContaining({ name: 'useRef' }),
+												expect.objectContaining({ name: 'useImperativeHandle' }),
+												expect.objectContaining({ name: 'useEffectEvent' }),
 											],
 										},
 									}),
@@ -694,9 +786,18 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 											name: 'BlockEligibleRow',
 											hooks: [
 												expect.objectContaining({ name: 'useReducer' }),
+												expect.objectContaining({ name: 'useOptimistic' }),
+												expect.objectContaining({ name: 'useActionState' }),
+												expect.objectContaining({ name: 'useId' }),
+												expect.objectContaining({ name: 'useLinkedState' }),
 												expect.objectContaining({ name: 'useContext' }),
+												expect.objectContaining({ name: 'useDebugValue' }),
 												expect.objectContaining({ name: 'useMemo' }),
+												expect.objectContaining({ name: 'useInsertionEffect' }),
 												expect.objectContaining({ name: 'useLayoutEffect' }),
+												expect.objectContaining({ name: 'useRef' }),
+												expect.objectContaining({ name: 'useImperativeHandle' }),
+												expect.objectContaining({ name: 'useEffectEvent' }),
 											],
 										},
 									}),
@@ -1045,31 +1146,40 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 	}, 120_000);
 
 	it('fails the explicit Element Template build before encoding an unsupported native list', async () => {
-		const temporaryRoot = mkdtempSync(join(tmpdir(), 'octane-rspeedy-element-template-refusal-'));
-		const rspeedy = await createRspeedy({
-			cwd: APPLICATION_FIXTURE,
-			loadEnv: false,
-			environment: ['lynx'],
-			rspeedyConfig: {
-				mode: 'production',
-				environments: { lynx: {} },
-				dev: { hmr: false, liveReload: false },
-				output: {
-					cleanDistPath: true,
-					distPath: { root: join(temporaryRoot, 'dist') },
-					filenameHash: false,
-					sourceMap: false,
-				},
-				source: { entry: { main: './src/native-list.ts' } },
-				splitChunks: false,
-				plugins: [pluginOctane({ dev: false, hmr: false, experimentalElementTemplate: true })],
-			},
-		});
-		try {
-			await expect(rspeedy.build()).rejects.toThrow('Rspack build failed.');
-		} finally {
-			rmSync(temporaryRoot, { recursive: true, force: true });
-		}
+		const diagnostics = await collectElementTemplateBuildFailure(
+			'production',
+			'./src/native-list.ts',
+		);
+		// The refusal names the module whose plans did not lower, not only a count.
+		expect(diagnostics).toMatch(
+			/Element Template lowering covered 0 of \d+ main-thread plans; not lowered: \S*NativeListApp\.tsrx \(0 of \d+\)/,
+		);
+	}, 120_000);
+
+	it('fails an explicit Element Template build whose application is not compiled-program eligible', async () => {
+		// A portal keeps the entry off the compact compiled-program application. The
+		// explicit whole-root option must refuse that graph rather than silently
+		// building the general Element owner.
+		const diagnostics = await collectElementTemplateBuildFailure(
+			'production',
+			'./src/portal-eligible.ts',
+		);
+		expect(diagnostics).toContain(
+			'`experimentalElementTemplate` could not select the whole-root Element Template application',
+		);
+		expect(diagnostics).toContain('entry-ineligible (entry: main__octane_main_thread)');
+		expect(diagnostics).toMatch(
+			/compiled-program-unsupported-template-feature \(module: \S*PortalEligible\.tsrx, thread: background, kind: portal/,
+		);
+	}, 120_000);
+
+	it('fails an explicit Element Template development build instead of falling back', async () => {
+		const diagnostics = await collectElementTemplateBuildFailure(
+			'development',
+			'./src/block-eligible.ts',
+		);
+		expect(diagnostics).toContain('compiled-program-selection-requires-one-shot-production');
+		expect(diagnostics).toContain('requires a one-shot production build');
 	}, 120_000);
 
 	it('builds a fixed-shape native list as the compact production application', async () => {
@@ -1341,7 +1451,7 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 					selection: {
 						version: 1,
 						matrix: {
-							version: 20,
+							version: 28,
 							runtimeNames: [
 								'Activity',
 								'createContext',
@@ -1349,12 +1459,20 @@ describe('@octanejs/rspeedy-plugin resident-program coverage', () => {
 								'memo',
 								'startTransition',
 								'use',
+								'useActionState',
+								'useOptimistic',
 								'useBatch',
 								'useCallback',
 								'useContext',
 								'useDeferredValue',
+								'useDebugValue',
 								'useEffect',
+								'useEffectEvent',
+								'useId',
+								'useImperativeHandle',
+								'useInsertionEffect',
 								'useLayoutEffect',
+								'useLinkedState',
 								'useMemo',
 								'useReducer',
 								'useRef',

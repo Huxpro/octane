@@ -133,7 +133,10 @@ The option is valid only for the two-layer application build. It keeps the
 ordinary Block/application eligibility proof, then additionally requires every
 selected main-thread plan to lower to the public Template Definition schema.
 The build fails when coverage is incomplete; it never emits a tree that mixes
-opaque template handles with ordinary Element refs. The selected native bundle
+opaque template handles with ordinary Element refs. It also never falls back to
+the general application: an entry the compiled-program proof declines, or a
+development, watch, or dev-server build (the selection needs a one-shot
+production build), fails with the declining reason codes and their modules. The selected native bundle
 uses target SDK `3.2`, while ordinary application bundles retain target `3.9`.
 The default remains the ordinary compiled-program Element owner.
 

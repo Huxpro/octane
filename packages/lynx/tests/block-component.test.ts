@@ -24,8 +24,8 @@
 // events over the same nodes in the same order.
 //
 // What this does not cover is refused by name rather than half-rendered, and
-// the refusals are asserted here too. Insertion-effect timing remains a later
-// composition layer; compiler-slot identities now cover overlapping ranges.
+// the refusals are asserted here too. Accepted insertion/layout/passive phases
+// and compiler-slot identities now cover overlapping component ranges.
 import { describe, expect, it, vi } from 'vitest';
 
 vi.hoisted(() => {
@@ -52,18 +52,23 @@ import {
 	universalValue,
 	universalSwitch,
 	use,
+	useActionState,
 	useCallback,
 	useContext,
 	useDeferredValue,
 	useEffect,
+	useEffectEvent,
+	useImperativeHandle,
 	useLayoutEffect,
 	useMemo,
+	useOptimistic,
 	useReducer,
 	useInsertionEffect,
 	useRef,
 	useState,
 	useSyncExternalStore,
 	useTransition,
+	type UniversalComponent,
 	type UniversalRenderable,
 	type UniversalHostCommand,
 } from 'octane/universal/native';
@@ -99,6 +104,10 @@ import {
 	type BlockContextProps,
 	BlockDynamicComponentFixture,
 	type BlockDynamicComponentProps,
+	BlockInsertionFixture,
+	type BlockInsertionProps,
+	BlockLinkedStateFixture,
+	type BlockLinkedStateProps,
 	BlockCompositionFixture,
 	type BlockCompositionProps,
 	BlockScopedRow,
@@ -106,9 +115,21 @@ import {
 	type BlockConditionalProps,
 	BlockSwitchFixture,
 	type BlockSwitchProps,
+	BlockReplayFixture,
+	type BlockReplayProps,
 	BlockScopedRowsFixture,
 	type BlockScopedRowsProps,
-} from './_fixtures/block-scoped-rows.lynx.tsrx';
+	BlockStateBranchesFixture,
+	BlockWrappedSelectionFixture,
+	type BlockWrappedSelectionProps,
+} from './_fixtures/block-scoped-rows.block.lynx.tsrx';
+// The same authored source as a production `core: 'universal'` application
+// compiles it, for the parity oracle. See `vitest.config.js`.
+import {
+	BlockContextFixture as UniversalCoreContextFixture,
+	BlockReplayFixture as UniversalCoreReplayFixture,
+	BlockSwitchFixture as UniversalCoreSwitchFixture,
+} from './_fixtures/block-scoped-rows.block.lynx.tsrx?lynx-universal-core';
 import { FakeContextProxy, flushMicrotasks, installMainSide } from './_fixtures/fake-lynx-wire.js';
 import { paint } from './_fixtures/painted-commits.js';
 
@@ -418,6 +439,35 @@ const RANGE_DEPENDENCY_PAGE_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
 	},
 });
 
+const BRANCH_DEPENDENCY_PAGE_PLAN = universalPlan(LYNX_TRANSPORT_RENDERER, {
+	kind: 'host',
+	type: 'view',
+	props: { class: 'branches' },
+	children: [
+		{
+			kind: 'host',
+			type: 'view',
+			props: { class: 'if-region' },
+			children: [{ kind: 'slot', slot: 0 }],
+		},
+		{
+			kind: 'host',
+			type: 'view',
+			props: { class: 'switch-region' },
+			children: [{ kind: 'slot', slot: 1 }],
+		},
+	],
+});
+
+const BRANCH_DEPENDENCY_PAGE_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
+	...deriveLynxProgramIR(BRANCH_DEPENDENCY_PAGE_PLAN.root as never)!,
+	address: {
+		module: 'tests/BranchDependencyPage.lynx.tsrx',
+		index: 0,
+		digest: 'branch-dependency-page',
+	},
+});
+
 const TABLE_COMPILER_PROGRAM = lynxProgram(LYNX_TRANSPORT_RENDERER, {
 	...deriveLynxProgramIR(TABLE_PLAN.root as never)!,
 	address: {
@@ -518,6 +568,34 @@ function rowListener(
 	return resolved;
 }
 
+/** The tap site on the first child of the painted page root. */
+function firstChildListener(
+	commits: readonly LynxTransportCommitMessage[],
+): LynxResolvedNativeEvent {
+	const papi = createFakePAPI();
+	const host = createLynxHostContainer(papi, { root: 1 });
+	for (const commit of commits) prepareLynxHostBatch(host, commit.batch).apply();
+	const target = papi.pages[0]!.children[0]!.children[0]!;
+	const resolved = resolveLynxHostNativeEvent(host, [...target.events.values()][0]);
+	if (resolved === null) throw new Error('the first child bound no event site');
+	return resolved;
+}
+
+/** The tap site on a row in the authored linked-state fixture. */
+function linkedRowListener(
+	commits: readonly LynxTransportCommitMessage[],
+	row: number,
+): LynxResolvedNativeEvent {
+	const papi = createFakePAPI();
+	const host = createLynxHostContainer(papi, { root: 1 });
+	for (const commit of commits) prepareLynxHostBatch(host, commit.batch).apply();
+	// linked-rows > the nth linked-row > its text.
+	const label = papi.pages[0]!.children[0]!.children[row]!.children[0]!;
+	const resolved = resolveLynxHostNativeEvent(host, [...label.events.values()][0]);
+	if (resolved === null) throw new Error(`linked row ${row} bound no event site`);
+	return resolved;
+}
+
 /** The tap site on a CARD_PLAN member inside TABLE_PLAN's structural range. */
 function cardRangeListener(
 	commits: readonly LynxTransportCommitMessage[],
@@ -592,6 +670,8 @@ function blockColumn<Props = CardProps>(
 	core?: LynxBlockCore,
 	resolveProgram?: Parameters<typeof installMainSide>[2],
 	compact = false,
+	scheduleMicrotask: (callback: () => void) => void = (callback) =>
+		void Promise.resolve().then(callback),
 ) {
 	const context = new FakeContextProxy();
 	const main = installMainSide(context, compact, resolveProgram);
@@ -600,7 +680,7 @@ function blockColumn<Props = CardProps>(
 	const background = createLynxBlockBackgroundCore({
 		container,
 		transport,
-		scheduleMicrotask: (callback) => void Promise.resolve().then(callback),
+		scheduleMicrotask,
 		transportRoot: 1,
 		core,
 	});
@@ -707,7 +787,7 @@ describe('Lynx compiled component on the Block core', () => {
 					slots: [0],
 				} as never,
 			]),
-		).toThrow(/scalar run function/);
+		).toThrow(/replay function/);
 
 		expect(() =>
 			lynxProgramValue(CARD_COMPILER_PROGRAM, CARD_PROGRAM_IR.values, [
@@ -736,6 +816,31 @@ describe('Lynx compiled component on the Block core', () => {
 				],
 			),
 		).not.toThrow();
+
+		expect(() =>
+			lynxProgramValue(TABLE_COMPILER_PROGRAM, [undefined], [
+				{
+					kind: 'structural',
+					purity: 'unknown',
+					escape: 'component-render',
+					sources: [noop],
+					slots: [0],
+					run: () => [undefined],
+				},
+			] as never),
+		).toThrow(/replay function/);
+
+		expect(() =>
+			lynxProgramValue(TABLE_COMPILER_PROGRAM, [undefined], [
+				{
+					kind: 'structural',
+					purity: 'descriptor-pure',
+					escape: 'component-render',
+					sources: [noop],
+					slots: [0],
+				},
+			] as never),
+		).toThrow(/replay function/);
 	});
 	it('preserves a build-proven address on the Block run command', async () => {
 		const block = blockColumn(
@@ -1052,6 +1157,130 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		expect(paint(block.main.commits).tree).toContain('b-many');
 	});
 
+	it('indexes a repeated source getter only once for hand-authored metadata', async () => {
+		let computationRuns = 0;
+		let setCount: ((value: number) => void) | undefined;
+		const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+			const [count, updateCount, getCount] = useState(0, 'count');
+			setCount = updateCount;
+			return lynxProgramValue(
+				CARD_COMPILER_PROGRAM,
+				['card', TALLY[count] ?? 'many', 'card-meta', noop, 'detail'],
+				[
+					{
+						kind: 'scalar',
+						purity: 'pure',
+						escape: 'component-render',
+						sources: [getCount, getCount],
+						slots: [1],
+						run() {
+							computationRuns++;
+							return [TALLY[getCount()] ?? 'many'];
+						},
+					},
+				],
+			) as never;
+		});
+		const block = blockColumn<Record<string, never>>();
+
+		await block.render(Scene as LynxComponent<Record<string, never>>, {});
+		setCount!(1);
+		await block.settle(Promise.resolve());
+
+		expect(computationRuns).toBe(1);
+		expect(paint(block.main.commits).tree).toContain('once');
+	});
+
+	it('indexes dirty dependency discovery independently of unrelated groups', async () => {
+		const groupCount = 128;
+		let componentRuns = 0;
+		let sourceReads = 0;
+		let setFirst: ((value: number) => void) | undefined;
+		const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+			componentRuns++;
+			const computations = [];
+			for (let index = 0; index < groupCount; index++) {
+				const [value, update, getValue] = useState(index, `group-${index}`);
+				if (index === 0) setFirst = update;
+				const sources: Array<() => unknown> = [];
+				Object.defineProperty(sources, 0, {
+					configurable: true,
+					get() {
+						sourceReads++;
+						return getValue;
+					},
+				});
+				sources.length = 1;
+				computations.push({
+					kind: 'scalar' as const,
+					purity: 'pure' as const,
+					escape: 'component-render' as const,
+					sources,
+					slots: [0],
+					run: () => [index === 0 && getValue() !== value ? 'card active' : 'card'],
+				});
+			}
+			return lynxProgramValue(
+				CARD_COMPILER_PROGRAM,
+				['card', 'ready', 'card-meta', noop, 'detail'],
+				computations,
+			) as never;
+		});
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
+
+		await block.render(Scene as LynxComponent<Record<string, never>>, {});
+		sourceReads = 0;
+		setFirst!(groupCount);
+		await block.settle(Promise.resolve());
+
+		expect(componentRuns).toBe(1);
+		expect(sourceReads).toBe(0);
+		expect(paint(block.main.commits).tree).toContain('card active');
+	});
+
+	it('runs a shared dependency group once when both sources update together', async () => {
+		let componentRuns = 0;
+		let computationRuns = 0;
+		let updateBoth: (() => void) | undefined;
+		const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+			componentRuns++;
+			const [left, setLeft, getLeft] = useState('left', 'left');
+			const [right, setRight, getRight] = useState('right', 'right');
+			updateBoth = () => {
+				setLeft('LEFT');
+				setRight('RIGHT');
+			};
+			return lynxProgramValue(
+				CARD_COMPILER_PROGRAM,
+				['card', `${left}:${right}`, 'card-meta', noop, 'detail'],
+				[
+					{
+						kind: 'scalar',
+						purity: 'pure',
+						escape: 'component-render',
+						sources: [getLeft, getRight],
+						slots: [1],
+						run() {
+							computationRuns++;
+							return [`${getLeft()}:${getRight()}`];
+						},
+					},
+				],
+			) as never;
+		});
+		const block = blockColumn<Record<string, never>>();
+
+		await block.render(Scene as LynxComponent<Record<string, never>>, {});
+		updateBoth!();
+		await block.settle(Promise.resolve());
+
+		expect(componentRuns).toBe(1);
+		expect(computationRuns).toBe(1);
+		expect(paint(block.main.commits).tree).toContain('LEFT:RIGHT');
+	});
+
 	it('prepares and refreshes continuous-input work while the previous frame awaits acknowledgement', async () => {
 		let computationRuns = 0;
 		const Direct = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Direct() {
@@ -1130,6 +1359,107 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		expect(profileAfter.blockRenderQueueMaxDepth).toBeGreaterThanOrEqual(1);
 	});
 
+	it('keeps flushTransport open for a render scheduled by an accepted passive effect', async () => {
+		const EffectUpdate = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function EffectUpdate() {
+			const [count, setCount] = useState(0, 'count');
+			useEffect(
+				() => {
+					if (count === 0) setCount(1);
+				},
+				[count],
+				'increment-after-accept',
+			);
+			return universalValue(CARD_PLAN, [
+				'card',
+				TALLY[count] ?? 'many',
+				'card-meta',
+				noop,
+				'detail',
+			]);
+		});
+		const block = blockColumn<Record<string, never>>();
+		const mounting = block.background.renderAsync(EffectUpdate as never, {});
+		const flushing = block.background.flushTransport();
+		let flushed = false;
+		void flushing.then(() => {
+			flushed = true;
+		});
+
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(1);
+		block.acknowledgePending();
+		for (let guard = 0; guard < 5 && block.main.commits.length < 2; guard++) {
+			await flushMicrotasks();
+		}
+		expect(block.main.commits).toHaveLength(2);
+		expect(flushed).toBe(false);
+
+		block.acknowledgePending();
+		await Promise.all([mounting, flushing]);
+		expect(paint(block.main.commits).tree).toContain('once');
+	});
+
+	it('keeps flushTransport open when the host microtask queue runs after promise jobs', async () => {
+		// lynx.queueMicrotask is the production scheduler. When the host services it
+		// after the Promise job queue, accepted passive effects run only once the
+		// acknowledged frame's promise chain has fully settled.
+		const hostQueue: (() => void)[] = [];
+		const drainHost = () => {
+			while (hostQueue.length !== 0) hostQueue.shift()!();
+		};
+		const EffectUpdate = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function EffectUpdate() {
+			const [count, setCount] = useState(0, 'count');
+			useEffect(
+				() => {
+					if (count === 0) setCount(1);
+				},
+				[count],
+				'increment-after-accept',
+			);
+			return universalValue(CARD_PLAN, [
+				'card',
+				TALLY[count] ?? 'many',
+				'card-meta',
+				noop,
+				'detail',
+			]);
+		});
+		const block = blockColumn<Record<string, never>>(undefined, undefined, false, (callback) =>
+			hostQueue.push(callback),
+		);
+		const mounting = block.background.renderAsync(EffectUpdate as never, {});
+		const flushing = block.background.flushTransport();
+		let flushed = false;
+		void flushing.then(() => {
+			flushed = true;
+		});
+
+		for (let guard = 0; guard < 5 && block.main.commits.length < 1; guard++) {
+			await flushMicrotasks();
+			drainHost();
+		}
+		expect(block.main.commits).toHaveLength(1);
+		block.acknowledgePending();
+		// Let the acknowledged frame's promise chain settle completely before the
+		// host services its queue, as a separate native microtask queue would.
+		for (let turn = 0; turn < 10; turn++) await flushMicrotasks();
+		expect(flushed).toBe(false);
+		for (let guard = 0; guard < 5 && block.main.commits.length < 2; guard++) {
+			drainHost();
+			await flushMicrotasks();
+		}
+		expect(block.main.commits).toHaveLength(2);
+		expect(flushed).toBe(false);
+
+		block.acknowledgePending();
+		for (let guard = 0; guard < 5 && !flushed; guard++) {
+			await flushMicrotasks();
+			drainHost();
+		}
+		await Promise.all([mounting, flushing]);
+		expect(paint(block.main.commits).tree).toContain('once');
+	});
+
 	it('drains a prepared scalar draft before teardown requested during acknowledgement', async () => {
 		let computationRuns = 0;
 		let setCount!: (value: number | ((previous: number) => number)) => void;
@@ -1189,6 +1519,44 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		await flushMicrotasks();
 		expect(block.main.commits).toHaveLength(4);
 		expect(computationRuns).toBe(2);
+	});
+
+	it('does not let updates arriving after teardown overtake an in-flight unmount', async () => {
+		let setCount!: (value: number | ((previous: number) => number)) => void;
+		const Direct = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Direct() {
+			const [count, updateCount] = useState(0, 'count');
+			setCount = updateCount;
+			return universalValue(CARD_PLAN, [
+				'card',
+				TALLY[count] ?? 'many',
+				'card-meta',
+				noop,
+				'detail',
+			]);
+		});
+		const block = blockColumn<Record<string, never>>();
+		await block.render(Direct as LynxComponent<Record<string, never>>, {});
+
+		setCount((previous) => previous + 1);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(2);
+
+		const unmounting = block.background.unmountAsync();
+		setCount((previous) => previous + 1);
+		await flushMicrotasks();
+		expect(block.main.commits).toHaveLength(2);
+
+		block.acknowledgePending();
+		for (let guard = 0; guard < 5 && block.main.commits.length < 3; guard++) {
+			await flushMicrotasks();
+		}
+		expect(block.main.commits).toHaveLength(3);
+		block.acknowledgePending();
+		await unmounting;
+		expect(JSON.parse(paint(block.main.commits).tree)).toMatchObject({
+			type: 'page',
+			children: [],
+		});
 	});
 
 	it.each([
@@ -1504,7 +1872,9 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 				],
 			) as never;
 		});
-		const block = blockColumn(createLynxBlockCore({ templateRuns: () => false }));
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
 
 		await block.render(Scene as LynxComponent<Record<string, never>>, {});
 		expect(componentRuns).toBe(1);
@@ -1518,6 +1888,176 @@ describe('Lynx compiled component with its own state on the Block core', () => {
 		expect(
 			JSON.parse(paint(block.main.commits).tree).children[0].children[1].children,
 		).toHaveLength(2);
+	});
+
+	it('replays a compiler-proved keyed range without rerunning its owning component', async () => {
+		let componentRuns = 0;
+		let computationRuns = 0;
+		let setRows: ((value: readonly TableRow[]) => void) | undefined;
+		const one = { id: 1, label: 'row 1' };
+		const two = { id: 2, label: 'row 2' };
+		const range = (rows: readonly TableRow[]) =>
+			universalFor(
+				rows,
+				(row: TableRow) => row.id,
+				(row: TableRow) => universalValue(ROW_PLAN, ['row', String(row.id), noop, row.label]),
+			);
+		const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+			componentRuns++;
+			const [rows, updateRows, getRows] = useState<readonly TableRow[]>([one], 'rows');
+			setRows = updateRows;
+			return lynxProgramValue(
+				TABLE_COMPILER_PROGRAM,
+				[range(rows)],
+				[
+					{
+						kind: 'structural',
+						purity: 'descriptor-pure',
+						escape: 'component-render',
+						sources: [getRows],
+						slots: [0],
+						run() {
+							computationRuns++;
+							return [range(getRows())];
+						},
+					},
+				],
+			) as never;
+		});
+		const block = blockColumn<Record<string, never>>(
+			createLynxBlockCore({ templateRuns: () => false }),
+		);
+
+		await block.render(Scene as LynxComponent<Record<string, never>>, {});
+		setRows!([one, two]);
+		await block.settle(Promise.resolve());
+
+		expect(componentRuns).toBe(1);
+		expect(computationRuns).toBe(1);
+		expect(
+			JSON.parse(paint(block.main.commits).tree).children[0].children[1].children,
+		).toHaveLength(2);
+	});
+
+	it('rebases a rejected keyed-range replay onto the next state update', async () => {
+		vi.useFakeTimers();
+		try {
+			let componentRuns = 0;
+			let computationRuns = 0;
+			let setRows: ((value: readonly TableRow[]) => void) | undefined;
+			const rows = [1, 2, 3].map((id) => ({ id, label: `row ${id}` }));
+			const range = (items: readonly TableRow[]) =>
+				universalFor(
+					items,
+					(row: TableRow) => row.id,
+					(row: TableRow) => universalValue(ROW_PLAN, ['row', String(row.id), noop, row.label]),
+				);
+			const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+				componentRuns++;
+				const [items, updateRows, getRows] = useState<readonly TableRow[]>([rows[0]!], 'rows');
+				setRows = updateRows;
+				return lynxProgramValue(
+					TABLE_COMPILER_PROGRAM,
+					[range(items)],
+					[
+						{
+							kind: 'structural',
+							purity: 'descriptor-pure',
+							escape: 'component-render',
+							sources: [getRows],
+							slots: [0],
+							run() {
+								computationRuns++;
+								return [range(getRows())];
+							},
+						},
+					],
+				) as never;
+			});
+			const block = blockColumn<Record<string, never>>(
+				createLynxBlockCore({ templateRuns: () => false }),
+			);
+
+			await block.render(Scene as LynxComponent<Record<string, never>>, {});
+			setRows!(rows.slice(0, 2));
+			await flushMicrotasks();
+			expect(block.main.commits).toHaveLength(2);
+			block.main.reject(block.main.commits[1]!, 'injected range replay rejection');
+			await flushMicrotasks();
+
+			setRows!(rows);
+			await block.settle(Promise.resolve());
+
+			expect(componentRuns).toBe(1);
+			expect(computationRuns).toBe(2);
+			expect(
+				JSON.parse(paint([block.main.commits[0]!, block.main.commits[2]!]).tree).children[0]
+					.children[1].children,
+			).toHaveLength(3);
+		} finally {
+			vi.clearAllTimers();
+			vi.useRealTimers();
+		}
+	});
+
+	it('rebases rejected @if and @switch descriptor replays onto the next state', async () => {
+		vi.useFakeTimers();
+		try {
+			let setMode: ((value: 'then' | 'case' | 'default') => void) | undefined;
+			const descriptors = (mode: 'then' | 'case' | 'default') => [
+				universalIf(
+					mode === 'then',
+					() => universalValue(ROW_PLAN, ['row', 'if', noop, 'if:then']),
+					() => universalValue(ROW_PLAN, ['row', 'if', noop, 'if:else']),
+				),
+				universalSwitch(
+					mode,
+					[['case', () => universalValue(ROW_PLAN, ['row', 'switch', noop, 'switch:case'])]],
+					() => universalValue(ROW_PLAN, ['row', 'switch', noop, 'switch:default']),
+				),
+			];
+			const Scene = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function Scene() {
+				const [mode, updateMode, getMode] = useState<'then' | 'case' | 'default'>('then', 'mode');
+				setMode = updateMode;
+				return lynxProgramValue(BRANCH_DEPENDENCY_PAGE_PROGRAM, descriptors(mode), [
+					{
+						kind: 'structural',
+						purity: 'descriptor-pure',
+						escape: 'component-render',
+						sources: [getMode],
+						slots: [0, 1],
+						run() {
+							return descriptors(getMode());
+						},
+					},
+				]) as never;
+			});
+			const block = blockColumn<Record<string, never>>(
+				createLynxBlockCore({ templateRuns: () => false }),
+			);
+
+			await block.render(Scene as LynxComponent<Record<string, never>>, {});
+			expect(paint(block.main.commits).tree).toContain('if:then');
+			expect(paint(block.main.commits).tree).toContain('switch:default');
+
+			setMode!('case');
+			await flushMicrotasks();
+			expect(block.main.commits).toHaveLength(2);
+			block.main.reject(block.main.commits[1]!, 'injected branch replay rejection');
+			block.markPendingHandled();
+			await flushMicrotasks();
+
+			setMode!('default');
+			await block.settle(Promise.resolve());
+
+			const accepted = [block.main.commits[0]!, block.main.commits[2]!];
+			expect(paint(accepted).tree).toContain('if:else');
+			expect(paint(accepted).tree).toContain('switch:default');
+			expect(paint(accepted).tree).not.toContain('switch:case');
+		} finally {
+			vi.clearAllTimers();
+			vi.useRealTimers();
+		}
 	});
 
 	it('keeps the cell across a re-render driven by new props', async () => {
@@ -1951,13 +2491,13 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 
 	it('runs ordinary compiled keyed row hooks with inferred and explicit dependencies', async () => {
 		const metadata = Symbol.for('octane.universal.component');
-		// This Vitest project compiles with HMR. Its wrapper must stay conservative
-		// because a hot replacement may add hooks; the hmr:false compiler test pins
-		// the production page's hookScope:false proof.
+		// The fixture compiles as a production Block application does, without HMR,
+		// so the hookless page is proved to need no hook scope while its stateful
+		// row still gets one.
 		expect(
 			(BlockScopedRowsFixture as never as Record<PropertyKey, unknown>)[metadata],
 		).toMatchObject({
-			hookScope: true,
+			hookScope: false,
 		});
 		expect((BlockScopedRow as never as Record<PropertyKey, unknown>)[metadata]).toMatchObject({
 			hookScope: true,
@@ -2018,6 +2558,102 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		await block.settle(block.background.unmountAsync());
 		await flushMicrotasks();
 		expect(lifecycle.slice(-2)).toEqual(['cleanup:two:quiet', 'cleanup:one:quiet']);
+	});
+
+	it('keeps compiled keyed-row useId values stable through moves and isolates remounts', async () => {
+		const one = { id: 1, label: 'one' };
+		const two = { id: 2, label: 'two' };
+		const observed = new Map<number, string[]>();
+		const observeId = (row: number, id: string): void => {
+			const values = observed.get(row);
+			if (values === undefined) observed.set(row, [id]);
+			else values.push(id);
+		};
+		const block = blockColumn<BlockScopedRowsProps>();
+		const component = BlockScopedRowsFixture as never as LynxComponent<BlockScopedRowsProps>;
+		const props = (rows: readonly BlockScopedRowsProps['rows'][number][]) => ({
+			rows,
+			log: noop,
+			observe: noop,
+			observeId,
+		});
+
+		await block.render(component, props([one, two]));
+		const oneId = observed.get(1)![0]!;
+		const twoId = observed.get(2)![0]!;
+		expect(oneId).not.toBe(twoId);
+
+		await block.render(component, props([two, one]));
+		expect(observed.get(1)!.at(-1)).toBe(oneId);
+		expect(observed.get(2)!.at(-1)).toBe(twoId);
+
+		await block.render(component, props([two]));
+		await block.render(component, props([two, one]));
+		expect(observed.get(1)!.at(-1)).not.toBe(oneId);
+		expect(observed.get(2)!.at(-1)).toBe(twoId);
+	});
+
+	it('draws keyed-row useId values from one root namespace that only accepted frames advance', async () => {
+		const [one, two, three] = [1, 2, 3].map((id) => ({ id, label: String(id) }));
+		const observed = new Map<number, string[]>();
+		const observeId = (row: number, id: string): void => {
+			const values = observed.get(row);
+			if (values === undefined) observed.set(row, [id]);
+			else values.push(id);
+		};
+		const block = blockColumn<BlockScopedRowsProps>();
+		const component = BlockScopedRowsFixture as never as LynxComponent<BlockScopedRowsProps>;
+		const props = (rows: readonly BlockScopedRowsProps['rows'][number][]) => ({
+			rows,
+			log: noop,
+			observe: noop,
+			observeId,
+		});
+
+		// The page's own scope draws nothing here, so row 1 takes the first root
+		// position the main thread would have painted for it.
+		await block.render(component, props([one]));
+		expect(observed.get(1)).toEqual([':octane-u4:']);
+
+		// A frame the host rejects commits nothing, so the positions it drew are
+		// handed to the rows the next accepted frame mounts.
+		const rejected = block.background.renderAsync(component as never, props([one, two]));
+		rejected.catch(() => undefined);
+		for (let guard = 0; guard < 5 && block.main.commits.length < 2; guard++) {
+			await flushMicrotasks();
+		}
+		const drawn = observed.get(2)![0]!;
+		block.main.reject(block.main.commits[1]!, 'injected useId rejection');
+		await expect(rejected).rejects.toThrow('injected useId rejection');
+		await block.render(component, props([one, two]));
+		expect(observed.get(2)!.at(-1)).toBe(drawn);
+
+		// Accepted frames advance: a later mount never reuses a live id.
+		await block.render(component, props([one, two, three]));
+		const live = [1, 2, 3].map((row) => observed.get(row)!.at(-1)!);
+		expect(new Set(live).size).toBe(3);
+		expect(live[0]).toBe(':octane-u4:');
+	});
+
+	it('reconciles compiled keyed-row linked state without losing local edits on moves', async () => {
+		const block = blockColumn<BlockLinkedStateProps>();
+		const component = BlockLinkedStateFixture as never as LynxComponent<BlockLinkedStateProps>;
+		const one = { id: 1, source: 'one' };
+		const two = { id: 2, source: 'two' };
+
+		await block.render(component, { rows: [one, two] });
+		expect(paint(block.main.commits).tree).toContain('initial:one');
+		deliverTo(block, linkedRowListener(block.main.commits, 0));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('initial:one!');
+
+		await block.render(component, {
+			rows: [two, { id: 1, source: 'one-next' }],
+		});
+		const moved = paint(block.main.commits).tree;
+		expect(moved.indexOf('initial:two')).toBeLessThan(
+			moved.indexOf('linked:one-next:initial:one!'),
+		);
 	});
 
 	it('propagates context updates through keyed moves without resetting row state', async () => {
@@ -2110,7 +2746,9 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		const one = { id: 1, label: 'one' };
 		const two = { id: 2, label: 'two' };
 		const component = BlockContextFixture as never as LynxComponent<BlockContextProps>;
-		const universal = universalColumn(component);
+		const universal = universalColumn(
+			UniversalCoreContextFixture as never as LynxComponent<BlockContextProps>,
+		);
 		const block = blockColumn<BlockContextProps>();
 		const props = (
 			rows: BlockContextProps['rows'],
@@ -3162,6 +3800,63 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 
 		await block.settle(block.background.unmountAsync());
 	});
+	it('replays an authored .tsrx state change without re-running the component body', async () => {
+		// Guards the fixture compile itself (see `vitest.config.js`): an authored
+		// `*.block.lynx.tsrx` module has to take the compiler's dirty replay as a
+		// production Block build does, or every Block test written against one
+		// silently measures a full re-render instead. The same source compiled
+		// for the universal core is the control that shows the read counter sees a
+		// body run at all.
+		for (const [component, bodyRuns] of [
+			[BlockReplayFixture, [1, 1, 1]],
+			[UniversalCoreReplayFixture, [1, 2, 3]],
+		] as const) {
+			let reads = 0;
+			const props: BlockReplayProps = {
+				get label() {
+					reads++;
+					return 'alpha';
+				},
+			};
+			const block = blockColumn<BlockReplayProps>(undefined, residentRunProgram);
+			await block.render(component as never as LynxComponent<BlockReplayProps>, props);
+			await flushMicrotasks();
+			expect(paint(block.main.commits).tree).toContain('none:even');
+			const observed = [reads];
+
+			for (const painted of ['once:odd', 'twice:even']) {
+				deliverTo(block, firstChildListener(block.main.commits));
+				await block.settle(Promise.resolve());
+				await flushMicrotasks();
+				const tree = paint(block.main.commits).tree;
+				expect(tree).toContain(painted);
+				expect(tree).toContain('alpha');
+				observed.push(reads);
+			}
+			expect(observed).toEqual(bodyRuns);
+			await block.settle(block.background.unmountAsync());
+		}
+	});
+
+	it('adopts state-driven @if and @switch replay from an authored .tsrx module', async () => {
+		const block = blockColumn<Record<string, never>>();
+		const component = BlockStateBranchesFixture as never as LynxComponent<Record<string, never>>;
+
+		await block.render(component, {});
+		expect(paint(block.main.commits).tree).toContain('if:then');
+		expect(paint(block.main.commits).tree).toContain('switch:default');
+
+		deliverTo(block, boundListener(block.main.commits));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('if:else');
+		expect(paint(block.main.commits).tree).toContain('switch:case');
+
+		deliverTo(block, boundListener(block.main.commits));
+		await block.settle(Promise.resolve());
+		expect(paint(block.main.commits).tree).toContain('if:else');
+		expect(paint(block.main.commits).tree).toContain('switch:default');
+		expect(paint(block.main.commits).tree).not.toContain('switch:case');
+	});
 	it('adopts an authored .tsrx @if branch without resetting its surviving component', async () => {
 		const lifecycle: string[] = [];
 		const block = blockColumn<BlockConditionalProps>();
@@ -3225,7 +3920,9 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		const lifecycle: string[] = [];
 		const component = BlockSwitchFixture as never as LynxComponent<BlockSwitchProps>;
 		const block = blockColumn<BlockSwitchProps>();
-		const universal = universalColumn(component);
+		const universal = universalColumn(
+			UniversalCoreSwitchFixture as never as LynxComponent<BlockSwitchProps>,
+		);
 		const props = (mode: BlockSwitchProps['mode'], label: string): BlockSwitchProps => ({
 			mode,
 			label,
@@ -3283,7 +3980,9 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		for (const count of [2, 128]) {
 			const observations: string[] = [];
 			const core = createLynxBlockCore();
-			const block = blockColumn<BlockScopedRowsProps>(core);
+			// Addressed row runs resolve against the programs the fixture's
+			// main-thread layer registered, as a production main thread's do.
+			const block = blockColumn<BlockScopedRowsProps>(core, residentRunProgram);
 			const rows = Array.from({ length: count }, (_, index) => ({
 				id: index + 1,
 				label: `row ${index + 1}`,
@@ -4067,6 +4766,307 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		expect(lifecycle).toEqual(['subscribe:alpha', 'unsubscribe:alpha', 'subscribe:beta']);
 	});
 
+	it('publishes an effect-event body only after ACK and retains the old body on rejection', async () => {
+		const taps: string[] = [];
+		const EventCard = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function EventCard({ label, detail, active }: CardProps) {
+				const onTap = useEffectEvent(() => taps.push(label), 'tap-event');
+				return universalValue(CARD_PLAN, [
+					active ? 'card active' : 'card',
+					label,
+					active ? 'card-meta on' : 'card-meta',
+					onTap,
+					detail,
+				]);
+			},
+		);
+		const block = blockColumn<CardProps>();
+		const alpha = { ...LADDER[0]!, onTap: noop };
+		await block.render(EventCard as never, alpha);
+		const listener = boundListener(block.main.commits);
+		deliverTo(block, listener);
+		expect(taps).toEqual(['alpha']);
+
+		const beta = block.background.renderAsync(EventCard as never, {
+			...LADDER[1]!,
+			onTap: noop,
+		});
+		await flushMicrotasks();
+		deliverTo(block, listener, block.main.commits[0]!.version);
+		expect(taps).toEqual(['alpha', 'alpha']);
+		block.main.reject(block.main.commits[1]!, 'injected effect-event rejection');
+		await expect(beta).rejects.toThrow('injected effect-event rejection');
+		deliverTo(block, listener, block.main.commits[0]!.version);
+		expect(taps).toEqual(['alpha', 'alpha', 'alpha']);
+
+		await block.render(EventCard as never, { ...LADDER[4]!, onTap: noop });
+		deliverTo(block, boundListener(block.main.commits));
+		expect(taps.at(-1)).toBe('gamma');
+	});
+
+	it('publishes imperative handles only after ACK and retains the accepted handle on rejection', async () => {
+		const history: Array<string | null> = [];
+		let current: string | null = null;
+		const ref = (value: string | null) => {
+			current = value;
+			history.push(value);
+		};
+		const ImperativeCard = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function ImperativeCard({ label, detail, active, onTap }: CardProps) {
+				useImperativeHandle(ref, () => label, [label], 'imperative-handle');
+				return universalValue(CARD_PLAN, [
+					active ? 'card active' : 'card',
+					label,
+					active ? 'card-meta on' : 'card-meta',
+					onTap,
+					detail,
+				]);
+			},
+		);
+		const block = blockColumn<CardProps>();
+
+		const mounting = block.background.renderAsync(ImperativeCard as never, LADDER[0]!);
+		await flushMicrotasks();
+		expect(current).toBeNull();
+		expect(history).toEqual([]);
+		block.main.acknowledge(block.main.commits[0]!);
+		block.markPendingHandled();
+		await mounting;
+		await flushMicrotasks();
+		expect(current).toBe('alpha');
+
+		const rejected = block.background.renderAsync(ImperativeCard as never, LADDER[1]!);
+		await flushMicrotasks();
+		expect(current).toBe('alpha');
+		block.main.reject(block.main.commits[1]!, 'injected imperative-handle rejection');
+		block.markPendingHandled();
+		await expect(rejected).rejects.toThrow('injected imperative-handle rejection');
+		await flushMicrotasks();
+		expect(current).toBe('alpha');
+		expect(history).toEqual(['alpha']);
+
+		await block.render(ImperativeCard as never, LADDER[4]!);
+		await flushMicrotasks();
+		expect(current).toBe('gamma');
+		expect(history).toEqual(['alpha', null, 'gamma']);
+
+		await block.settle(block.background.unmountAsync());
+		await flushMicrotasks();
+		expect(current).toBeNull();
+		expect(history).toEqual(['alpha', null, 'gamma', null]);
+	});
+
+	it('runs action-state dispatches sequentially and threads each accepted result', async () => {
+		const gates = { beta: deferred<void>(), gamma: deferred<void>() };
+		const actionsDone = deferred<void>();
+		const started: string[] = [];
+		let dispatch!: (payload: 'beta' | 'gamma') => void;
+		const ActionCard = defineUniversalComponent(LYNX_TRANSPORT_RENDERER, function ActionCard() {
+			const [state, run, pending] = useActionState(
+				async (previous: string, payload: 'beta' | 'gamma') => {
+					started.push(payload);
+					await gates[payload].promise;
+					if (payload === 'gamma') actionsDone.resolve();
+					return `${previous}/${payload}`;
+				},
+				'alpha',
+				undefined,
+				'action-state',
+			);
+			dispatch = run;
+			return universalValue(CARD_PLAN, [
+				pending ? 'card pending' : 'card',
+				state,
+				'card-meta',
+				noop,
+				pending ? 'pending' : 'ready',
+			]);
+		});
+		const block = blockColumn<Record<string, never>>();
+		const drain = async (): Promise<void> => {
+			for (let index = 0; index < 8; index++) {
+				await flushMicrotasks();
+				block.acknowledgePending();
+			}
+		};
+
+		await block.render(ActionCard as never, {});
+		dispatch('beta');
+		dispatch('gamma');
+		await drain();
+		expect(started).toEqual(['beta']);
+		expect(paint(block.main.commits).tree).toContain('alpha');
+		expect(paint(block.main.commits).tree).toContain('pending');
+
+		gates.gamma.resolve();
+		await drain();
+		expect(started).toEqual(['beta']);
+
+		gates.beta.resolve();
+		await actionsDone.promise;
+		await drain();
+		expect(started).toEqual(['beta', 'gamma']);
+		expect(paint(block.main.commits).tree).toContain('alpha/beta/gamma');
+		expect(paint(block.main.commits).tree).toContain('ready');
+
+		await block.settle(block.background.unmountAsync());
+	});
+
+	it('keeps one action-state dispatcher that runs the latest accepted action', async () => {
+		const started: string[] = [];
+		const dispatchers: Array<(payload: string) => void> = [];
+		const ActionVersionCard = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function ActionVersionCard({ label }: { readonly label: string }) {
+				const [state, run, pending] = useActionState(
+					(previous: string, payload: string) => {
+						started.push(`${label}:${payload}`);
+						return `${previous}|${label}:${payload}`;
+					},
+					'alpha',
+					undefined,
+					'action-state',
+				);
+				dispatchers.push(run);
+				// The label reaches the host so every render is a host transaction
+				// the main thread can accept or reject.
+				return universalValue(CARD_PLAN, [
+					pending ? 'card pending' : 'card',
+					state,
+					'card-meta',
+					noop,
+					`${label}/${pending ? 'pending' : 'ready'}`,
+				]);
+			},
+		);
+		const block = blockColumn<{ readonly label: string }>();
+		const drain = async (): Promise<void> => {
+			for (let index = 0; index < 8; index++) {
+				await flushMicrotasks();
+				block.acknowledgePending();
+			}
+		};
+
+		await block.render(ActionVersionCard as never, { label: 'mount' });
+		await block.render(ActionVersionCard as never, { label: 'accepted' });
+		const [first] = dispatchers;
+		expect(dispatchers.every((dispatch) => dispatch === first)).toBe(true);
+
+		const rejected = block.background.renderAsync(ActionVersionCard as never, {
+			label: 'rejected',
+		});
+		await flushMicrotasks();
+		block.main.reject(block.main.commits.at(-1)!, 'injected action-state rejection');
+		block.markPendingHandled();
+		await expect(rejected).rejects.toThrow('injected action-state rejection');
+		expect(dispatchers.at(-1)).toBe(first);
+
+		// The first render's dispatcher runs the action the host last accepted,
+		// never the one captured at mount or the one from the rejected attempt.
+		first!('beta');
+		await drain();
+		expect(started).toEqual(['accepted:beta']);
+		expect(paint(block.main.commits).tree).toContain('alpha|accepted:beta');
+		expect(paint(block.main.commits).tree).toContain('accepted/ready');
+
+		await block.render(ActionVersionCard as never, { label: 'latest' });
+		first!('gamma');
+		await drain();
+		expect(started).toEqual(['accepted:beta', 'latest:gamma']);
+		expect(paint(block.main.commits).tree).toContain('alpha|accepted:beta|latest:gamma');
+		expect(dispatchers.every((dispatch) => dispatch === first)).toBe(true);
+
+		await block.settle(block.background.unmountAsync());
+	});
+
+	it('rebases optimistic state urgently and reverts it in the accepted transition', async () => {
+		vi.useFakeTimers();
+		try {
+			const gate = deferred<void>();
+			const actionDone = deferred<void>();
+			let urgentCalls = 0;
+			let begin!: () => void;
+			const OptimisticCard = defineUniversalComponent(
+				LYNX_TRANSPORT_RENDERER,
+				function OptimisticCard() {
+					const [saved, setSaved] = useState<readonly string[]>(['alpha'], 'saved');
+					const [optimistic, addOptimistic] = useOptimistic(
+						saved,
+						(items: readonly string[], item: string) => [...items, `${item}?`],
+						'optimistic',
+					);
+					begin = () =>
+						startTransition(async () => {
+							addOptimistic('beta');
+							await gate.promise;
+							setSaved((items) => [...items, 'beta']);
+							actionDone.resolve();
+						});
+					return universalValue(CARD_PLAN, [
+						'card',
+						optimistic.join('/'),
+						'card-meta',
+						() => {
+							urgentCalls++;
+							setSaved(['alpha', 'gamma']);
+						},
+						saved.join('/'),
+					]);
+				},
+			);
+			const block = blockColumn<Record<string, never>>();
+			const drain = async (): Promise<void> => {
+				for (let index = 0; index < 3; index++) {
+					await flushMicrotasks();
+					await block.settle(block.background.flushTransport());
+				}
+			};
+
+			await block.render(OptimisticCard as never, {});
+			begin();
+			await drain();
+			expect(paint(block.main.commits).tree).toContain('alpha/beta?');
+
+			const urgentListener = boundListener(block.main.commits);
+			deliverTo(block, urgentListener);
+			expect(urgentCalls).toBe(1);
+			await drain();
+			expect(paint(block.main.commits).tree).toContain('alpha/gamma/beta?');
+
+			const acceptedBeforeSettlement = block.main.commits.length;
+			gate.resolve();
+			await actionDone.promise;
+			for (
+				let guard = 0;
+				guard < 20 && block.main.commits.length === acceptedBeforeSettlement;
+				guard++
+			) {
+				await flushMicrotasks();
+			}
+			expect(block.main.commits).toHaveLength(acceptedBeforeSettlement + 1);
+			const rejected = block.main.commits[acceptedBeforeSettlement]!;
+			expect(paint(block.main.commits).tree).toContain('alpha/gamma/beta');
+			expect(paint(block.main.commits).tree).not.toContain('beta?');
+			block.main.reject(rejected, 'injected optimistic revert rejection');
+			block.markPendingHandled();
+			await block.background.flushTransport();
+			expect(() => vi.runOnlyPendingTimers()).toThrow('injected optimistic revert rejection');
+			expect(paint(block.main.commits.slice(0, acceptedBeforeSettlement)).tree).toContain(
+				'alpha/gamma/beta?',
+			);
+
+			await drain();
+			expect(paint(block.main.commits).tree).toContain('alpha/gamma/beta');
+			expect(paint(block.main.commits).tree).not.toContain('beta?');
+
+			await block.settle(block.background.unmountAsync());
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('keeps an ACKed update published when main reports a later host fault', async () => {
 		const block = blockColumn();
 		const lifecycle: string[] = [];
@@ -4123,24 +5123,117 @@ describe('Lynx compiled component Block semantic boundaries', () => {
 		);
 	});
 
-	it('still refuses a page insertion effect because the Block core has no pre-mutation phase', async () => {
-		const block = blockColumn();
-		const Inserting = defineUniversalComponent(
+	it('publishes insertion effects only after acceptance and before layout and passive work', async () => {
+		const block = blockColumn<BlockInsertionProps>();
+		const lifecycle: string[] = [];
+		const props = { label: 'alpha', log: (entry: string) => lifecycle.push(entry) };
+		const component = BlockInsertionFixture as never as LynxComponent<BlockInsertionProps>;
+		const rejected = block.background.renderAsync(component as never, props);
+		rejected.catch(() => undefined);
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([]);
+		block.main.reject(block.main.commits[0]!, 'injected insertion rejection');
+		await expect(rejected).rejects.toThrow('injected insertion rejection');
+		expect(lifecycle).toEqual([]);
+
+		const accepted = block.background.renderAsync(component as never, props);
+		await flushMicrotasks();
+		block.main.acknowledge(block.main.commits[1]!);
+		await accepted;
+		expect(lifecycle.slice(0, 2)).toEqual(['insertion:create:alpha', 'layout:create:alpha']);
+		await flushMicrotasks();
+		expect(lifecycle).toEqual([
+			'insertion:create:alpha',
+			'layout:create:alpha',
+			'passive:create:alpha',
+		]);
+	});
+
+	it('drains every keyed-row insertion phase before any layout phase', async () => {
+		const lifecycle: string[] = [];
+		const Row = defineUniversalComponent(
 			LYNX_TRANSPORT_RENDERER,
-			function Inserting({ label, detail, active, onTap }: CardProps) {
-				useInsertionEffect(() => undefined, [], 'insert');
-				return universalValue(CARD_PLAN, [
-					active ? 'card active' : 'card',
-					label,
-					active ? 'card-meta on' : 'card-meta',
-					onTap,
-					detail,
-				]);
+			function Row({ id }: { readonly id: number }) {
+				useInsertionEffect(() => void lifecycle.push(`insertion:${id}`), [], 'insertion');
+				useLayoutEffect(() => void lifecycle.push(`layout:${id}`), [], 'layout');
+				return universalValue(ROW_PLAN, ['row', String(id), noop, `row ${id}`]);
 			},
 		);
-		await expect(
-			block.settle(block.background.renderAsync(Inserting as never, LADDER[0]!)),
-		).rejects.toThrow(/Inserting.*insertion effect/s);
+		const Page = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			() =>
+				universalValue(TABLE_PLAN, [
+					universalFor(
+						[1, 2],
+						(id) => id,
+						(id) => universalComponent(LYNX_TRANSPORT_RENDERER, Row, { id }),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const block = blockColumn<Record<string, never>>();
+
+		await block.render(Page as never, {});
+		expect(lifecycle).toHaveLength(4);
+		expect(lifecycle.slice(0, 2).every((entry) => entry.startsWith('insertion:'))).toBe(true);
+		expect(lifecycle.slice(2).every((entry) => entry.startsWith('layout:'))).toBe(true);
+	});
+
+	it('keeps an Activity insertion effect connected while hidden and current across hidden updates', async () => {
+		const lifecycle: string[] = [];
+		const Child = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Child({ label }: { readonly label: string }) {
+				useInsertionEffect(
+					() => {
+						lifecycle.push(`insertion:create:${label}`);
+						return () => lifecycle.push(`insertion:cleanup:${label}`);
+					},
+					[label],
+					'insertion',
+				);
+				useLayoutEffect(
+					() => {
+						lifecycle.push(`layout:create:${label}`);
+						return () => lifecycle.push(`layout:cleanup:${label}`);
+					},
+					[label],
+					'layout',
+				);
+				return lynxProgramValue(CARD_COMPILER_PROGRAM, [
+					'activity',
+					label,
+					'meta',
+					noop,
+					label,
+				]) as never;
+			},
+		);
+		const Page = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			({ mode, label }: { readonly mode: 'visible' | 'hidden'; readonly label: string }) =>
+				universalValue(TABLE_PLAN, [
+					universalActivity(mode, () =>
+						universalComponent(LYNX_TRANSPORT_RENDERER, Child, { label }),
+					),
+				]),
+			{ hookScope: false },
+		);
+		const block = blockColumn<{ readonly mode: 'visible' | 'hidden'; readonly label: string }>();
+
+		await block.render(Page as never, { mode: 'hidden', label: 'alpha' });
+		expect(lifecycle).toEqual(['insertion:create:alpha']);
+
+		await block.render(Page as never, { mode: 'hidden', label: 'beta' });
+		expect(lifecycle.slice(-2)).toEqual(['insertion:cleanup:alpha', 'insertion:create:beta']);
+
+		await block.render(Page as never, { mode: 'visible', label: 'beta' });
+		expect(lifecycle.at(-1)).toBe('layout:create:beta');
+		await block.render(Page as never, { mode: 'hidden', label: 'beta' });
+		expect(lifecycle.at(-1)).toBe('layout:cleanup:beta');
+
+		await block.settle(block.background.unmountAsync());
+		expect(lifecycle.at(-1)).toBe('insertion:cleanup:beta');
 	});
 
 	it('answers a context default when no provider overrides it', async () => {
@@ -5724,15 +6817,23 @@ const STABLE_ROWS: readonly TableRow[] = [
 	{ id: 5, label: 'row 5' },
 ];
 
+type StableRowProps = {
+	readonly row: TableRow;
+	readonly isSelected: boolean;
+	readonly onSelect: (id: number) => void;
+};
+
 /** `<Row … />` per row: the shape the benchmark page and every real page use. */
-function stableColumnComponent(): LynxComponent<TableProps> {
-	const Row = defineUniversalComponent(
+function stableColumnComponent(
+	wrapRow: (row: UniversalComponent<StableRowProps>) => UniversalComponent<StableRowProps> = (
+		row,
+	) => row,
+	onRowBody: () => void = noop,
+): LynxComponent<TableProps> {
+	const PlainRow = defineUniversalComponent(
 		LYNX_TRANSPORT_RENDERER,
-		function Row(props: {
-			readonly row: TableRow;
-			readonly isSelected: boolean;
-			readonly onSelect: (id: number) => void;
-		}) {
+		function Row(props: StableRowProps) {
+			onRowBody();
 			return universalValue(ROW_PLAN, [
 				props.isSelected ? 'row danger' : 'row',
 				String(props.row.id),
@@ -5742,6 +6843,7 @@ function stableColumnComponent(): LynxComponent<TableProps> {
 		},
 		{ hookScope: false },
 	);
+	const Row = wrapRow(PlainRow);
 	const Listed = defineUniversalComponent(
 		LYNX_TRANSPORT_RENDERER,
 		function Listed(props: TableProps) {
@@ -5767,6 +6869,23 @@ function stableColumnComponent(): LynxComponent<TableProps> {
 }
 
 describe('Lynx compiled component whose rows outlive the render', () => {
+	it('runs only old and new rows for an authored wrapped selection predicate', async () => {
+		const observed: string[] = [];
+		const observe = (entry: string) => observed.push(entry);
+		const component =
+			BlockWrappedSelectionFixture as never as LynxComponent<BlockWrappedSelectionProps>;
+		const block = blockColumn<BlockWrappedSelectionProps>();
+
+		await block.render(component, { rows: STABLE_ROWS, selected: 2, observe });
+		observed.length = 0;
+		await block.render(component, { rows: STABLE_ROWS, selected: 4, observe });
+
+		expect(observed).toEqual(['selection-row:2', 'selection-row:4']);
+		const rows = JSON.parse(paint(block.main.commits).tree).children[0].children[0].children;
+		expect(rows[1].classes).toBe('row muted');
+		expect(rows[3].classes).toBe('row danger');
+	});
+
 	it('visits only old and new keys for a compiler-certified selection', async () => {
 		let keyCalls = 0;
 		let rangeCalls = 0;
@@ -6038,6 +7157,81 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 		// it publishes a fresh descriptor Map after acknowledgement without asking
 		// either producer to describe rows that no longer exist.
 		expect(keyCalls - beforeClearKeys).toBe(0);
+	});
+
+	it('preserves strict-equality selection semantics across a fresh collection', async () => {
+		let rangeCalls = 0;
+		let rowCalls = 0;
+		const Row = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Row(props: { readonly row: TableRow; readonly isSelected: boolean }) {
+				rowCalls++;
+				return universalValue(ROW_PLAN, [
+					props.isSelected ? 'row danger' : 'row',
+					String(props.row.id),
+					noop,
+					props.row.label,
+				]);
+			},
+			{ hookScope: false },
+		);
+		const Listed = defineUniversalComponent(
+			LYNX_TRANSPORT_RENDERER,
+			function Listed(props: TableProps) {
+				return universalValue(TABLE_PLAN, [
+					universalFor(
+						props.rows,
+						(row: TableRow) => row.id,
+						(row: TableRow) => {
+							rangeCalls++;
+							return universalComponent(
+								LYNX_TRANSPORT_RENDERER,
+								Row,
+								universalProps([
+									['set', 'row', row],
+									['set', 'isSelected', props.selected === row.id],
+								]),
+							);
+						},
+						null,
+						false,
+						false,
+						undefined,
+						undefined,
+						undefined,
+						true,
+						[props.selected, [], 'row', true],
+					),
+				]);
+			},
+		);
+		const rows: readonly TableRow[] = [
+			{ id: 0, label: 'zero' },
+			{ id: 1, label: 'one' },
+		];
+		const block = blockColumn<TableProps>();
+
+		await block.render(Listed as LynxComponent<TableProps>, {
+			rows,
+			selected: -0,
+			onSelect: noop,
+		});
+		let paintedRows = JSON.parse(paint(block.main.commits).tree).children[0].children[1].children;
+		expect(paintedRows[0].classes).toBe('row danger');
+		rangeCalls = 0;
+		rowCalls = 0;
+
+		await block.render(Listed as LynxComponent<TableProps>, {
+			rows: rows.slice(),
+			selected: 1,
+			onSelect: noop,
+		});
+
+		paintedRows = JSON.parse(paint(block.main.commits).tree).children[0].children[1].children;
+		expect(rangeCalls).toBe(2);
+		expect(rowCalls).toBe(2);
+		expect(paintedRows[0].classes).toBe('row');
+		expect(paintedRows[1].classes).toBe('row danger');
 	});
 
 	it('owns one external-store selector and publishes it only after host acknowledgement', async () => {
@@ -6336,6 +7530,155 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 			await universal.render(props);
 			await block.render(Listed, props);
 			expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
+		}
+	});
+
+	it('renders a default memo around a hook-free row on the unscoped sparse paths', async () => {
+		// \`const Row = memo(Local)\` is the idiomatic list row. A default-compare
+		// memo over a proven hook-free body skips exactly when the Block core's own
+		// shallow-props skip does, so the row must stay unscoped: a scoped row turns
+		// off the compiler-certified selection path and re-runs every row's \`@for\`
+		// body on each selection change.
+		for (const wrap of [
+			(row: UniversalComponent<StableRowProps>) => memo(row),
+			(row: UniversalComponent<StableRowProps>) => memo(memo(row)),
+		]) {
+			let rowBodies = 0;
+			const Row = wrap(
+				defineUniversalComponent(
+					LYNX_TRANSPORT_RENDERER,
+					function Row(props: StableRowProps) {
+						return universalValue(ROW_PLAN, [
+							props.isSelected ? 'row danger' : 'row',
+							String(props.row.id),
+							() => props.onSelect(props.row.id),
+							props.row.label,
+						]);
+					},
+					{ hookScope: false },
+				),
+			);
+			const Listed = defineUniversalComponent(
+				LYNX_TRANSPORT_RENDERER,
+				function Listed(props: TableProps) {
+					return universalValue(TABLE_PLAN, [
+						universalFor(
+							props.rows,
+							(row: TableRow) => row.id,
+							(row: TableRow) => {
+								rowBodies++;
+								return universalComponent(
+									LYNX_TRANSPORT_RENDERER,
+									Row,
+									universalProps([
+										['set', 'row', row],
+										['set', 'isSelected', props.selected === row.id],
+										['set', 'onSelect', props.onSelect],
+									]),
+								);
+							},
+							null,
+							false,
+							false,
+							undefined,
+							undefined,
+							undefined,
+							true,
+							[props.selected, [props.onSelect], 'row', true, 'id'],
+						),
+					]);
+				},
+			) as LynxComponent<TableProps>;
+			const rows = Array.from({ length: 50 }, (_, index) => ({
+				id: index + 1,
+				label: `row ${index + 1}`,
+			}));
+			const onSelect = (): void => {};
+			const block = blockColumn<TableProps>();
+			const step = async (selected: number | undefined, nextRows = rows): Promise<number> => {
+				const before = rowBodies;
+				await block.render(Listed, { rows: nextRows, selected, onSelect });
+				return rowBodies - before;
+			};
+			expect(await step(undefined)).toBe(50);
+			expect(await step(10)).toBe(1);
+			expect(await step(20)).toBe(2);
+			expect(await step(20)).toBe(0);
+			const edited = rows.slice();
+			edited[4] = { ...edited[4]!, label: 'row 5 edited' };
+			expect(await step(20, edited)).toBe(1);
+		}
+	});
+
+	it('keeps the memo wrapper and its skip around a stateful row', async () => {
+		// A hooked body is not the Block core's to skip: only the wrapper's own
+		// comparison may leave it alone, so the wrapper must stay in place.
+		const run = async (render: 'universal' | 'block'): Promise<number[]> => {
+			let bodies = 0;
+			const StatefulRow = defineUniversalComponent(
+				LYNX_TRANSPORT_RENDERER,
+				function StatefulRow(props: StableRowProps) {
+					bodies++;
+					const [taps] = useState(0);
+					return universalValue(ROW_PLAN, [
+						props.isSelected ? 'row danger' : 'row',
+						String(props.row.id),
+						() => props.onSelect(props.row.id),
+						props.row.label + ':' + taps,
+					]);
+				},
+				{ hookScope: true },
+			);
+			const Listed = stableColumnComponent(() => memo(StatefulRow));
+			const onSelect = (): void => {};
+			const universal = render === 'universal' ? universalColumn(Listed) : null;
+			const block = render === 'block' ? blockColumn<TableProps>() : null;
+			const counts: number[] = [];
+			for (const selected of [undefined, 3, 4, 4]) {
+				const before = bodies;
+				const props = { rows: STABLE_ROWS, selected, onSelect };
+				if (universal !== null) await universal.render(props);
+				else await block!.render(Listed, props);
+				counts.push(bodies - before);
+			}
+			return counts;
+		};
+		const universalCounts = await run('universal');
+		expect(universalCounts).toEqual([5, 1, 2, 0]);
+		expect(await run('block')).toEqual(universalCounts);
+	});
+
+	it('paints what the universal core paints for memo rows, default or custom compare', async () => {
+		const onSelect = (): void => {};
+		const edited = STABLE_ROWS.map((row) =>
+			row.id === 2 ? { id: 2, label: 'row 2 edited' } : row,
+		);
+		const ladder: readonly TableProps[] = [
+			{ rows: STABLE_ROWS, selected: undefined, onSelect },
+			{ rows: STABLE_ROWS, selected: 3, onSelect },
+			{ rows: STABLE_ROWS, selected: 4, onSelect },
+			{ rows: edited, selected: 4, onSelect },
+			{ rows: [edited[4]!, ...edited.slice(1, 4), edited[0]!], selected: 4, onSelect },
+			{ rows: [edited[4]!, edited[2]!, edited[3]!, edited[0]!], selected: 3, onSelect },
+			{ rows: [], selected: undefined, onSelect },
+		];
+		for (const wrap of [
+			(row: UniversalComponent<StableRowProps>) => memo(row),
+			(row: UniversalComponent<StableRowProps>) => memo(memo(row)),
+			// A custom comparator is the author's semantics, not the core's: this one
+			// ignores the selection, so a selected row keeps its unselected paint on
+			// both cores. The Block core must not replace it with its own skip.
+			(row: UniversalComponent<StableRowProps>) =>
+				memo(row, (previous, next) => Object.is(previous.row, next.row)),
+		]) {
+			const Listed = stableColumnComponent(wrap);
+			const universal = universalColumn(Listed);
+			const block = blockColumn<TableProps>();
+			for (const props of ladder) {
+				await universal.render(props);
+				await block.render(Listed, props);
+				expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
+			}
 		}
 	});
 

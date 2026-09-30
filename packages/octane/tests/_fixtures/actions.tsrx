@@ -12,6 +12,17 @@ export function ActionForm(props) @{
 	</form>
 }
 
+// An inline action that closes over the current label, reporting every
+// dispatcher it hands out. Pins the dispatcher identity/latest-action contract.
+export function ActionIdentity(props) @{
+	const [state, formAction] = useActionState(
+		(previous, payload) => previous + '|' + props.label + ':' + payload,
+		'init',
+	);
+	props.capture(formAction);
+	<span id="state">{state as string}</span>
+}
+
 // useFormStatus read from a CHILD component of the form.
 function StatusReader() @{
 	const status = useFormStatus();

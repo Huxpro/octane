@@ -3,7 +3,10 @@ declare const __OCTANE_LYNX_DEVELOPMENT__: boolean | undefined;
 import type { LynxFirstScreenRenderResult } from '../main-renderer-product.js';
 import type { InstallLynxCompiledProgramNativeOwnerOptions } from './compiled-program-native-owner-types.js';
 import { paintLynxElementTemplateFirstScreen } from './element-template-first-screen.js';
-import { createLynxElementTemplateNativeBudget } from './element-template-native-budget.js';
+import {
+	createLynxElementTemplateNativeBudget,
+	lynxElementTemplateBudgetIsBounded,
+} from './element-template-native-budget.js';
 import { createLynxElementTemplatePAPI } from './element-template-papi.js';
 import {
 	createLynxElementTemplateProgramStore,
@@ -21,7 +24,9 @@ export function installLynxCompiledProgramNativeOwner(
 	options: InstallLynxCompiledProgramNativeOwnerOptions,
 ) {
 	const papi = createLynxElementTemplatePAPI(options.target);
-	const nativeBudget = createLynxElementTemplateNativeBudget(papi);
+	const nativeBudget = createLynxElementTemplateNativeBudget(papi, {
+		bounded: lynxElementTemplateBudgetIsBounded(options.target),
+	});
 	const nativePage = papi.createPage();
 	nativeBudget.run(1, () => papi.setAttribute(nativePage, 0, null));
 	const page = Object.freeze({ kind: 'page' as const, owner: 1 as const, slot: 0 as const });
