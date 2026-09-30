@@ -1614,6 +1614,7 @@ export function installLynxMainThreadWithValidator<Node extends LynxElementRef =
 			);
 		}
 		const registry = feature.createRegistry({
+			elementTarget: rawTarget,
 			callBackground(fn, args) {
 				return callBackground(
 					fn as LynxBackgroundFunctionWireDescriptor,

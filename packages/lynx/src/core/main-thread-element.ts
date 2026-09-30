@@ -38,7 +38,8 @@ const enum LynxMainThreadAnimationOperation {
 
 let animationCount = 0;
 
-let flushScheduled = false;
+// One pending flush per main-thread global, so each target flushes its own tree.
+const flushScheduled = new WeakSet<object>();
 
 function required<Node extends object, Name extends keyof LynxMainThreadElementGlobals<Node>>(
 	target: object,
@@ -56,10 +57,10 @@ function required<Node extends object, Name extends keyof LynxMainThreadElementG
 }
 
 function scheduleFlush<Node extends object>(target: object): void {
-	if (flushScheduled) return;
-	flushScheduled = true;
+	if (flushScheduled.has(target)) return;
+	flushScheduled.add(target);
 	void Promise.resolve().then(() => {
-		flushScheduled = false;
+		flushScheduled.delete(target);
 		required<Node, '__FlushElementTree'>(target, '__FlushElementTree')();
 	});
 }

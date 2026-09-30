@@ -18,7 +18,8 @@ const MAIN_THREAD_WORKLET_FEATURE = Object.freeze({
 	createRegistry: (options: CreateLynxMainThreadWorkletRegistryOptions) =>
 		createLynxMainThreadWorkletRegistry({
 			...options,
-			wrapElementRef: createLynxMainThreadElement,
+			wrapElementRef: (value: object) =>
+				createLynxMainThreadElement(value, options.elementTarget ?? globalThis),
 		}),
 	installRegistry: installLynxMainThreadWorkletRegistry,
 	installCallBridge: installMainThreadCallBridge,
