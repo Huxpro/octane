@@ -72,6 +72,72 @@ universal renderer ABI experimental: public stabilization waits for the native
 event/reload contracts, verified typed data/destroy delivery, native
 bootstrap/first-paint, and device evidence listed under Current decision.
 
+## Main-thread memory after large removals
+
+The Lynx main thread (LepusNG) collects garbage by tracing, and a collection
+runs only when an allocation triggers one. Removing native elements drops their
+JavaScript wrappers, but those wrappers keep the native elements alive until the
+next collection. Octane's compact wire makes a large removal cheap in
+allocations: clearing a 1,000-row table is one `destroy-run` instruction. The
+removed elements therefore usually survive until the next allocating update,
+such as the next create. ReactLynx decodes one patch per removed row, which
+allocates enough to trigger a collection in the same frame. Both frameworks
+issue the same element-removal calls.
+
+This is deferred cost, not a leak: the memory returns at the next collection.
+Read after-removal memory and removal latency with that in mind, because the
+destruction cost is paid wherever the collection lands.
+
+The Lynx page config `disableQuickTracingGC: true` switches the main thread to
+reference counting, which frees removed elements immediately. Octane does not
+enable it by default. On an iPhone 17 Pro simulator (Explorer 4.1.0,
+`benchmarks/lynx-table`, ordinary build) it changed the following:
+
+| Measurement                         | Default    | `disableQuickTracingGC` |
+| ----------------------------------- | ---------- | ----------------------- |
+| Footprint after clearing 5,000 rows | 477–482 MB | 190–211 MB              |
+| First screen with 1,000 rows        | 632 ms     | 675 ms                  |
+| Create 1,000 rows                   | 664 ms     | 706 ms                  |
+| Clear 1,000 rows                    | 154 ms     | 156 ms                  |
+
+On Android 10 (aries_10), the flag made create 1,000 rows about 1.11× slower
+and clear about 1.48× slower. Measure your own workload before enabling it.
+
+The released `@lynx-js/config-rsbuild-plugin` (0.2.4) rejects this key. A small
+Rsbuild plugin can set it through the `LynxTemplatePlugin` hooks that
+`pluginOctane` exposes:
+
+```js
+// lynx.config.mjs
+const pluginPageConfig = (pageConfig) => ({
+	name: 'app:lynx-page-config',
+	setup(api) {
+		api.modifyBundlerChain((chain) => {
+			chain.plugin('app:lynx-page-config').use(
+				class {
+					apply(compiler) {
+						const { LynxTemplatePlugin } = api.useExposed(Symbol.for('LynxTemplatePlugin'));
+						compiler.hooks.thisCompilation.tap('app:lynx-page-config', (compilation) => {
+							LynxTemplatePlugin.getLynxTemplatePluginHooks(compilation).beforeEncode.tap(
+								'app:lynx-page-config',
+								(args) => {
+									Object.assign(args.encodeData.sourceContent.config, pageConfig);
+									return args;
+								},
+							);
+						});
+					}
+				},
+			);
+		});
+	},
+});
+
+export default defineConfig({
+	plugins: [pluginOctane(), pluginPageConfig({ disableQuickTracingGC: true })],
+});
+```
+
 ## Run the repository demo
 
 From the repository root, `pnpm lynx:demo:native` verifies, caches, and launches
