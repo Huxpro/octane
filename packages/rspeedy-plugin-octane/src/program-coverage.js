@@ -1366,6 +1366,19 @@ export function evaluateLynxCompiledProgramEligibility({ blockSelection, feature
 				['background', module.background],
 				['main-thread', module.mainThread],
 			]) {
+				// The compact client encodes host props without a `main-thread:*`
+				// lane, so an authored main-thread binding or ref cannot mount there.
+				for (const prop of requirements.mainThreadProps) {
+					reasons.push(
+						reason('compiled-program-unsupported-main-thread-prop', {
+							module: module.module,
+							thread,
+							name: prop.name,
+							line: prop.line,
+							column: prop.column,
+						}),
+					);
+				}
 				for (const feature of requirements.templateFeatures) {
 					if (feature.kind !== 'portal') continue;
 					reasons.push(
