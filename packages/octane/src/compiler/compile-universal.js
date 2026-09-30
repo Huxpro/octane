@@ -3980,6 +3980,8 @@ function dirtyComponentCandidate(render, hooks, state) {
 	const sources = [];
 	const derived = [];
 	const replacements = [];
+	// Names read by hook arguments the runtime retains and calls after render.
+	const retainedRefs = [];
 	for (const statement of render.setup ?? []) {
 		if (typeOnlySetupStatement(statement)) continue;
 		if (
@@ -4022,6 +4024,12 @@ function dirtyComponentCandidate(render, hooks, state) {
 				]);
 			}
 			sources.push({ value: elements[0].name, getter, hook: hookName, origin: declaration });
+			if (hookName === 'useReducer') {
+				// Dispatch reduces with the reducer retained from the last component
+				// render. The initial argument and init function run only at mount.
+				const reducer = value.arguments?.[0];
+				if (reducer != null) retainedRefs.push(...dirtyExpressionReferences(reducer));
+			}
 			continue;
 		}
 		if (
@@ -4061,6 +4069,11 @@ function dirtyComponentCandidate(render, hooks, state) {
 		entry.deps = deps;
 		bindingDeps.set(entry.name, deps);
 	}
+	// Replay does not rerun setup, so a retained closure that reads a replayed
+	// binding would keep that binding's value from the last component render.
+	// Checked after every binding is known: a reducer may read its own state or a
+	// later declaration, since it runs only after render completes.
+	if (retainedRefs.some((ref) => bindingDeps.get(ref)?.size > 0)) return null;
 	return { sources, derived, bindingDeps, replacements };
 }
 
