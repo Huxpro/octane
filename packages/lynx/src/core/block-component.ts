@@ -211,6 +211,36 @@ const HOOKS_WITHOUT_ATTEMPT =
 const INSERTION_EFFECTS_UNSUPPORTED =
 	'its setup declares an insertion effect, whose pre-mutation phase the Block core does not have (issue #290).';
 /** Compiler proof that a component needs semantic hook ownership. */
+const UNIVERSAL_MEMO_INNER: symbol = Symbol.for('octane.universal.memo-inner');
+
+/**
+ * The component a keyed row actually renders.
+ *
+ * A default-compare \`memo\` bails out exactly when its props are shallow-equal,
+ * it has no local update, and no context it read changed. Around a body the
+ * compiler proved hook-free, the last two cannot occur, so that is the skip this
+ * core already applies to an unscoped row. Rendering the wrapped component
+ * directly keeps the row unscoped and on every sparse path; the wrapper's own
+ * hook scope would turn them all off. A custom comparator, or any hooked or
+ * unproven body, keeps the wrapper and its scope.
+ */
+function keyedRowComponent(component: LynxComponent<never>): LynxComponent<never> {
+	let inner = component;
+	for (;;) {
+		const next = (inner as unknown as Record<PropertyKey, unknown>)[UNIVERSAL_MEMO_INNER];
+		if (typeof next !== 'function') break;
+		inner = next as LynxComponent<never>;
+	}
+	return inner !== component && !componentMayNeedHookScope(inner) ? inner : component;
+}
+
+function keyedRowComponentOf(
+	invocation: UniversalComponentValue | null,
+): LynxComponent<never> | null {
+	const component = invocation?.component as unknown as LynxComponent<never> | undefined;
+	return component === undefined ? null : keyedRowComponent(component);
+}
+
 function componentMayNeedHookScope(component: LynxComponent<never>): boolean {
 	const metadata = (component as unknown as Record<PropertyKey, unknown>)[UNIVERSAL_COMPONENT] as
 		{ hookScope?: unknown } | undefined;
@@ -1753,8 +1783,7 @@ export function lynxBlockProgramForComponent<Props>(
 	): SparseRangeRow | null => {
 		const produced = list.render(item, index);
 		const invocation = rowComponentInvocation(produced);
-		const component =
-			(invocation?.component as unknown as LynxComponent<never> | undefined) ?? null;
+		const component = keyedRowComponentOf(invocation);
 		const props = invocation === null ? null : forwardedProps(invocation);
 		if (component === null || component !== prior.component) {
 			refuse(
@@ -1990,8 +2019,7 @@ export function lynxBlockProgramForComponent<Props>(
 			if (materializedItems.length === 0) {
 				const produced = list.empty();
 				const invocation = rowComponentInvocation(produced);
-				const component =
-					(invocation?.component as unknown as LynxComponent<never> | undefined) ?? null;
+				const component = keyedRowComponentOf(invocation);
 				const props = invocation === null ? null : forwardedProps(invocation);
 				const prior = previous?.get(EMPTY_RANGE_KEY) ?? null;
 				const priorNested = state.nested?.get(EMPTY_RANGE_KEY);
@@ -2518,8 +2546,7 @@ export function lynxBlockProgramForComponent<Props>(
 			// only if what it would be called with can be compared first.
 			const produced = list.render(item, index);
 			const invocation = rowComponentInvocation(produced);
-			const component =
-				(invocation?.component as unknown as LynxComponent<never> | undefined) ?? null;
+			const component = keyedRowComponentOf(invocation);
 			const props = invocation === null ? null : forwardedProps(invocation);
 			if (component !== null) {
 				if (
