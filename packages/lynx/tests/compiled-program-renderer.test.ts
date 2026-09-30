@@ -16,6 +16,8 @@ import {
 	createLynxClientDriver,
 	setLynxClientCapabilities,
 } from '../src/core/client-driver.compiled-program.js';
+import { LYNX_PROGRAM_ABI_VERSION } from '../src/core/program-abi.js';
+import { resolveUniversalProgram } from '../src/core/program-registry.js';
 import {
 	createContext,
 	defineUniversalComponent,
@@ -76,6 +78,23 @@ const PLAN: UniversalProgramPlan = {
 };
 
 describe('@octanejs/lynx compact compiled-program renderer', () => {
+	it('rejects an addressed program with a mismatched ABI before it registers', () => {
+		const address = { module: 'tests/compact-stale-abi.tsrx', index: 0, digest: 'stale' };
+		expect(() => universalPlan('lynx', { ...PLAN, version: 99 }, address)).toThrow(
+			new TypeError(
+				`Octane Lynx compiled-program renderer expected program ABI version ${LYNX_PROGRAM_ABI_VERSION}, received 99.`,
+			),
+		);
+		expect(resolveUniversalProgram(address.module, address.index)).toBeUndefined();
+	});
+
+	it('registers an addressed program that carries the current ABI', () => {
+		const address = { module: 'tests/compact-current-abi.tsrx', index: 0, digest: 'current' };
+		const plan = universalPlan('lynx', { ...PLAN, version: LYNX_PROGRAM_ABI_VERSION }, address);
+		expect(resolveUniversalProgram(address.module, address.index)).toBe(plan);
+		expect(plan.version).toBe(LYNX_PROGRAM_ABI_VERSION);
+	});
+
 	it('normalizes every resident value exactly once before the scalar transport', () => {
 		const plan = universalPlan('lynx', PLAN);
 		const authoredClass = ['row', { active: true, disabled: false }] as const;
