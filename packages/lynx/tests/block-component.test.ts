@@ -68,6 +68,7 @@ import {
 	useState,
 	useSyncExternalStore,
 	useTransition,
+	type UniversalComponent,
 	type UniversalRenderable,
 	type UniversalHostCommand,
 } from 'octane/universal/native';
@@ -6816,15 +6817,23 @@ const STABLE_ROWS: readonly TableRow[] = [
 	{ id: 5, label: 'row 5' },
 ];
 
+type StableRowProps = {
+	readonly row: TableRow;
+	readonly isSelected: boolean;
+	readonly onSelect: (id: number) => void;
+};
+
 /** `<Row … />` per row: the shape the benchmark page and every real page use. */
-function stableColumnComponent(): LynxComponent<TableProps> {
-	const Row = defineUniversalComponent(
+function stableColumnComponent(
+	wrapRow: (row: UniversalComponent<StableRowProps>) => UniversalComponent<StableRowProps> = (
+		row,
+	) => row,
+	onRowBody: () => void = noop,
+): LynxComponent<TableProps> {
+	const PlainRow = defineUniversalComponent(
 		LYNX_TRANSPORT_RENDERER,
-		function Row(props: {
-			readonly row: TableRow;
-			readonly isSelected: boolean;
-			readonly onSelect: (id: number) => void;
-		}) {
+		function Row(props: StableRowProps) {
+			onRowBody();
 			return universalValue(ROW_PLAN, [
 				props.isSelected ? 'row danger' : 'row',
 				String(props.row.id),
@@ -6834,6 +6843,7 @@ function stableColumnComponent(): LynxComponent<TableProps> {
 		},
 		{ hookScope: false },
 	);
+	const Row = wrapRow(PlainRow);
 	const Listed = defineUniversalComponent(
 		LYNX_TRANSPORT_RENDERER,
 		function Listed(props: TableProps) {
@@ -7520,6 +7530,155 @@ describe('Lynx compiled component whose rows outlive the render', () => {
 			await universal.render(props);
 			await block.render(Listed, props);
 			expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
+		}
+	});
+
+	it('renders a default memo around a hook-free row on the unscoped sparse paths', async () => {
+		// \`const Row = memo(Local)\` is the idiomatic list row. A default-compare
+		// memo over a proven hook-free body skips exactly when the Block core's own
+		// shallow-props skip does, so the row must stay unscoped: a scoped row turns
+		// off the compiler-certified selection path and re-runs every row's \`@for\`
+		// body on each selection change.
+		for (const wrap of [
+			(row: UniversalComponent<StableRowProps>) => memo(row),
+			(row: UniversalComponent<StableRowProps>) => memo(memo(row)),
+		]) {
+			let rowBodies = 0;
+			const Row = wrap(
+				defineUniversalComponent(
+					LYNX_TRANSPORT_RENDERER,
+					function Row(props: StableRowProps) {
+						return universalValue(ROW_PLAN, [
+							props.isSelected ? 'row danger' : 'row',
+							String(props.row.id),
+							() => props.onSelect(props.row.id),
+							props.row.label,
+						]);
+					},
+					{ hookScope: false },
+				),
+			);
+			const Listed = defineUniversalComponent(
+				LYNX_TRANSPORT_RENDERER,
+				function Listed(props: TableProps) {
+					return universalValue(TABLE_PLAN, [
+						universalFor(
+							props.rows,
+							(row: TableRow) => row.id,
+							(row: TableRow) => {
+								rowBodies++;
+								return universalComponent(
+									LYNX_TRANSPORT_RENDERER,
+									Row,
+									universalProps([
+										['set', 'row', row],
+										['set', 'isSelected', props.selected === row.id],
+										['set', 'onSelect', props.onSelect],
+									]),
+								);
+							},
+							null,
+							false,
+							false,
+							undefined,
+							undefined,
+							undefined,
+							true,
+							[props.selected, [props.onSelect], 'row', true, 'id'],
+						),
+					]);
+				},
+			) as LynxComponent<TableProps>;
+			const rows = Array.from({ length: 50 }, (_, index) => ({
+				id: index + 1,
+				label: `row ${index + 1}`,
+			}));
+			const onSelect = (): void => {};
+			const block = blockColumn<TableProps>();
+			const step = async (selected: number | undefined, nextRows = rows): Promise<number> => {
+				const before = rowBodies;
+				await block.render(Listed, { rows: nextRows, selected, onSelect });
+				return rowBodies - before;
+			};
+			expect(await step(undefined)).toBe(50);
+			expect(await step(10)).toBe(1);
+			expect(await step(20)).toBe(2);
+			expect(await step(20)).toBe(0);
+			const edited = rows.slice();
+			edited[4] = { ...edited[4]!, label: 'row 5 edited' };
+			expect(await step(20, edited)).toBe(1);
+		}
+	});
+
+	it('keeps the memo wrapper and its skip around a stateful row', async () => {
+		// A hooked body is not the Block core's to skip: only the wrapper's own
+		// comparison may leave it alone, so the wrapper must stay in place.
+		const run = async (render: 'universal' | 'block'): Promise<number[]> => {
+			let bodies = 0;
+			const StatefulRow = defineUniversalComponent(
+				LYNX_TRANSPORT_RENDERER,
+				function StatefulRow(props: StableRowProps) {
+					bodies++;
+					const [taps] = useState(0);
+					return universalValue(ROW_PLAN, [
+						props.isSelected ? 'row danger' : 'row',
+						String(props.row.id),
+						() => props.onSelect(props.row.id),
+						props.row.label + ':' + taps,
+					]);
+				},
+				{ hookScope: true },
+			);
+			const Listed = stableColumnComponent(() => memo(StatefulRow));
+			const onSelect = (): void => {};
+			const universal = render === 'universal' ? universalColumn(Listed) : null;
+			const block = render === 'block' ? blockColumn<TableProps>() : null;
+			const counts: number[] = [];
+			for (const selected of [undefined, 3, 4, 4]) {
+				const before = bodies;
+				const props = { rows: STABLE_ROWS, selected, onSelect };
+				if (universal !== null) await universal.render(props);
+				else await block!.render(Listed, props);
+				counts.push(bodies - before);
+			}
+			return counts;
+		};
+		const universalCounts = await run('universal');
+		expect(universalCounts).toEqual([5, 1, 2, 0]);
+		expect(await run('block')).toEqual(universalCounts);
+	});
+
+	it('paints what the universal core paints for memo rows, default or custom compare', async () => {
+		const onSelect = (): void => {};
+		const edited = STABLE_ROWS.map((row) =>
+			row.id === 2 ? { id: 2, label: 'row 2 edited' } : row,
+		);
+		const ladder: readonly TableProps[] = [
+			{ rows: STABLE_ROWS, selected: undefined, onSelect },
+			{ rows: STABLE_ROWS, selected: 3, onSelect },
+			{ rows: STABLE_ROWS, selected: 4, onSelect },
+			{ rows: edited, selected: 4, onSelect },
+			{ rows: [edited[4]!, ...edited.slice(1, 4), edited[0]!], selected: 4, onSelect },
+			{ rows: [edited[4]!, edited[2]!, edited[3]!, edited[0]!], selected: 3, onSelect },
+			{ rows: [], selected: undefined, onSelect },
+		];
+		for (const wrap of [
+			(row: UniversalComponent<StableRowProps>) => memo(row),
+			(row: UniversalComponent<StableRowProps>) => memo(memo(row)),
+			// A custom comparator is the author's semantics, not the core's: this one
+			// ignores the selection, so a selected row keeps its unselected paint on
+			// both cores. The Block core must not replace it with its own skip.
+			(row: UniversalComponent<StableRowProps>) =>
+				memo(row, (previous, next) => Object.is(previous.row, next.row)),
+		]) {
+			const Listed = stableColumnComponent(wrap);
+			const universal = universalColumn(Listed);
+			const block = blockColumn<TableProps>();
+			for (const props of ladder) {
+				await universal.render(props);
+				await block.render(Listed, props);
+				expect(paint(block.main.commits).tree).toBe(paint(universal.main.commits).tree);
+			}
 		}
 	});
 

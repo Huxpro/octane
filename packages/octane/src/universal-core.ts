@@ -63,6 +63,12 @@ const UNIVERSAL_RENDERER_REGION = Symbol.for('octane.universal.renderer-region')
 const RENDERER_REGION_OWNER = Symbol.for('octane.renderer-region.owner');
 const LAZY_COMPONENT = Symbol.for('octane.lazy');
 const UNIVERSAL_COMPONENT_REVISION = Symbol('octane.universal.component-revision');
+/**
+ * The component a default-compare \`memo\` wrapper renders. A native core whose
+ * own reconciler already skips a hook-free component on shallow-equal props may
+ * render that component directly; a custom comparator never carries this mark.
+ */
+const UNIVERSAL_MEMO_INNER = Symbol.for('octane.universal.memo-inner');
 
 const NO_CHILDREN = Symbol('octane.universal.no-children');
 const NO_KEY = Symbol('octane.universal.no-key');
@@ -8340,6 +8346,9 @@ export function memo<P>(
 	Object.defineProperty(wrapper, UNIVERSAL_COMPONENT_REVISION, {
 		get: () => universalComponentRevision(component),
 	});
+	if (compare === undefined && metadata !== UNIVERSAL_LAZY_METADATA) {
+		Object.defineProperty(wrapper, UNIVERSAL_MEMO_INNER, { value: component });
+	}
 	if (typeof __OCTANE_PROFILE_ENABLED__ !== 'undefined' && __OCTANE_PROFILE_ENABLED__) {
 		__profileComponentSource(wrapper, component);
 	}

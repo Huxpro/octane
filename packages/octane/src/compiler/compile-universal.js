@@ -2478,7 +2478,7 @@ function meaningfulTemplateNode(node) {
 	return node?.type !== 'JSXText' || normalizeJsxText(node.value ?? '') !== '';
 }
 
-function keyedRangeRowRequirement(row, components) {
+function keyedRangeRowRequirement(row, components, state) {
 	if (row === null) return Object.freeze({ kind: 'unknown', name: null });
 	if (row.type !== 'JSXElement' && row.type !== 'Element') {
 		return Object.freeze({ kind: 'unknown', name: null });
@@ -2486,13 +2486,34 @@ function keyedRangeRowRequirement(row, components) {
 	const name = jsxName(row);
 	if (name === null) return Object.freeze({ kind: 'dynamic-component', name: null });
 	if (!isComponentElement(row)) return Object.freeze({ kind: 'inline-host', name });
-	const component = components.get(name);
+	const component = components.get(name) ?? memoWrappedLocalComponent(row, components, state);
 	if (component === undefined) return Object.freeze({ kind: 'external-component', name });
 	return Object.freeze({
 		kind: 'local-component',
 		name,
 		hooks: Object.freeze(component.hooks.map((hook) => Object.freeze({ ...hook }))),
 	});
+}
+
+/**
+ * The local component behind a row authored as `const Row = memo(Local)`.
+ *
+ * `memo` renders the wrapped component's own body, so the wrapper row carries
+ * that component's hook inventory. Every hop must still be an immutable
+ * module-root binding; anything else stays an external row.
+ */
+function memoWrappedLocalComponent(row, components, state) {
+	const trusted = state.immutableLocalComponents;
+	let name = immutableLocalComponentName(row, state);
+	const visited = new Set();
+	while (name !== null && !visited.has(name)) {
+		visited.add(name);
+		const component = components.get(name);
+		if (component !== undefined) return component;
+		const target = trusted.memoTargets.get(name);
+		name = target !== undefined && trusted.names.has(target) ? target : null;
+	}
+	return undefined;
 }
 
 function keyedRangeRowNode(node) {
@@ -2750,7 +2771,7 @@ function lynxBlockFeatureRequirements(ast, state) {
 				empty: node.empty != null,
 				nested: false,
 				lastChild,
-				row: keyedRangeRowRequirement(rowNode, components),
+				row: keyedRangeRowRequirement(rowNode, components, state),
 			};
 			const parentRange = rangeAncestors[rangeAncestors.length - 1];
 			if (parentRange !== undefined) parentRange.nested = true;
@@ -2881,6 +2902,8 @@ function collectComponentNames(ast) {
 function collectImmutableLocalComponents(ast) {
 	const names = new Set();
 	const memoImports = new Set();
+	/** `const Wrapper = memo(Wrapped)` bindings, as wrapper name -> wrapped name. */
+	const memoTargets = new Map();
 	for (const statement of ast.body ?? []) {
 		if (statement.type === 'ImportDeclaration' && statement.source?.value === 'octane') {
 			for (const specifier of statement.specifiers ?? []) {
@@ -2937,6 +2960,7 @@ function collectImmutableLocalComponents(ast) {
 					!names.has(binding.id.name)
 				) {
 					names.add(binding.id.name);
+					memoTargets.set(binding.id.name, wrapped.name);
 					added = true;
 				}
 			}
@@ -2984,7 +3008,7 @@ function collectImmutableLocalComponents(ast) {
 		forEachRuntimeAstChild(node, visit);
 	};
 	visit(ast);
-	return { names, lexical };
+	return { names, memoTargets, lexical };
 }
 
 function collectExplicitThreeHostIntrinsics(ast, renderer) {
