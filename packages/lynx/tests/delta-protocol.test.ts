@@ -191,6 +191,42 @@ describe('@octanejs/lynx delta protocol', () => {
 		});
 	});
 
+	describe('same-slot arithmetic writes', () => {
+		it('round-trips one SET-RUN without repeating instance and slot framing', () => {
+			const operations: readonly LynxDeltaOperation[] = [
+				{
+					op: 'set-run',
+					firstInstance: 2,
+					stride: 10,
+					slot: 3,
+					values: ['a', 'b', 'c'],
+				},
+			];
+			const encoded = encodeLynxDeltaMessage(operations);
+			expect(encoded).toEqual([LYNX_DELTA_PROTOCOL_VERSION, 9, 6, 2, 10, 3, 'a', 'b', 'c']);
+			expect(decodeLynxDeltaMessage(encoded).operations).toEqual(operations);
+		});
+
+		it('rejects an empty or overflowing SET-RUN before transport', () => {
+			expect(() =>
+				encodeLynxDeltaMessage([
+					{ op: 'set-run', firstInstance: 2, stride: 1, slot: 0, values: [] },
+				]),
+			).toThrow(/SET-RUN/);
+			expect(() =>
+				encodeLynxDeltaMessage([
+					{
+						op: 'set-run',
+						firstInstance: 2 ** 31 - 1,
+						stride: 1,
+						slot: 0,
+						values: ['a', 'b'],
+					},
+				]),
+			).toThrow(/instance handle range/);
+		});
+	});
+
 	// Ordinary scalars retain the exact flat frame. Only a tagged direct worklet/ref
 	// value pays the recursive clone-safe codec and the decoder never walks an
 	// untagged hostile object.
@@ -259,6 +295,11 @@ describe('@octanejs/lynx delta protocol', () => {
 			['a negative frame arity', [LYNX_DELTA_PROTOCOL_VERSION, 1, -1]],
 			['a frame extending past the message', [LYNX_DELTA_PROTOCOL_VERSION, 1, 40, 0]],
 			['a SET frame with the wrong arity', [LYNX_DELTA_PROTOCOL_VERSION, 2, 2, 1, 0]],
+			['an empty SET-RUN frame', [LYNX_DELTA_PROTOCOL_VERSION, 9, 3, 1, 1, 0]],
+			[
+				'an overflowing SET-RUN frame',
+				[LYNX_DELTA_PROTOCOL_VERSION, 9, 5, 2 ** 31 - 1, 1, 0, 'a', 'b'],
+			],
 			['a RUN with zero instances', [LYNX_DELTA_PROTOCOL_VERSION, 1, 7, 1, 1, 0, 0, 0, 2, 0]],
 			[
 				'a RUN whose value count contradicts its arity',

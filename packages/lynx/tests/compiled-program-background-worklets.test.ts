@@ -111,6 +111,52 @@ describe('@octanejs/lynx compact background worklet ownership', () => {
 		worklets.close();
 	});
 
+	it('retains and rolls back every execution in a sparse SET-RUN atomically', () => {
+		const registry = createLynxBackgroundFunctionRegistry();
+		const worklets = createLynxCompiledProgramBackgroundWorklets(registry);
+		worklets
+			.prepare(
+				frame([
+					{
+						op: 'run',
+						templateId: 1,
+						parent: { instance: 1, slot: 0 },
+						before: null,
+						firstInstance: 2,
+						count: 2,
+						values: [descriptor('a'), descriptor('b')],
+					},
+				]),
+			)
+			.accept();
+		const initial = worklets.activeExecutions();
+		const updates: LynxDeltaOperation[] = [
+			{
+				op: 'set-run',
+				firstInstance: 2,
+				stride: 1,
+				slot: 0,
+				values: [descriptor('next-a'), descriptor('next-b')],
+			},
+		];
+		expect(lynxCompiledProgramFrameRequiresBackgroundWorklets(frame(updates))).toBe(true);
+
+		worklets.prepare(frame(updates)).reject();
+		expect(worklets.activeExecutions()).toEqual(initial);
+		worklets.prepare(frame(updates)).accept();
+		const accepted = worklets.activeExecutions();
+		expect(accepted).toHaveLength(2);
+		for (const execution of initial) expect(registry.isActive(execution)).toBe(false);
+		for (const execution of accepted) expect(registry.isActive(execution)).toBe(true);
+
+		worklets
+			.prepare(frame([{ op: 'set-run', firstInstance: 2, stride: 1, slot: 0, values: ['a', 'b'] }]))
+			.accept();
+		expect(worklets.activeExecutions()).toEqual([]);
+		for (const execution of accepted) expect(registry.isActive(execution)).toBe(false);
+		worklets.close();
+	});
+
 	it('uses exact CLEAR retirement metadata without retaining range topology', () => {
 		const registry = createLynxBackgroundFunctionRegistry();
 		const worklets = createLynxCompiledProgramBackgroundWorklets(registry);

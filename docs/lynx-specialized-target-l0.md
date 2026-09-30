@@ -141,8 +141,9 @@ Everything else in the template has no per-instance state at all.
 ### 3.4 Delta opcodes (background → main)
 
 Typed, flat, and instance-addressed; the applier is a table dispatch into
-pre-bound PAPI setters. **Protocol version 2** (`delta-protocol.ts`), after the
-closure analysis on #61 refuted the draft below it.
+pre-bound PAPI setters. **Protocol version 3** (`delta-protocol.ts`), after the
+closure analysis on #61 refuted the draft below it and list-update evidence
+added arithmetic SET runs.
 
 Every address is a pair `(instance, slot)`. A bare slot cannot be an address:
 slot indices are per-template, so one index names one anchor *per instance* —
@@ -156,6 +157,10 @@ sentinel; handles are dense, monotonic, and never reused.
 - `SET(instance, slot, value)` — one slot write. The slot's compile-time kind
   selects the setter, so no per-prop classification or prop-bag diff exists on
   either side.
+- `SET-RUN(first, stride, slot, values…)` — equal-slot writes to the arithmetic
+  instance sequence `first + stride * i`. The producer emits it only for
+  consecutive SETs, so it amortizes framing and validation without changing
+  operation order or requiring dense instance handles.
 - `REMOVE(first, count)` — destroy a contiguous handle run.
 - `CLEAR((Ip,sp))` — destroy every member of a range site, valid only where the
   site owns all of its parent node's children.
@@ -945,7 +950,10 @@ in §3 and the extraction-first decision in §5.
   set the closure analysis on #61 settled: every address is an `(instance,
   slot)` pair, `BRANCH` is deleted, `CLEAR` and `VIS` are added, and values are
   restricted to scalars so a frame is checkable by its header alone.
-  `LYNX_DELTA_PROTOCOL_VERSION` is 2; §3.4 above is the normative description.
+  `LYNX_DELTA_PROTOCOL_VERSION` was 2 for this phase; §3.4 above is the
+  normative current description. Version 3 later added only arithmetic
+  `SET-RUN` compaction for consecutive equal-slot updates; the instance and
+  range model established here is unchanged.
   The #78 shadow now emits v2 and allocates dense instance handles of its own
   rather than reusing command-batch node ids, and its differential oracle
   addresses instances by handle — which is the property instance-qualified

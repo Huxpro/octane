@@ -124,6 +124,46 @@ describe('Lynx Block direct delta producer', () => {
 		producer.acceptAttempt();
 	});
 
+	it('coalesces only three or more consecutive equal-slot arithmetic SETs', () => {
+		const producer = createLynxBlockDeltaProducer();
+		producer.beginAttempt();
+		producer.run({
+			address: ADDRESS,
+			parent: { instance: 1, slot: 0 },
+			before: null,
+			count: 24,
+			values: [],
+		});
+		producer.set(2, 1, 'a');
+		producer.set(12, 1, 'b');
+		producer.set(22, 1, 'c');
+		producer.set(3, 2, 'x');
+		producer.set(13, 2, 'y');
+		producer.move(2, { instance: 1, slot: 0 }, null);
+		producer.set(4, 1, 'd');
+		producer.set(14, 1, 'e');
+		producer.set(25, 1, 'not-arithmetic');
+
+		const frame = frameOf(producer.flush(1)!);
+		expect(frame.operations.slice(1)).toEqual([
+			{
+				op: 'set-run',
+				firstInstance: 2,
+				stride: 10,
+				slot: 1,
+				values: ['a', 'b', 'c'],
+			},
+			{ op: 'set', instance: 3, slot: 2, value: 'x' },
+			{ op: 'set', instance: 13, slot: 2, value: 'y' },
+			{ op: 'move', instance: 2, parent: { instance: 1, slot: 0 }, before: null },
+			{ op: 'set', instance: 4, slot: 1, value: 'd' },
+			{ op: 'set', instance: 14, slot: 1, value: 'e' },
+			{ op: 'set', instance: 25, slot: 1, value: 'not-arithmetic' },
+		]);
+		expect(decodeLynxDeltaMessage(frame.encoded).operations).toEqual(frame.operations);
+		producer.acceptAttempt();
+	});
+
 	it('preserves a retained static-node anchor for RUN and MOVE', () => {
 		const producer = createLynxBlockDeltaProducer();
 		producer.beginAttempt();

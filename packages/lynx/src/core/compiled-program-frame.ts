@@ -21,6 +21,7 @@ const enum Opcode {
 	Visibility = 6,
 	Define = 7,
 	RefRun = 8,
+	SetRun = 9,
 }
 
 const END_INSTANCE = 0;
@@ -55,14 +56,16 @@ function count(value: unknown, message: string | false): number {
 }
 
 /**
- * Decode one proved subset of the v2 slot-delta protocol directly into a store.
+ * Decode one proved subset of the v3 slot-delta protocol directly into a store.
  *
  * The router deliberately allocates no operation objects and gives a RUN's
  * value segment to the store by offset, so the retained value table is its only
  * copy. This slice owns range-addressed RUN/SET/REMOVE/MOVE/CLEAR/VIS,
  * including the deterministic event-token run carried by a resident program.
- * DEFINE resolves a build-proven address once and publishes its compact id in
- * the same transaction as the RUN that first uses it. Nested parents resolve
+ * SET-RUN applies one same-slot arithmetic instance sequence without decoding
+ * one operation object per write. DEFINE resolves a build-proven address once
+ * and publishes its compact id in the same transaction as the RUN that first
+ * uses it. Nested parents resolve
  * through the resident program's compiler slot rather than a physical node id.
  */
 export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
@@ -73,7 +76,7 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 	beforeCommit?: () => void,
 ): void {
 	if (!Array.isArray(input) || input[0] !== LYNX_DELTA_PROTOCOL_VERSION) {
-		fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a version-2 array envelope');
+		fail(LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a supported array envelope');
 	}
 
 	store.begin();
@@ -211,6 +214,41 @@ export function applyLynxCompiledProgramFrame<Node extends LynxElementRef>(
 						input[cursor + 1] as number,
 						decodeLynxDeltaValue(input[cursor + 2], 'SET value'),
 					);
+					break;
+				}
+				case Opcode.SetRun: {
+					if (arity < 4)
+						fail(
+							LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT &&
+								'SET-RUN requires three header fields and at least one value',
+						);
+					const firstHandle = count(
+						input[cursor],
+						LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a positive SET-RUN first instance',
+					);
+					const stride = count(
+						input[cursor + 1],
+						LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a positive SET-RUN stride',
+					);
+					const slot = index(
+						input[cursor + 2],
+						LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT && 'requires a non-negative SET-RUN slot',
+					);
+					const valueCount = arity - 3;
+					const finalHandle = firstHandle + stride * (valueCount - 1);
+					if (!Number.isSafeInteger(finalHandle) || finalHandle > 2 ** 31 - 1) {
+						fail(
+							LYNX_COMPILED_PROGRAM_FRAME_DEVELOPMENT &&
+								'SET-RUN exceeds the instance handle range',
+						);
+					}
+					for (let offset = 0; offset < valueCount; offset++) {
+						store.set(
+							firstHandle + stride * offset,
+							slot,
+							decodeLynxDeltaValue(input[cursor + 3 + offset], 'SET-RUN value ' + offset),
+						);
+					}
 					break;
 				}
 				case Opcode.Remove: {

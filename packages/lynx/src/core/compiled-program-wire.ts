@@ -186,7 +186,7 @@ function lifecycleRecord(input: unknown[], name: string): LynxLifecycleDataRecor
 /**
  * Encode an internal compact-producer message without the general value walk.
  *
- * The v2 frame producer has already restricted every payload member to a wire
+ * The v3 frame producer has already restricted every payload member to a wire
  * scalar. This boundary adds only routing/identity fields and JSON materializes
  * the array in the receiving realm. Unsupported values are therefore a producer
  * defect, not an application value that needs the general codec's escape ABI.
