@@ -188,6 +188,50 @@ describe('Lynx main-thread worklets', () => {
 		registry.close();
 	});
 
+	it('presents native event targets the way host ref mounts present elements', () => {
+		const targetNode = Object.freeze({ native: 'target' });
+		const ownerNode = Object.freeze({ native: 'owner' });
+		const wrapElementRef = vi.fn((value: object) => ({ element: value }));
+		const seen: unknown[] = [];
+		const descriptor = registerMainThreadWorklet(
+			'test:wrapped-event-envelope',
+			undefined,
+			function (event) {
+				seen.push(event);
+				return true;
+			},
+			{ file: 'worklets.test.ts', line: 1, column: 0 },
+		);
+		const registry = createLynxMainThreadWorkletRegistry({ wrapElementRef });
+		const ref = createLynxMainThreadRefDescriptor('test:event-owner-ref');
+		const cell = registry.retainRef(ref, null);
+		registry.mountRef(ref, ownerNode);
+		const active = registry.activate(descriptor);
+
+		expect(
+			registry.runWorklet(active, [
+				{
+					type: 'tap',
+					target: { elementRefptr: targetNode },
+					currentTarget: { elementRefptr: ownerNode },
+					detail: { owner: { elementRefptr: ownerNode } },
+				},
+			]),
+		).toBe(true);
+		const received = seen[0] as {
+			target: { element: unknown };
+			currentTarget: { element: unknown };
+			detail: { owner: unknown };
+		};
+		expect(received.target).toEqual({ element: targetNode });
+		expect(received.currentTarget).toEqual(cell.current);
+		// One presentation per native element within a single event.
+		expect(received.detail.owner).toBe(received.currentTarget);
+		registry.release(active);
+		registry.releaseRef(ref);
+		registry.close();
+	});
+
 	it('keeps ref cells live only for an explicit worklet activation', () => {
 		const ref = createLynxMainThreadRefDescriptor('test:counter');
 		const descriptor = registerMainThreadWorklet(

@@ -287,6 +287,9 @@ interface CloneState {
 	 * for worklet arguments, which never leave the main thread.
 	 */
 	readonly unwrapElementReferences?: boolean;
+	/** Present the unwrapped element the way a mounted host ref presents it. */
+	readonly wrapElementReference?: (value: object) => unknown;
+	readonly wrappedElements?: Map<unknown, LynxWorkletValue>;
 }
 
 function cloneValue(value: unknown, label: string, state: CloneState): LynxWorkletValue {
@@ -322,8 +325,8 @@ function cloneValue(value: unknown, label: string, state: CloneState): LynxWorkl
 		own(value, 'elementRefptr')
 	) {
 		// The pinned Lynx event envelope marks element targets with a wrapper
-		// object; the worklet observes the raw main-thread element, matching the
-		// value a `main-thread:ref` cell holds.
+		// object; the worklet observes the same value a mounted `main-thread:ref`
+		// cell holds, so `event.currentTarget` and `ref.current` agree.
 		// PrimJS surfaces the element as an engine-owned reference whose typeof is
 		// not necessarily 'object'; reject only a missing reference.
 		const node = (value as { elementRefptr: unknown }).elementRefptr;
@@ -333,7 +336,15 @@ function cloneValue(value: unknown, label: string, state: CloneState): LynxWorkl
 				LYNX_WORKLETS_DEVELOPMENT && 'must reference a native element.',
 			);
 		}
-		const reference = node as LynxWorkletValue;
+		let reference = node as LynxWorkletValue;
+		if (state.wrapElementReference !== undefined) {
+			const wrapped = state.wrappedElements?.get(node);
+			if (wrapped !== undefined) reference = wrapped;
+			else {
+				reference = (state.wrapElementReference(node as object) ?? node) as LynxWorkletValue;
+				state.wrappedElements?.set(node, reference);
+			}
+		}
 		state.clones.set(value, reference);
 		return reference;
 	}
@@ -452,14 +463,21 @@ export function isolateLynxWorkletValue<T extends LynxWorkletValue>(
 
 /**
  * Validate and copy main-thread worklet arguments. Native event envelopes are
- * data except for `{ elementRefptr }` target wrappers, which pass through as
- * their raw main-thread element by identity.
+ * data except for `{ elementRefptr }` target wrappers, which reach the worklet
+ * as the same value a mounted `main-thread:ref` holds: the raw main-thread
+ * element, or its `wrapElementReference` presentation when one is installed.
  */
-export function isolateLynxWorkletArguments(values: readonly unknown[]): readonly unknown[] {
+export function isolateLynxWorkletArguments(
+	values: readonly unknown[],
+	wrapElementReference?: (value: object) => unknown,
+): readonly unknown[] {
 	return cloneValue(values as LynxWorkletValue[], 'worklet arguments', {
 		active: new Set(),
 		clones: new Map(),
 		unwrapElementReferences: true,
+		...(wrapElementReference === undefined
+			? null
+			: { wrapElementReference, wrappedElements: new Map() }),
 	}) as unknown as readonly unknown[];
 }
 
@@ -883,7 +901,7 @@ export function createLynxMainThreadWorkletRegistry(
 			...(captures === undefined ? null : { _c: captures as LynxWorkletRecord }),
 			_owlt: token,
 		};
-		const args = isolateLynxWorkletArguments(params);
+		const args = isolateLynxWorkletArguments(params, options.wrapElementRef);
 		return definition.implementation.apply(receiver, args as unknown[]);
 	};
 
