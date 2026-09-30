@@ -93,9 +93,11 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 	const bound = new WeakMap<UniversalProgramPlan, ReturnType<UniversalProgramPlan['bind']>>();
 	const painted: PaintedRun<Node>[] = [];
 	// Main paint is depth-first, while the compact producer coalesces sibling
-	// programs before visiting their nested ranges. Preserve each local sibling
-	// order without requiring those programs to be adjacent in the painted walk.
-	const proofsByPlanAndParent = new Map<UniversalProgramPlan, Map<number, PaintedRun<Node>[]>>();
+	// programs before visiting their nested ranges. Each parent keeps its own
+	// painted sibling order, across every plan, so parents may interleave while
+	// the siblings under one parent must still be adopted exactly in order.
+	const proofsByParent = new Map<number, PaintedRun<Node>[]>();
+	const nextByParent = new Map<number, number>();
 	const pageRoots: Node[] = [];
 	const announced = new Set<string>();
 	for (const event of result.envelope.events) announced.add(`${event.id}\u0000${event.type}`);
@@ -197,11 +199,6 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 				owner: null,
 			};
 			painted.push(proof);
-			let proofsByParent = proofsByPlanAndParent.get(plan);
-			if (proofsByParent === undefined) {
-				proofsByParent = new Map();
-				proofsByPlanAndParent.set(plan, proofsByParent);
-			}
 			const parentId = papi.getUniqueId(parent);
 			const siblingProofs = proofsByParent.get(parentId);
 			if (siblingProofs === undefined) proofsByParent.set(parentId, [proof]);
@@ -254,19 +251,23 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 		if (input.before !== null) {
 			fail(`background run ${input.firstHandle} disagrees with painted order`);
 		}
-		const matches: PaintedRun<Node>[] = [];
 		const nodes: (Node | undefined)[] = [];
 		const expectedValues: unknown[] = [];
-		const candidates = proofsByPlanAndParent.get(input.plan)?.get(papi.getUniqueId(input.parent));
-		for (const proof of candidates ?? []) {
-			if (proof.owner !== null || !papi.isEqual(proof.parent, input.parent) || proof.count !== 1) {
-				continue;
-			}
-			matches.push(proof);
-			if (matches.length === input.count) break;
-		}
-		if (matches.length !== input.count) {
-			fail(`background run ${input.firstHandle} has no matching painted program run`);
+		const parentId = papi.getUniqueId(input.parent);
+		const siblings = proofsByParent.get(parentId) ?? [];
+		const start = nextByParent.get(parentId) ?? 0;
+		const matches = siblings.slice(start, start + input.count);
+		if (
+			matches.length !== input.count ||
+			matches.some(
+				(proof) =>
+					proof.owner !== null ||
+					proof.plan !== input.plan ||
+					!papi.isEqual(proof.parent, input.parent) ||
+					proof.count !== 1,
+			)
+		) {
+			fail(`background run ${input.firstHandle} disagrees with painted program order`);
 		}
 		const first = matches[0]!;
 		const listener = first.firstListenerId;
@@ -285,6 +286,7 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 				}
 			}
 		}
+		nextByParent.set(parentId, start + matches.length);
 		for (const proof of matches) {
 			proof.owner = input.firstHandle;
 			nodes.push(...proof.nodes);
@@ -318,7 +320,8 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 			pageRoots.length = 0;
 			painted.length = 0;
 			adoptedProofs = 0;
-			proofsByPlanAndParent.clear();
+			proofsByParent.clear();
+			nextByParent.clear();
 			assigned.clear();
 		},
 		dispose() {
@@ -330,7 +333,8 @@ export function paintLynxCompiledProgramFirstScreen<Node extends LynxElementRef>
 			pageRoots.length = 0;
 			painted.length = 0;
 			adoptedProofs = 0;
-			proofsByPlanAndParent.clear();
+			proofsByParent.clear();
+			nextByParent.clear();
 			assigned.clear();
 		},
 	};

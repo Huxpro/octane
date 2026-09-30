@@ -307,6 +307,58 @@ describe('compiled-program first-screen painter', () => {
 		expect(page.children).toEqual([firstParent, secondParent]);
 	});
 
+	it('rejects a background run whose sibling order under one parent differs from paint', () => {
+		const shape = (type: 'view' | 'text', name: string) =>
+			emittedPlan({ nodes: [{ type, parent: -1, props: { class: name } }], events: [] }, name);
+		const p = shape('view', 'createSiblingOrderP');
+		const q = shape('text', 'createSiblingOrderQ');
+		const program = (id: number, plan: UniversalProgramPlan) => ({
+			kind: 'program' as const,
+			id,
+			plan,
+			values: [],
+			ids: [id],
+			spans: [],
+			texts: [],
+			rangeIds: [],
+			children: [],
+		});
+		const result: LynxFirstScreenRenderResult = {
+			batch: undefined as never,
+			envelope: { renderer: 'lynx', version: 1, events: [] },
+			hostCount: 3,
+			logicalCount: 3,
+			programs: 3,
+			// Painted [P, Q, P] under the page.
+			nodes: [program(1, p), program(2, q), program(3, p)],
+		};
+		const base = createFakePAPI();
+		const papi = {
+			...base,
+			intrinsics: {
+				view: (pageId: number) => base.createElement('view', pageId, ''),
+				text: (pageId: number) => base.createElement('text', pageId, ''),
+				rawText: (value: string) => base.createElement('#text', 0, value),
+			},
+		};
+		const page = papi.createPage('0', 0);
+		const adoption = paintLynxCompiledProgramFirstScreen(result, papi, page);
+
+		// The background mounted [P, P, Q]: adopting it would leave the native
+		// siblings in an order the background does not know about.
+		expect(() =>
+			adoption.resolveSeed({
+				firstHandle: 2,
+				count: 2,
+				parent: page,
+				before: null,
+				plan: p,
+				values: [],
+			}),
+		).toThrow(/disagrees with painted program order/);
+		adoption.dispose();
+	});
+
 	it('defers a native-list first screen without creating a generic host or requiring adoption', () => {
 		const list = emittedPlan(
 			{ nodes: [{ type: 'list', parent: -1, props: { 'list-type': 'single' } }], events: [] },
