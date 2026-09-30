@@ -1444,6 +1444,81 @@ export function App(props: { groups: readonly { id: number; rows: readonly numbe
 		expect(result.code).not.toContain('lynxBlockFeatureRequirements');
 	});
 
+	it('records a const memo wrapper of a local component as that local row', () => {
+		const result = compileCard(`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { memo as remember, useState } from 'octane';
+
+const Twice = remember(Once, (a, b) => a.id === b.id);
+const Once = remember(HookedRow);
+
+function HookedRow() @{
+	const [value] = useState('row');
+	<view><text>{value as string}</text></view>
+}
+
+export function App(props: { rows: readonly number[] }) @{
+	<view>
+		@for (const row of props.rows; key row) {
+			<Once />
+		}
+		@for (const row of props.rows; key row) {
+			<Twice />
+		}
+	</view>
+}
+`);
+
+		const hooks = [{ name: 'useState', line: 8, column: 17 }];
+		expect(result.lynxBlockFeatureRequirements?.keyedRanges.map((range) => range.row)).toEqual([
+			{ kind: 'local-component', name: 'Once', hooks },
+			{ kind: 'local-component', name: 'Twice', hooks },
+		]);
+	});
+
+	it('keeps memo wrappers it cannot prove immutable and local as external rows', () => {
+		const result = compileCard(`/** @jsxImportSource @octanejs/lynx/intrinsics */
+import { memo } from 'octane';
+import { memo as lookalike } from './memo';
+import External from './External.tsrx';
+
+function Row() @{
+	<view />
+}
+
+function Inner() @{
+	<view />
+}
+
+const Imported = memo(External);
+const Foreign = lookalike(Row);
+const Rewrapped = memo(Inner);
+
+export function App(props: { rows: readonly number[] }) @{
+	<view>
+		@for (const row of props.rows; key row) {
+			<Imported />
+		}
+		@for (const row of props.rows; key row) {
+			<Foreign />
+		}
+		@for (const row of props.rows; key row) {
+			<Rewrapped />
+		}
+	</view>
+}
+
+export function reset() {
+	Inner = Row;
+}
+`);
+
+		expect(result.lynxBlockFeatureRequirements?.keyedRanges.map((range) => range.row)).toEqual([
+			{ kind: 'external-component', name: 'Imported' },
+			{ kind: 'external-component', name: 'Foreign' },
+			{ kind: 'external-component', name: 'Rewrapped' },
+		]);
+	});
+
 	it('records template roles that structural program addressing cannot prove safe', () => {
 		const result = compileCard(`/** @jsxImportSource @octanejs/lynx/intrinsics */
 function Panel() @{
