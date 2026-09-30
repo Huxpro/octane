@@ -301,6 +301,16 @@ host-ref attachment publication, or main-thread worklet/ref activation. A later
 visible transaction installs those resources exactly once; hiding or recycling
 the cell disconnects them before the physical owner returns to the pool. This
 keeps demand from activating a dormant logical handle merely to clean it up.
+
+Recycling rebinds everything the compiler owns — dynamic values, visibility,
+native event tokens, host refs, and `main-thread:ref` targets — but not writes a
+main-thread handler made imperatively through `MainThread.Element`
+(`setStyleProperty`, `setStyleProperties`, `setAttribute`, animations). Those are
+properties of the physical native element, exactly as in ReactLynx, so they stay
+with the cell when it is reused for another logical row. Derive such styles and
+attributes from state or props so the rebind repaints them, or reset them in the
+handler that owns them; do not rely on a recycled cell starting from its
+template's static styles.
 Terminal list disposal first replaces native callbacks with inert handlers, then
 cleans every physical cell independently. A cell cleanup that mutates and throws
 does not prevent sibling cells from releasing, and a later terminal retry keeps
