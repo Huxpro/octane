@@ -486,7 +486,7 @@ export function createLynxCompiledProgramStore<Node extends LynxElementRef>(
 	let journalFirstRefHost = 0;
 	let lastRefHost = 0;
 	// The Block producer reserves one listener id for every compiled event site,
-	// bound handler or not. Its v2 RUN therefore needs no event payload: both
+	// bound handler or not. Its v3 RUN therefore needs no event payload: both
 	// threads advance this cursor over the same resident plan and run count.
 	let journalFirstListener = 0;
 	let journalFirstTemplates = 1;

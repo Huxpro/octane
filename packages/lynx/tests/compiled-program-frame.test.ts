@@ -217,7 +217,7 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 		expect(page.children[0]!.id).toBe('row-2');
 	});
 
-	it('streams an eventful RUN without adding event fields to the v2 frame', () => {
+	it('streams an eventful RUN without adding event fields to the v3 frame', () => {
 		const papi = emittedHost();
 		const page = papi.createPage('0', 0);
 		const store = createLynxCompiledProgramStore(papi, papi.getUniqueId(page), 73);
@@ -467,6 +467,60 @@ describe('@octanejs/lynx compact compiled-program frame router', () => {
 				},
 			],
 		});
+	});
+
+	it('streams a sparse arithmetic SET-RUN and rolls the whole run back on a later error', () => {
+		const { page, resolve, store } = setup();
+		applyLynxCompiledProgramFrame(
+			store,
+			page,
+			resolve,
+			encodeLynxDeltaMessage([
+				{
+					op: 'run',
+					templateId: 1,
+					parent: { instance: 1, slot: 0 },
+					before: null,
+					firstInstance: 2,
+					count: 3,
+					values: [
+						'row-2',
+						'cold',
+						'label-2',
+						'row-3',
+						'cold',
+						'label-3',
+						'row-4',
+						'cold',
+						'label-4',
+					],
+				},
+			]),
+		);
+		const accepted = encodeLynxDeltaMessage([
+			{
+				op: 'set-run',
+				firstInstance: 2,
+				stride: 2,
+				slot: 2,
+				values: ['next-2', 'next-4'],
+			},
+		]);
+		expect(() => applyLynxCompiledProgramFrame(store, page, resolve, [...accepted, 99, 0])).toThrow(
+			/opcode 99/,
+		);
+		expect(page.children.map((node) => node.children[0]!.children[0]!.text)).toEqual([
+			'label-2',
+			'label-3',
+			'label-4',
+		]);
+
+		applyLynxCompiledProgramFrame(store, page, resolve, accepted);
+		expect(page.children.map((node) => node.children[0]!.children[0]!.text)).toEqual([
+			'next-2',
+			'label-3',
+			'next-4',
+		]);
 	});
 
 	it('inserts a RUN before an existing root addressed by instance', () => {

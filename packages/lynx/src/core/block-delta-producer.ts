@@ -35,7 +35,7 @@ export interface LynxBlockDeltaRun {
  * Direct producer seam consumed by the Block core.
  *
  * The core already owns instance, slot, and range identity. This interface
- * keeps that information intact until the existing compact v2 encoder instead
+ * keeps that information intact until the existing compact v3 encoder instead
  * of recovering it from complete host props after the render.
  */
 export interface LynxBlockDeltaProducer {
@@ -149,9 +149,63 @@ function frozenOperation(operation: LynxDeltaOperation): LynxDeltaOperation {
 			});
 		case 'clear':
 			return Object.freeze({ ...operation, parent: Object.freeze({ ...operation.parent }) });
+		case 'set-run':
+			return Object.freeze({ ...operation, values: Object.freeze([...operation.values]) });
 		default:
 			return Object.freeze({ ...operation });
 	}
+}
+
+function compactSetRuns(operations: readonly LynxDeltaOperation[]): readonly LynxDeltaOperation[] {
+	let output: LynxDeltaOperation[] | null = null;
+	for (let index = 0; index < operations.length;) {
+		const first = operations[index]!;
+		if (first.op !== 'set' || index + 2 >= operations.length) {
+			if (output !== null) output.push(first);
+			index++;
+			continue;
+		}
+		const second = operations[index + 1]!;
+		const stride = second.op === 'set' ? second.instance - first.instance : 0;
+		if (second.op !== 'set' || second.slot !== first.slot || stride <= 0) {
+			if (output !== null) output.push(first);
+			index++;
+			continue;
+		}
+		let end = index + 2;
+		while (end < operations.length) {
+			const next = operations[end]!;
+			if (
+				next.op !== 'set' ||
+				next.slot !== first.slot ||
+				next.instance !== first.instance + stride * (end - index)
+			) {
+				break;
+			}
+			end++;
+		}
+		if (end - index < 3) {
+			if (output !== null) output.push(first);
+			index++;
+			continue;
+		}
+		if (output === null) output = operations.slice(0, index);
+		const values = new Array<Extract<LynxDeltaOperation, { op: 'set' }>['value']>(end - index);
+		for (let offset = 0; offset < values.length; offset++) {
+			values[offset] = (
+				operations[index + offset] as Extract<LynxDeltaOperation, { op: 'set' }>
+			).value;
+		}
+		output.push({
+			op: 'set-run',
+			firstInstance: first.instance,
+			stride,
+			slot: first.slot,
+			values,
+		});
+		index = end;
+	}
+	return output ?? operations;
 }
 
 /**
@@ -311,12 +365,13 @@ export function createLynxBlockDeltaProducer(): LynxBlockDeltaProducer {
 		},
 		flush(version) {
 			if (operations.length === 0) return null;
+			const compacted = compactSetRuns(operations);
 			const frame: LynxPreparedBlockDeltaBatch = Object.freeze({
 				source: 'block',
 				templates: Object.freeze(definitions.map((definition) => Object.freeze(definition))),
-				operations: Object.freeze(operations.map(frozenOperation)),
+				operations: Object.freeze(compacted.map(frozenOperation)),
 				retiredInstances: Object.freeze([...retiredInstances]),
-				encoded: encodeLynxDeltaMessage(operations, definitions),
+				encoded: encodeLynxDeltaMessage(compacted, definitions),
 			});
 			const batch: UniversalHostBatch = Object.freeze({
 				renderer: LYNX_TRANSPORT_RENDERER,

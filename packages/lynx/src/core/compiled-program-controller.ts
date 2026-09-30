@@ -93,7 +93,7 @@ function abortKey(identity: UniversalTransportIdentity): string {
  *
  * This is deliberately below ContextProxy framing and above the frame decoder:
  * a product receiver validates one small outer envelope, then gives this
- * controller the recovered identity and flat v2 frame. The general host
+ * controller the recovered identity and flat v3 frame. The general host
  * container is never created, so there is exactly one owner for every native
  * node on this path.
  *

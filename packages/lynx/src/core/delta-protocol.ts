@@ -8,8 +8,8 @@ import { decodeLynxTransportValue, encodeLynxTransportValue } from './transport-
 /**
  * Versioned header for the Lynx slot-delta wire format.
  *
- * Version 2 replaces the draft opcode set after the closure analysis on #61
- * refuted it. Four changes are load-bearing rather than cosmetic:
+ * Version 3 extends the v2 opcode set after the closure analysis on #61
+ * refuted it. Five changes are load-bearing rather than cosmetic:
  *
  * - Every address is instance-qualified. A slot index is a per-template
  *   property, so a bare slot names one anchor per instance — in a 10,000-row
@@ -24,13 +24,16 @@ import { decodeLynxTransportValue, encodeLynxTransportValue } from './transport-
  *   of a resident program. The address crosses once, before the first RUN that
  *   uses it; later frames carry only the number without trusting evaluation or
  *   discovery order in two isolated module graphs.
+ * - `SET-RUN` carries equal-slot writes over an arithmetic instance sequence.
+ *   It preserves sparse instance identity while amortizing framing, validation,
+ *   and transport cost across the writes produced by a list update.
  *
  * Ordinary values remain scalars and byte-identical. Direct worklet and ref
  * descriptors opt into one escaped transport-codec field; only that explicitly
  * marked field is walked and validated, so scalar-only frames keep header-only
  * validation and the original allocation profile.
  */
-export const LYNX_DELTA_PROTOCOL_VERSION = 2 as const;
+export const LYNX_DELTA_PROTOCOL_VERSION = 3 as const;
 
 const enum LynxDeltaOpcode {
 	Run = 1,
@@ -41,6 +44,7 @@ const enum LynxDeltaOpcode {
 	Vis = 6,
 	Define = 7,
 	RefRun = 8,
+	SetRun = 9,
 }
 
 const enum LynxVisibilityState {
@@ -83,6 +87,15 @@ export interface LynxSetDelta {
 	readonly value: LynxDeltaValue;
 }
 
+/** Equal-slot writes over an arithmetic instance sequence. */
+export interface LynxSetRunDelta {
+	readonly op: 'set-run';
+	readonly firstInstance: number;
+	readonly stride: number;
+	readonly slot: number;
+	readonly values: readonly LynxDeltaValue[];
+}
+
 /** Instances are allocated in dense runs, so removal takes a run at a time. */
 export interface LynxRemoveDelta {
 	readonly op: 'remove';
@@ -120,6 +133,7 @@ export interface LynxRefRunDelta {
 export type LynxDeltaOperation =
 	| LynxRunDelta
 	| LynxSetDelta
+	| LynxSetRunDelta
 	| LynxRemoveDelta
 	| LynxClearDelta
 	| LynxMoveDelta
@@ -297,6 +311,21 @@ export function encodeLynxDeltaMessage(
 					encodeValue(operation.value, 'SET value'),
 				]);
 				break;
+			case 'set-run':
+				if (operation.values.length === 0) fail('SET-RUN requires at least one value');
+				if (
+					operation.firstInstance + operation.stride * (operation.values.length - 1) >
+					MAX_INSTANCE
+				) {
+					fail('SET-RUN exceeds the instance handle range');
+				}
+				pushFrame(encoded, LynxDeltaOpcode.SetRun, [
+					requireInstance(operation.firstInstance, 'SET-RUN first instance'),
+					requirePositiveCount(operation.stride, 'SET-RUN stride'),
+					requireIndex(operation.slot, 'SET-RUN slot'),
+					...operation.values.map((value, index) => encodeValue(value, `SET-RUN value ${index}`)),
+				]);
+				break;
 			case 'remove':
 				pushFrame(encoded, LynxDeltaOpcode.Remove, [
 					requireInstance(operation.firstInstance, 'REMOVE first instance'),
@@ -353,7 +382,7 @@ export function decodeLynxDeltaMessage(input: unknown): LynxDeltaMessage {
 	let cursor = 1;
 	while (cursor < input.length) {
 		const opcode = requirePositiveCount(input[cursor++], 'opcode');
-		if (opcode > LynxDeltaOpcode.RefRun) fail('opcode is outside the supported range');
+		if (opcode > LynxDeltaOpcode.SetRun) fail('opcode is outside the supported range');
 		const arity = requireIndex(input[cursor++], 'frame arity');
 		const end = cursor + arity;
 		if (end > input.length) fail('frame arity extends past the message');
@@ -400,6 +429,25 @@ export function decodeLynxDeltaMessage(input: unknown): LynxDeltaMessage {
 					value: decodeLynxDeltaValue(input[cursor + 2], 'SET value'),
 				});
 				break;
+			case LynxDeltaOpcode.SetRun: {
+				if (arity < 4) fail('SET-RUN requires three header fields and at least one value');
+				const firstInstance = requireInstance(input[cursor], 'SET-RUN first instance');
+				const stride = requirePositiveCount(input[cursor + 1], 'SET-RUN stride');
+				const finalInstance = firstInstance + stride * (arity - 4);
+				if (!Number.isSafeInteger(finalInstance) || finalInstance > MAX_INSTANCE) {
+					fail('SET-RUN exceeds the instance handle range');
+				}
+				operations.push({
+					op: 'set-run',
+					firstInstance,
+					stride,
+					slot: requireIndex(input[cursor + 2], 'SET-RUN slot'),
+					values: input
+						.slice(cursor + 3, end)
+						.map((value, index) => decodeLynxDeltaValue(value, `SET-RUN value ${index}`)),
+				});
+				break;
+			}
 			case LynxDeltaOpcode.Remove:
 				if (arity !== 2) fail('REMOVE requires exactly two fields');
 				operations.push({

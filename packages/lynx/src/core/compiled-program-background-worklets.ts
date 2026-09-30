@@ -63,6 +63,12 @@ export function lynxCompiledProgramFrameRequiresBackgroundWorklets(
 ): boolean {
 	for (const operation of frame.operations) {
 		if (operation.op === 'set' && visitsBackgroundFunction(operation.value)) return true;
+		if (
+			operation.op === 'set-run' &&
+			operation.values.some((value) => visitsBackgroundFunction(value))
+		) {
+			return true;
+		}
 		if (operation.op === 'run') {
 			for (const value of operation.values) {
 				if (visitsBackgroundFunction(value)) return true;
@@ -151,6 +157,23 @@ export function createLynxCompiledProgramBackgroundWorklets(
 								value: retained.value as UniversalSerializableValue,
 							});
 						} else stage(operation.instance, operation.slot, undefined);
+					} else if (operation.op === 'set-run') {
+						let values: unknown[] | null = null;
+						for (let valueIndex = 0; valueIndex < operation.values.length; valueIndex++) {
+							const value = operation.values[valueIndex];
+							const instance = operation.firstInstance + operation.stride * valueIndex;
+							if (visitsBackgroundFunction(value)) {
+								const retained = retain(value);
+								(values ??= [...operation.values])[valueIndex] = retained.value;
+								stage(instance, operation.slot, retained.executions);
+							} else stage(instance, operation.slot, undefined);
+						}
+						if (values !== null) {
+							(operations ??= [...frame.operations])[index] = Object.freeze({
+								...operation,
+								values: Object.freeze(values) as readonly UniversalSerializableValue[],
+							});
+						}
 					} else if (operation.op === 'remove') {
 						for (let offset = 0; offset < operation.count; offset++) {
 							retire(operation.firstInstance + offset);
