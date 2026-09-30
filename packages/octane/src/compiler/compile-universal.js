@@ -4724,9 +4724,37 @@ function compileActivityElementAst(node, context, state) {
 	return addDynamicAst(context, generatedCall(state.helpers.activity, [mode, body], node));
 }
 
+/**
+ * Whether a provider's props read a binding the dirty candidate can replay.
+ *
+ * Provider props are evaluated by the component render, never by a dirty
+ * computation. A state-only replay of the provider's children would therefore
+ * re-render them against the previous context value.
+ */
+function providerPropsReadDirtyBinding(attributes, dirtyCandidate) {
+	for (const attribute of attributes) {
+		const expression =
+			attribute.type === 'JSXSpreadAttribute' || attribute.type === 'SpreadAttribute'
+				? attribute.argument
+				: attribute.value?.type === 'JSXExpressionContainer'
+					? attribute.value.expression
+					: null;
+		if (expression == null || expression.type === 'JSXEmptyExpression') continue;
+		for (const reference of dirtyExpressionReferences(expression)) {
+			if (dirtyCandidate.bindingDeps.has(reference)) return true;
+		}
+	}
+	return false;
+}
+
 function compileContextProviderValueAst(node, state, dirtyCandidate = null) {
 	const providerContext = contextProviderExpressionAst(node, state);
 	if (providerContext === null) return null;
+	const attributes = node.openingElement?.attributes ?? node.attributes ?? [];
+	if (dirtyCandidate !== null && providerPropsReadDirtyBinding(attributes, dirtyCandidate)) {
+		// Keep the subtree on the component path so the new value is provided.
+		dirtyCandidate = null;
+	}
 	const childNodes = node.children ?? [];
 	const meaningfulChildren = childNodes.filter(
 		(child) => child.type !== 'JSXText' || normalizeJsxText(child.value) !== '',
@@ -4752,7 +4780,6 @@ function compileContextProviderValueAst(node, state, dirtyCandidate = null) {
 			node,
 		);
 	}
-	const attributes = node.openingElement?.attributes ?? node.attributes ?? [];
 	const propsObject = compilePlainPropsObjectAst(attributes, state, node);
 	const propsName = generatedIdentifier('__octaneContextProps', node);
 	const selectedChildren =
